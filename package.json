@@ -1,0 +1,31 @@
+{
+  "name": "open-im",
+  "version": "0.1.0",
+  "description": "Multi-platform IM bridge for AI CLI tools (Claude, Codex, Cursor)",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "open-im": "dist/cli.js"
+  },
+  "files": ["dist", ".env.example"],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": ["telegram", "feishu", "claude", "claude-code", "bot", "bridge"],
+  "license": "MIT",
+  "dependencies": {
+    "telegraf": "^4.16.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "dotenv": "^16.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
