@@ -44,7 +44,7 @@ jobs:
       - name: Bump version (manual trigger only)
         if: github.event_name == 'workflow_dispatch'
         run: |
-          NPM_VER=$(npm view im-cli-bridge version 2>/dev/null) || NPM_VER="0.0.0"
+          NPM_VER=$(npm view open-im version 2>/dev/null) || NPM_VER="0.0.0"
           BUMP="${{ github.event.inputs.version_bump || 'patch' }}"
           NEXT=$(npx -y semver@7 -i $BUMP $NPM_VER)
           npm version $NEXT --no-git-tag-version

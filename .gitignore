@@ -1,37 +1,5 @@
-# Environment
-.env
-.env.local
-
-# Dependencies
 node_modules/
-
-# Build output
 dist/
-build/
-
-# Logs
+.env
 *.log
-logs/
-
-# OS
 .DS_Store
-Thumbs.db
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# TypeScript
-*.tsbuildinfo
-
-# Temporary files
-*.tmp
-*.temp
-
-# Data (removed - no longer used)
-data/
-
-# Bridge PID file (background mode)
-.im-cli-bridge.pid

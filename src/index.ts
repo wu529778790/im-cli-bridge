@@ -1,135 +1,93 @@
-/**
- * IM CLI Bridge - 简化版主入口
- *
- * 功能：通过 IM（Telegram）控制 claude 等 AI CLI 工具
- */
+import { loadConfig, needsSetup } from './config.js';
+import { runInteractiveSetup } from './setup.js';
+import { initTelegram, stopTelegram } from './telegram/client.js';
+import { setupTelegramHandlers } from './telegram/event-handler.js';
+import { sendTextReply } from './telegram/message-sender.js';
+import { initAdapters } from './adapters/registry.js';
+import { SessionManager } from './session/session-manager.js';
+import { loadActiveChats, getActiveChatId, flushActiveChats } from './shared/active-chats.js';
+import { initLogger, createLogger, closeLogger } from './logger.js';
+import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 
-import { EventEmitter } from './core/event-emitter';
-import { SimpleRouter } from './core/router';
-import { TelegramClient } from './im-clients/telegram';
-import { Logger } from './utils/logger';
-import { immessageToMessage } from './utils/message-adapter';
-import { IConfig } from './interfaces/config';
-import { defaultConfig } from './config/default.config';
+const require = createRequire(import.meta.url);
+const { version: APP_VERSION } = require('../package.json') as { version: string };
 
-/**
- * 主 Bridge 类
- */
-class IMCLIBridge {
-  private eventEmitter: EventEmitter;
-  private router: SimpleRouter;
-  private telegramClient?: TelegramClient;
-  private config: IConfig;
-  private logger: Logger;
+const log = createLogger('Main');
 
-  constructor(config: Partial<IConfig> = {}) {
-    this.config = { ...defaultConfig, ...config };
-    this.logger = new Logger('IMCLIBridge');
-    this.eventEmitter = new EventEmitter();
-
-    // 创建路由器
-    const aiCommand = this.config.executor?.aiCommand || process.env.AI_COMMAND || 'claude';
-    this.router = new SimpleRouter(this.eventEmitter, aiCommand);
-  }
-
-  /**
-   * 初始化所有组件
-   */
-  async initialize(): Promise<void> {
-    this.logger.info('Initializing IM CLI Bridge...');
-
-    // 初始化路由器
-    await this.router.initialize();
-
-    // 初始化 Telegram 客户端
-    const telegramToken = this.config.telegram?.botToken || process.env.TELEGRAM_BOT_TOKEN;
-    if (telegramToken) {
-      this.telegramClient = new TelegramClient();
-      await this.telegramClient.initialize({
-        appId: telegramToken,
-        polling: { params: { timeout: 30 } }
-      } as any);
-
-      // 连接到路由器
-      this.telegramClient.on('message:received', (imMessage) => {
-        const message = immessageToMessage(imMessage, 'telegram');
-        this.eventEmitter.emit('message:received', message);
-      });
-
-      this.router.registerClient('telegram', this.telegramClient);
-      this.logger.info('Telegram client connected to router');
-    }
-
-    this.logger.info('All components initialized');
-  }
-
-  /**
-   * 启动服务
-   */
-  async start(): Promise<void> {
-    this.logger.info('Starting IM CLI Bridge...');
-
-    // 启动 Telegram 客户端
-    if (this.telegramClient) {
-      await this.telegramClient.start();
-      this.logger.info('Telegram client started');
-    }
-
-    this.logger.info('IM CLI Bridge started successfully');
-    this.logger.info('Ready to receive messages...');
-  }
-
-  /**
-   * 停止服务
-   */
-  async stop(): Promise<void> {
-    this.logger.info('Stopping IM CLI Bridge...');
-
-    if (this.telegramClient) {
-      await this.telegramClient.stop();
-    }
-
-    await this.router.cleanup();
-
-    this.logger.info('IM CLI Bridge stopped');
-  }
-}
-
-/**
- * 主函数
- */
-async function main(): Promise<void> {
-  const bridge = new IMCLIBridge();
-
+async function sendLifecycleNotification(platform: string, message: string) {
+  const chatId = getActiveChatId('telegram');
+  if (!chatId) return;
   try {
-    await bridge.initialize();
-    await bridge.start();
-
-    // 处理优雅退出
-    process.on('SIGINT', async () => {
-      console.log('\nReceived SIGINT, shutting down gracefully...');
-      await bridge.stop();
-      process.exit(0);
-    });
-
-    process.on('SIGTERM', async () => {
-      console.log('\nReceived SIGTERM, shutting down gracefully...');
-      await bridge.stop();
-      process.exit(0);
-    });
-
-  } catch (error) {
-    console.error('Failed to start bridge:', error);
-    process.exit(1);
+    await sendTextReply(chatId, message);
+  } catch (err) {
+    log.debug('Failed to send lifecycle notification:', err);
   }
 }
 
-// 仅在直接运行 index 时执行（避免被 cli 导入时重复启动）
-if (require.main === module) {
-  main().catch((error) => {
-    console.error('Unhandled error:', error);
+export async function main() {
+  if (needsSetup()) {
+    const saved = await runInteractiveSetup();
+    if (!saved) process.exit(1);
+  }
+
+  const config = loadConfig();
+  initLogger(config.logDir, config.logLevel);
+  loadActiveChats();
+
+  initAdapters(config);
+
+  log.info('Starting open-im bridge...');
+  log.info(`AI 工具: ${config.aiCommand}`);
+  log.info(`工作目录: ${config.claudeWorkDir}`);
+
+  const sessionManager = new SessionManager(config.claudeWorkDir, config.allowedBaseDirs);
+  let telegramHandle: ReturnType<typeof setupTelegramHandlers> | null = null;
+
+  if (config.enabledPlatforms.includes('telegram')) {
+    await initTelegram(config, (bot) => {
+      telegramHandle = setupTelegramHandlers(bot, config, sessionManager);
+    });
+  }
+
+  log.info('Service is running. Press Ctrl+C to stop.');
+
+  const startupMsg = [
+    `🟢 open-im v${APP_VERSION} 服务已启动`,
+    '',
+    `AI 工具: ${config.aiCommand}`,
+    `工作目录: ${config.claudeWorkDir}`,
+  ].join('\n');
+  await sendLifecycleNotification('telegram', startupMsg).catch(() => {});
+
+  const startedAt = Date.now();
+
+  const shutdown = async () => {
+    log.info('Shutting down...');
+    const uptimeSec = Math.floor((Date.now() - startedAt) / 1000);
+    const m = Math.floor(uptimeSec / 60);
+    await sendLifecycleNotification(
+      'telegram',
+      `🔴 open-im 服务正在关闭...\n运行时长: ${m}分钟`
+    ).catch(() => {});
+
+    telegramHandle?.stop();
+    stopTelegram();
+    sessionManager.destroy();
+    flushActiveChats();
+    closeLogger();
+    process.exit(0);
+  };
+
+  process.on('SIGINT', () => shutdown().catch(() => process.exit(1)));
+  process.on('SIGTERM', () => shutdown().catch(() => process.exit(1)));
+}
+
+const isEntry = process.argv[1]?.replace(/\\/g, '/').endsWith('/index.js') || process.argv[1]?.replace(/\\/g, '/').endsWith('/index.ts');
+if (isEntry) {
+  main().catch((err) => {
+    console.error('Fatal error:', err);
+    closeLogger();
     process.exit(1);
   });
 }
-
-export { IMCLIBridge, main };

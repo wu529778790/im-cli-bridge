@@ -1,84 +1,51 @@
-# IM CLI Bridge
+# open-im
 
-[English](https://github.com/wu529778790/im-cli-bridge/blob/main/README.md) | [中文](https://github.com/wu529778790/im-cli-bridge/blob/main/README.zh-CN.md)
+多平台 IM 桥接，支持多种 AI CLI 工具（Claude Code、Codex、Cursor 等）。
 
-A message routing bridge that connects IM platforms (Telegram) with AI CLI tools like Claude Code, Cursor, Codex, etc. Use AI coding assistants through chat interfaces.
+## 功能
 
-## Features
+- **多 AI 工具**：通过 `AI_COMMAND` 配置切换 Claude / Codex / Cursor
+- **流式输出**：节流更新，Telegram editMessage 实时展示
+- **会话管理**：每用户独立 session，`/new` 重置
+- **命令**：`/help` `/new` `/cd` `/pwd` `/status`
 
-- **Telegram Support**: Bot API, inline keyboards, file handling
-- **AI CLI Integration**: Claude Code, Cursor, Codex, Aider
-- **Streaming Output**: Appends new content as messages
-- **Codex Output Filtering**: Strips header, exec, thinking; keeps only AI replies
-- **Two Run Modes**: Foreground (Ctrl+C) and background (start/stop)
+## 快速开始
 
-## Quick Start
-
-Run with `npx`, no global install needed:
+### 快速开始
 
 ```bash
-npx im-cli-bridge
+npm run build
+npm run dev   # 或 npm start
 ```
 
-On first run, if not configured, the CLI will prompt for `TELEGRAM_BOT_TOKEN` and `AI_COMMAND`, save to `~/.im-cli-bridge/.env`, then start automatically.
+首次运行会进入交互式配置，按提示输入后自动启动服务。配置保存到 `~/.open-im/config.json`。
 
-Subsequent runs will start directly.
+## 配置
 
-**Background mode** (requires `npm install -g im-cli-bridge` or npx availability):
+| 变量 | 说明 |
+|------|------|
+| `TELEGRAM_BOT_TOKEN` | Telegram Bot Token |
+| `ALLOWED_USER_IDS` | 白名单用户 ID（逗号分隔，空=所有人） |
+| `AI_COMMAND` | `claude` \| `codex` \| `cursor`，默认 `claude` |
+| `CLAUDE_CLI_PATH` | Claude CLI 路径，默认 `claude` |
+| `CLAUDE_WORK_DIR` | 工作目录 |
+| `CLAUDE_SKIP_PERMISSIONS` | 跳过权限确认，默认 `true` |
 
-```bash
-npx im-cli-bridge start   # Start
-npx im-cli-bridge stop    # Stop
+## 项目结构
+
 ```
-
-## Usage
-
-### Commands
-
-| Command | Description |
-|---------|-------------|
-| `run`, `foreground` | Foreground mode (default) |
-| `start` | Start in background |
-| `stop` | Stop background service |
-| `init` | Create config dir and .env template |
-
-### Options
-
-```bash
-npx im-cli-bridge [COMMAND] [OPTIONS]
-
-Options:
-  -c, --config <path>    Custom config file
-  -p, --port <number>    Server port (default 3000)
-  -H, --host <address>   Server host
-  -l, --log-level <level>  debug, info, warn, error
-  -v, --verbose          Verbose logging
-      --version          Show version
-      --help             Show help
+src/
+├── adapters/          # ToolAdapter 抽象与实现
+│   ├── tool-adapter.interface.ts
+│   ├── claude-adapter.ts
+│   └── registry.ts
+├── claude/            # Claude CLI 运行与解析
+├── shared/            # ai-task、utils、types
+├── telegram/          # Telegram 事件与消息
+├── session/           # 会话管理
+└── commands/          # 命令分发
 ```
-
-### Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `TELEGRAM_BOT_TOKEN` | Telegram bot token (required) |
-| `AI_COMMAND` | AI CLI command (default claude, or codex/cursor) |
-| `LOG_LEVEL` | Log level (default info) |
-
-## Troubleshooting
-
-### Bot not responding?
-1. Check bot token
-2. Check logs: `tail -f ~/.im-cli-bridge/logs/combined.log`
-3. Ensure only one bridge instance (avoid 409 Conflict)
-
-### 409 Conflict?
-Only one connection per Bot. Use `npx im-cli-bridge stop` before restarting.
-
-### AI command not working?
-1. Verify `AI_COMMAND`
-2. Test manually: `claude "hello"`
 
 ## License
 
-MIT License - see [LICENSE](LICENSE).
+MIT
