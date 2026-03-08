@@ -5,9 +5,8 @@ import { spawn, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdir, writeFile, rm, readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import { platform } from 'node:os';
-import { homedir } from 'node:os';
+import { existsSync, readFileSync } from 'node:fs';
+import { platform, homedir } from 'node:os';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -16,6 +15,7 @@ const __dirname = dirname(__filename);
 const PID_DIR = join(homedir(), '.open-im');
 const PID_FILE = join(PID_DIR, 'daemon.pid');
 const STOP_FILE = join(PID_DIR, 'stop.flag');
+const CONFIG_FILE = join(PID_DIR, 'config.json');
 
 // 保存 PID 到文件
 async function savePid(pid: number): Promise<void> {
@@ -48,6 +48,29 @@ async function removePidFile(): Promise<void> {
     }
   } catch {
     // 忽略删除错误
+  }
+}
+
+// 更新工作目录到配置文件
+async function updateWorkDir(workDir: string): Promise<void> {
+  try {
+    await mkdir(PID_DIR, { recursive: true });
+
+    let config: Record<string, any> = {};
+    if (existsSync(CONFIG_FILE)) {
+      try {
+        config = JSON.parse(readFileSync(CONFIG_FILE, 'utf-8'));
+      } catch {
+        // 忽略解析错误
+      }
+    }
+
+    // 更新工作目录
+    config.claudeWorkDir = workDir;
+
+    await writeFile(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('无法保存工作目录配置:', err);
   }
 }
 
@@ -125,6 +148,13 @@ if (args[0] === 'stop') {
     process.exit(1);
   });
 } else if (args[0] === 'start') {
+  // 获取当前工作目录
+  const currentDir = process.cwd();
+
+  // 更新配置中的工作目录
+  await updateWorkDir(currentDir);
+  console.log(`工作目录已设置为: ${currentDir}`);
+
   // 后台启动 - 跨平台方案
   const distPath = join(__dirname, '..', 'dist', 'index.js');
 
