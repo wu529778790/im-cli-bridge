@@ -244,7 +244,7 @@ function runInit(): void {
       'TELEGRAM_BOT_TOKEN=your_bot_token',
       '',
       '# AI CLI',
-      'AI_COMMAND=codex',
+      'AI_COMMAND=claude',
       '',
       'LOG_LEVEL=info'
     ].join('\n'));

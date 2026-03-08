@@ -28,7 +28,7 @@ Set in your shell profile (.bashrc / .zshrc) or system env:
 
 ```bash
 export TELEGRAM_BOT_TOKEN=your_bot_token
-export AI_COMMAND=codex
+export AI_COMMAND=claude
 ```
 
 **Option B: Config file**
@@ -82,7 +82,7 @@ Options:
 | Variable | Description |
 |----------|-------------|
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token (required) |
-| `AI_COMMAND` | AI CLI command (codex/claude/claudecode) |
+| `AI_COMMAND` | AI CLI command (default claude, or codex/claudecode) |
 | `LOG_LEVEL` | Log level (default info) |
 
 ## Troubleshooting
@@ -97,7 +97,7 @@ Only one connection per Bot. Use `im-cli-bridge stop` before restarting.
 
 ### AI command not working?
 1. Verify `AI_COMMAND`
-2. Test manually: `codex "hello"`
+2. Test manually: `claude "hello"`
 
 ## License
 

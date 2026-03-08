@@ -28,7 +28,7 @@ npm install -g im-cli-bridge
 
 ```bash
 export TELEGRAM_BOT_TOKEN=your_bot_token
-export AI_COMMAND=codex
+export AI_COMMAND=claude
 ```
 
 **方式二：配置文件**
@@ -89,7 +89,7 @@ im-cli-bridge start -c ./custom.config.js
 | 变量 | 说明 |
 |------|------|
 | `TELEGRAM_BOT_TOKEN` | Telegram Bot 令牌（必填） |
-| `AI_COMMAND` | AI CLI 命令（codex/claude/claudecode） |
+| `AI_COMMAND` | AI CLI 命令（默认 claude，可选 codex/claudecode） |
 | `LOG_LEVEL` | 日志级别（默认 info） |
 
 ## 故障排除
@@ -104,7 +104,7 @@ im-cli-bridge start -c ./custom.config.js
 
 ### AI 命令不工作？
 1. 验证 `AI_COMMAND` 正确
-2. 在终端手动测试：`codex "hello"`
+2. 在终端手动测试：`claude "hello"`
 
 ## 许可证
 
