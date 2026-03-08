@@ -1,5 +1,4 @@
 import { ICommandExecutor, ExecutionResult, ExecutionOptions, StreamExecutionOptions } from '../interfaces/command-executor';
-import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../utils/logger';
 
 /**
@@ -11,7 +10,7 @@ export abstract class BaseExecutor implements ICommandExecutor {
   protected readonly logger = logger;
 
   constructor(executorName: string) {
-    this.executorId = uuidv4();
+    this.executorId = `exec-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   }
 
   /**

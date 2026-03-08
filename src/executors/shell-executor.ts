@@ -3,8 +3,7 @@ import { BaseExecutor } from './base-executor';
 import {
   ExecutionResult,
   ExecutionOptions,
-  StreamExecutionOptions,
-  ClaudeStreamEvent
+  StreamExecutionOptions
 } from '../interfaces/command-executor';
 
 /**
@@ -81,7 +80,8 @@ export class ShellExecutor extends BaseExecutor {
   }
 
   /**
-   * Execute a command with streaming output
+   * Execute a command with streaming output.
+   * 超时时会 kill 子进程并返回已收集的 stdout/stderr。
    */
   async executeStream(
     command: string,
@@ -94,42 +94,18 @@ export class ShellExecutor extends BaseExecutor {
     const timeout = options?.timeout;
 
     this.logger.info(`Executing (stream): ${this.formatCommand(command, args)}`);
-    this.logger.debug(`Working directory: ${cwd}`);
 
-    try {
-      const result = await this.executeWithTimeout(
-        this.spawnCommandStream(command, args, cwd, env, options),
-        timeout,
-        `Command timed out: ${command}`
-      );
+    const result = await this.spawnCommandStream(command, args, cwd, env, options, timeout);
+    const duration = Date.now() - startTime;
 
-      const duration = Date.now() - startTime;
-      this.logger.info(`Stream command completed in ${duration}ms with exit code ${result.exitCode}`);
-
-      return {
-        ...result,
-        duration,
-        timedOut: false
-      };
-    } catch (error) {
-      const duration = Date.now() - startTime;
-
-      if (error instanceof Error && error.message.includes('Timeout')) {
-        this.logger.warn(`Stream command timed out after ${duration}ms`);
-        options?.onError?.(new Error(`Command timed out after ${timeout}ms`));
-        return {
-          exitCode: -1,
-          stdout: '',
-          stderr: `Command timed out after ${timeout}ms`,
-          timedOut: true,
-          duration
-        };
-      }
-
-      this.logger.error('Stream command execution failed', error);
-      options?.onError?.(error as Error);
-      throw error;
+    if (result.timedOut) {
+      this.logger.warn(`Stream command timed out after ${duration}ms`);
+      options?.onError?.(new Error(`Command timed out after ${timeout}ms`));
+    } else {
+      this.logger.info(`Stream command completed in ${duration}ms, exit code ${result.exitCode}`);
     }
+
+    return { ...result, duration };
   }
 
   /**
@@ -196,23 +172,25 @@ export class ShellExecutor extends BaseExecutor {
   }
 
   /**
-   * Spawn a command with streaming callbacks
+   * Spawn a command with streaming callbacks.
+   * 超时时 kill 子进程，resolve 时返回已收集的 stdout/stderr。
    */
   private spawnCommandStream(
     command: string,
     args: string[],
     cwd: string,
     env: Record<string, string>,
-    options?: StreamExecutionOptions
+    options?: StreamExecutionOptions,
+    timeoutMs?: number
   ): Promise<ExecutionResult> {
     return new Promise((resolve, reject) => {
       let stdout = '';
       let stderr = '';
       let exitCode = 0;
-      let buffer = '';
+      let timedOut = false;
+      let resolved = false;
 
       const shellCommand = this.buildShellCommand(command, args);
-
       const childProcess = spawn(shellCommand, [], {
         cwd,
         env,
@@ -220,77 +198,48 @@ export class ShellExecutor extends BaseExecutor {
         stdio: ['pipe', 'pipe', 'pipe']
       });
 
-      // Stream stdout
+      const finish = (code: number) => {
+        if (resolved) return;
+        resolved = true;
+        resolve({
+          exitCode: code,
+          stdout,
+          stderr: timedOut ? stderr + `\n\n⏱ 已超时 (${timeoutMs}ms)` : stderr,
+          timedOut,
+          duration: 0
+        });
+      };
+
+      let timeoutId: NodeJS.Timeout | undefined;
+      if (timeoutMs && timeoutMs > 0) {
+        timeoutId = setTimeout(() => {
+          if (resolved) return;
+          timedOut = true;
+          childProcess.kill('SIGTERM');
+          setTimeout(() => childProcess.kill('SIGKILL'), 2000);
+        }, timeoutMs);
+      }
+
       childProcess.stdout?.on('data', (data: Buffer) => {
         const text = data.toString('utf-8');
         stdout += text;
-
-        // Try to parse stream events line by line
-        const lines = text.split('\n');
-        for (const line of lines) {
-          if (!line.trim()) continue;
-
-          buffer += line;
-
-          try {
-            const event = JSON.parse(buffer) as ClaudeStreamEvent;
-            options?.onEvent?.(event);
-
-            // Handle text content
-            if (event.type === 'content_block_delta' && 'delta' in event) {
-              if (event.delta.type === 'text_delta' && event.delta.text) {
-                options?.onText?.(event.delta.text);
-              }
-            }
-
-            buffer = '';
-          } catch (parseError) {
-            // If parsing fails, wait for more data
-            if (!line.endsWith('\n')) {
-              continue;
-            }
-            // If it ends with newline and still fails, treat as plain text
-            if (buffer && !buffer.startsWith('{')) {
-              options?.onText?.(buffer);
-              buffer = '';
-            }
-          }
-        }
-
-        this.logger.debug(`STDOUT (stream): ${text.trim()}`);
+        options?.onText?.(text);
       });
 
-      // Stream stderr
       childProcess.stderr?.on('data', (data: Buffer) => {
         const text = data.toString('utf-8');
         stderr += text;
-        this.logger.debug(`STDERR (stream): ${text.trim()}`);
-
-        // Treat stderr as error events
-        options?.onEvent?.({
-          type: 'system',
-          message: text,
-          level: 'error',
-          timestamp: Date.now()
-        });
+        options?.onText?.(text);
       });
 
-      // Handle process exit
       childProcess.on('close', (code: number | null) => {
+        if (timeoutId) clearTimeout(timeoutId);
         exitCode = code ?? 0;
-        this.logger.debug(`Stream process closed with exit code: ${exitCode}`);
-
-        // Send message stop event
-        options?.onEvent?.({
-          type: 'message_stop',
-          timestamp: Date.now()
-        });
-
-        resolve({ exitCode, stdout, stderr, timedOut: false, duration: 0 });
+        finish(exitCode);
       });
 
-      // Handle process error
       childProcess.on('error', (error: Error) => {
+        if (timeoutId) clearTimeout(timeoutId);
         this.logger.error('Stream process error', error);
         options?.onError?.(error);
         reject(error);

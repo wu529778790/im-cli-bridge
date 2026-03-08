@@ -128,10 +128,12 @@ async function main(): Promise<void> {
   }
 }
 
-// 运行主函数
-main().catch((error) => {
-  console.error('Unhandled error:', error);
-  process.exit(1);
-});
+// 仅在直接运行 index 时执行（避免被 cli 导入时重复启动）
+if (require.main === module) {
+  main().catch((error) => {
+    console.error('Unhandled error:', error);
+    process.exit(1);
+  });
+}
 
 export { IMCLIBridge, main };

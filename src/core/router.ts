@@ -1,6 +1,7 @@
 /**
  * 简化版消息路由器
  * 直接将 IM 消息路由到 AI CLI，流式回传输出到 IM
+ * 支持会话模式：每用户一个常驻进程，通过 stdin 持续输入
  */
 
 import { Message } from '../interfaces/types';
@@ -10,6 +11,9 @@ import { EventEmitter } from './event-emitter';
 import { CommandParser } from './command-parser';
 import { Logger } from '../utils/logger';
 import { ShellExecutor } from '../executors/shell-executor';
+import { AISession } from './ai-session';
+
+const AI_SESSION_MODE = process.env.AI_SESSION_MODE !== 'false';
 
 export class SimpleRouter {
   private logger: Logger;
@@ -18,9 +22,13 @@ export class SimpleRouter {
   private shellExecutor: ShellExecutor;
   private imClients: Map<string, IMClient> = new Map();
   private aiCommand: string;
+  private aiBaseArgs: string[];
 
-  // 简单的串行化锁：确保同一用户的消息按顺序处理
   private userLocks: Map<string, Promise<any>> = new Map();
+  /** 每用户一个 AI 会话（仅会话模式） */
+  private aiSessions: Map<string, AISession> = new Map();
+  /** 会话不可用时退回逐条 -p */
+  private sessionUnsupported: Set<string> = new Set();
 
   constructor(
     eventEmitter: EventEmitter,
@@ -30,6 +38,7 @@ export class SimpleRouter {
     this.eventEmitter = eventEmitter;
     this.commandParser = new CommandParser();
     this.aiCommand = aiCommand;
+    this.aiBaseArgs = ['--dangerously-skip-permissions'];
     this.shellExecutor = new ShellExecutor();
   }
 
@@ -75,7 +84,9 @@ export class SimpleRouter {
     // 串行化处理：等待前一个消息处理完成
     const nextLock = userLock.then(async () => {
       try {
-        if (this.commandParser.isCommand(message.content)) {
+        if (AI_SESSION_MODE) {
+          await this.handleNormalMessage(message);
+        } else if (this.commandParser.isCommand(message.content)) {
           await this.handleCommand(message);
         } else {
           await this.handleNormalMessage(message);
@@ -99,19 +110,12 @@ export class SimpleRouter {
     try {
       this.logger.info(`Processing message from ${message.userId}: ${message.content}`);
 
-      const result = await this.executeWithStream(
-        message,
-        this.aiCommand,
-        ['--dangerously-skip-permissions', '-p', message.content]
-      );
+      const sessionKey = `${message.platform}:${message.userId}`;
 
-      if (!result.streamed) {
-        const text = extractDisplayText(result.stdout, result.stderr);
-        if (text) {
-          await this.sendMessage(message.platform, message.userId, text);
-        } else {
-          this.logger.warn('No output extracted from AI CLI');
-        }
+      if (AI_SESSION_MODE && !this.sessionUnsupported.has(sessionKey)) {
+        await this.handleWithSession(message, sessionKey);
+      } else {
+        await this.handleWithOneShot(message);
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -162,6 +166,81 @@ export class SimpleRouter {
         message.userId,
         `命令执行失败: ${error instanceof Error ? error.message : String(error)}`
       );
+    }
+  }
+
+  /**
+   * 会话模式：一个常驻进程，消息通过 stdin 输入
+   * 若 CLI 需 TTY，会话会失败，onError 时退回逐条模式并重试当前消息
+   */
+  private async handleWithSession(message: Message, sessionKey: string): Promise<void> {
+    const client = this.imClients.get(message.platform);
+    if (!client) return;
+
+    let session = this.aiSessions.get(sessionKey);
+    if (!session) {
+      let accumulated = '';
+      let streamedMessageId: string | null = null;
+      let sendPromise: Promise<void> = Promise.resolve();
+      const replyTarget = message.userId;
+
+      const retryOneShot = () => {
+        this.sessionUnsupported.add(sessionKey);
+        this.aiSessions.delete(sessionKey);
+        this.handleWithOneShot(message).catch((e) => this.logger.error('One-shot retry failed', e));
+      };
+
+      session = new AISession({
+        command: this.aiCommand,
+        baseArgs: this.aiBaseArgs,
+        onOutput: (text: string) => {
+          accumulated += text;
+          sendPromise = sendPromise.then(async () => {
+            try {
+              if (!streamedMessageId) {
+                const sent = await client!.sendText(replyTarget, accumulated);
+                streamedMessageId = sent.id;
+              } else {
+                await client!.updateMessage({ messageId: streamedMessageId!, content: accumulated });
+              }
+            } catch (err) {
+              this.logger.debug('Session stream update failed:', err);
+            }
+          });
+        },
+        onEnd: () => {
+          this.logger.debug('Session turn ended');
+        },
+        onError: (err) => {
+          this.logger.warn('Session error, falling back to one-shot:', err?.message);
+          retryOneShot();
+        }
+      });
+
+      this.aiSessions.set(sessionKey, session);
+      session.start();
+    }
+
+    session.send(message.content);
+  }
+
+  /**
+   * 逐条模式：每条消息 spawn 一次 -p
+   */
+  private async handleWithOneShot(message: Message): Promise<void> {
+    const result = await this.executeWithStream(
+      message,
+      this.aiCommand,
+      [...this.aiBaseArgs, '-p', message.content]
+    );
+
+    if (!result.streamed) {
+      const text = extractDisplayText(result.stdout, result.stderr);
+      if (text) {
+        await this.sendMessage(message.platform, message.userId, text);
+      } else {
+        this.logger.warn('No output extracted from AI CLI');
+      }
     }
   }
 
@@ -234,6 +313,9 @@ export class SimpleRouter {
    */
   async cleanup(): Promise<void> {
     this.logger.info('Cleaning up router...');
+    for (const s of this.aiSessions.values()) s.stop();
+    this.aiSessions.clear();
+    this.sessionUnsupported.clear();
     this.userLocks.clear();
     this.imClients.clear();
   }
