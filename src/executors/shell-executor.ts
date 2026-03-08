@@ -11,8 +11,27 @@ import {
  * Supports streaming output, timeout control, and custom environment
  */
 export class ShellExecutor extends BaseExecutor {
+  private activeChildren: Set<ChildProcess> = new Set();
+
   constructor() {
     super('ShellExecutor');
+  }
+
+  /**
+   * 关闭时杀掉所有后台子进程
+   */
+  killAll(): void {
+    for (const child of this.activeChildren) {
+      try {
+        if (child.pid && child.exitCode === null) {
+          child.kill('SIGTERM');
+          this.logger.debug(`Killed child process ${child.pid}`);
+        }
+      } catch (e) {
+        this.logger.debug('Error killing child:', e);
+      }
+    }
+    this.activeChildren.clear();
   }
 
   /**
@@ -141,6 +160,7 @@ export class ShellExecutor extends BaseExecutor {
         shell: true, // Windows 需要 shell 才能解析 PATH 和 .cmd
         stdio: ['pipe', 'pipe', 'pipe']
       });
+      this.activeChildren.add(childProcess);
 
       // Collect stdout
       childProcess.stdout?.on('data', (data: Buffer) => {
@@ -156,8 +176,8 @@ export class ShellExecutor extends BaseExecutor {
         this.logger.debug(`STDERR: ${text.trim()}`);
       });
 
-      // Handle process exit
       childProcess.on('close', (code: number | null) => {
+        this.activeChildren.delete(childProcess);
         exitCode = code ?? 0;
         this.logger.debug(`Process closed with exit code: ${exitCode}`);
         resolve({ exitCode, stdout, stderr, timedOut: false, duration: 0 });
@@ -197,6 +217,7 @@ export class ShellExecutor extends BaseExecutor {
         shell: true,
         stdio: ['pipe', 'pipe', 'pipe']
       });
+      this.activeChildren.add(childProcess);
 
       const finish = (code: number) => {
         if (resolved) return;
@@ -233,6 +254,7 @@ export class ShellExecutor extends BaseExecutor {
       });
 
       childProcess.on('close', (code: number | null) => {
+        this.activeChildren.delete(childProcess);
         if (timeoutId) clearTimeout(timeoutId);
         exitCode = code ?? 0;
         finish(exitCode);

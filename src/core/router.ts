@@ -12,8 +12,10 @@ import { CommandParser } from './command-parser';
 import { Logger } from '../utils/logger';
 import { ShellExecutor } from '../executors/shell-executor';
 import { AISession } from './ai-session';
+import { getAIAdapter, buildOneShotArgs } from '../config/ai-adapters';
 
-const AI_SESSION_MODE = process.env.AI_SESSION_MODE !== 'false';
+/** 会话模式需 CLI 支持非 TTY 的 stdin，多数工具会报 stdin is not a terminal，默认关闭 */
+const AI_SESSION_MODE = process.env.AI_SESSION_MODE === 'true';
 
 export class SimpleRouter {
   private logger: Logger;
@@ -22,7 +24,6 @@ export class SimpleRouter {
   private shellExecutor: ShellExecutor;
   private imClients: Map<string, IMClient> = new Map();
   private aiCommand: string;
-  private aiBaseArgs: string[];
 
   private userLocks: Map<string, Promise<any>> = new Map();
   /** 每用户一个 AI 会话（仅会话模式） */
@@ -38,7 +39,6 @@ export class SimpleRouter {
     this.eventEmitter = eventEmitter;
     this.commandParser = new CommandParser();
     this.aiCommand = aiCommand;
-    this.aiBaseArgs = ['--dangerously-skip-permissions'];
     this.shellExecutor = new ShellExecutor();
   }
 
@@ -147,11 +147,9 @@ export class SimpleRouter {
 
       this.logger.info(`Processing command: ${parsed.type} from ${message.userId}`);
 
-      const result = await this.executeWithStream(
-        message,
-        this.aiCommand,
-        ['--dangerously-skip-permissions', parsed.type, ...(parsed.args || [])]
-      );
+      const adapter = getAIAdapter(this.aiCommand);
+      const args = [...adapter.baseArgs, parsed.type, ...(parsed.args || [])];
+      const result = await this.executeWithStream(message, this.aiCommand, args);
 
       if (!result.streamed) {
         const text = extractDisplayText(result.stdout, result.stderr);
@@ -192,7 +190,7 @@ export class SimpleRouter {
 
       session = new AISession({
         command: this.aiCommand,
-        baseArgs: this.aiBaseArgs,
+        baseArgs: getAIAdapter(this.aiCommand).baseArgs,
         onOutput: (text: string) => {
           accumulated += text;
           sendPromise = sendPromise.then(async () => {
@@ -225,14 +223,11 @@ export class SimpleRouter {
   }
 
   /**
-   * 逐条模式：每条消息 spawn 一次 -p
+   * 逐条模式：每条消息 spawn 一次，参数由 ai-adapters 决定
    */
   private async handleWithOneShot(message: Message): Promise<void> {
-    const result = await this.executeWithStream(
-      message,
-      this.aiCommand,
-      [...this.aiBaseArgs, '-p', message.content]
-    );
+    const args = buildOneShotArgs(this.aiCommand, message.content);
+    const result = await this.executeWithStream(message, this.aiCommand, args);
 
     if (!result.streamed) {
       const text = extractDisplayText(result.stdout, result.stderr);
@@ -309,13 +304,14 @@ export class SimpleRouter {
   }
 
   /**
-   * 清理资源
+   * 清理资源，包括杀掉后台 AI CLI 子进程
    */
   async cleanup(): Promise<void> {
     this.logger.info('Cleaning up router...');
     for (const s of this.aiSessions.values()) s.stop();
     this.aiSessions.clear();
     this.sessionUnsupported.clear();
+    this.shellExecutor.killAll();
     this.userLocks.clear();
     this.imClients.clear();
   }
