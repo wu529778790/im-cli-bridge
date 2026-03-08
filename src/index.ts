@@ -28,10 +28,7 @@ async function sendLifecycleNotification(platform: string, message: string) {
 export async function main() {
   if (needsSetup()) {
     const saved = await runInteractiveSetup();
-    if (!saved) {
-      console.log('请配置 TELEGRAM_BOT_TOKEN 后重新运行。');
-      process.exit(1);
-    }
+    if (!saved) process.exit(1);
   }
 
   const config = loadConfig();

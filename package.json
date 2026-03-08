@@ -7,20 +7,33 @@
   "bin": {
     "open-im": "dist/cli.js"
   },
-  "files": ["dist", ".env.example"],
+  "files": [
+    "dist",
+    ".env.example"
+  ],
   "scripts": {
     "build": "tsc",
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
+    "setup": "node dist/index.js --setup-only",
     "prepublishOnly": "npm run build"
   },
-  "keywords": ["telegram", "feishu", "claude", "claude-code", "bot", "bridge"],
+  "keywords": [
+    "telegram",
+    "feishu",
+    "claude",
+    "claude-code",
+    "bot",
+    "bridge"
+  ],
   "license": "MIT",
   "dependencies": {
+    "prompts": "^2.4.2",
     "telegraf": "^4.16.3"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "@types/prompts": "^2.4.9",
     "dotenv": "^16.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0"
