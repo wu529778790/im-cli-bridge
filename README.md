@@ -1,6 +1,6 @@
 # IM CLI Bridge
 
-[English](README.md) | [中文](README.zh-CN.md)
+[English](https://github.com/wu529778790/im-cli-bridge/blob/main/README.md) | [中文](https://github.com/wu529778790/im-cli-bridge/blob/main/README.zh-CN.md)
 
 A message routing bridge that connects IM platforms (Telegram) with AI CLI tools like Claude Code, Cursor, Codex, etc. Use AI coding assistants through chat interfaces.
 

@@ -1,6 +1,6 @@
 # IM CLI Bridge
 
-[English](README.md) | [中文](README.zh-CN.md)
+[English](https://github.com/wu529778790/im-cli-bridge/blob/main/README.md) | [中文](https://github.com/wu529778790/im-cli-bridge/blob/main/README.zh-CN.md)
 
 连接 IM 平台（Telegram）与 AI CLI 工具（如 Claude Code、Cursor、Codex 等）的桥梁，让你通过聊天界面使用 AI 编程助手。
 
