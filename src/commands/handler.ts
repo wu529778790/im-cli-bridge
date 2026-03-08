@@ -73,12 +73,14 @@ export class CommandHandler {
       '📋 可用命令:',
       '',
       '/help - 显示帮助',
-      '/new - 开始新会话',
+      '/new - 开始新会话（AI 上下文重置）',
       '/status - 显示状态',
       '/cd <路径> - 切换工作目录',
       '/pwd - 当前工作目录',
       '/allow (/y) - 允许权限请求',
       '/deny (/n) - 拒绝权限请求',
+      '',
+      '💡 提示：清除聊天历史请点击 Telegram 右上角 ⋮ → 清除历史',
     ].join('\n');
     await this.deps.sender.sendTextReply(chatId, help);
     return true;
@@ -88,7 +90,10 @@ export class CommandHandler {
     const ok = this.deps.sessionManager.newSession(userId);
     await this.deps.sender.sendTextReply(
       chatId,
-      ok ? '✅ 已开始新会话。' : '当前没有活动会话。'
+      ok
+        ? '✅ AI 会话已重置，下一条消息将使用全新上下文。\n\n' +
+          '💡 提示：如需清除本对话的历史消息，请点击 Telegram 聊天右上角 ⋮ → 清除历史'
+        : '当前没有活动会话。'
     );
     return true;
   }
@@ -125,7 +130,12 @@ export class CommandHandler {
     }
     try {
       const resolved = await this.deps.sessionManager.setWorkDir(userId, dir);
-      await this.deps.sender.sendTextReply(chatId, `工作目录已切换到: ${resolved}\n会话已重置。`);
+      await this.deps.sender.sendTextReply(
+        chatId,
+        `📁 工作目录已切换到: ${resolved}\n\n` +
+        `🔄 AI 会话已重置，下一条消息将使用全新上下文。\n` +
+        `💡 提示：如需清除本对话的历史消息，请点击 Telegram 聊天右上角 ⋮ → 清除历史`
+      );
     } catch (err) {
       await this.deps.sender.sendTextReply(chatId, err instanceof Error ? err.message : String(err));
     }

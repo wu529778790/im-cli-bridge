@@ -84,12 +84,17 @@ export class SessionManager {
     const realPath = await this.resolveAndValidate(currentDir, workDir);
     const s = this.sessions.get(userId);
     if (s) {
+      const oldConvId = s.activeConvId;
       if (s.activeConvId && s.sessionId) {
         this.convSessionMap.set(`${userId}:${s.activeConvId}`, s.sessionId);
       }
       s.workDir = realPath;
       s.sessionId = undefined;
       s.activeConvId = randomBytes(4).toString('hex');
+      // 清除旧的 convSessionMap 中的映射
+      if (oldConvId) {
+        this.convSessionMap.delete(`${userId}:${oldConvId}`);
+      }
     } else {
       this.sessions.set(userId, {
         workDir: realPath,
@@ -97,20 +102,27 @@ export class SessionManager {
       });
     }
     this.flushSync();
-    log.info(`WorkDir changed for user ${userId}: ${realPath}`);
+    log.info(`WorkDir changed for user ${userId}: ${realPath}, oldConvId=${s?.activeConvId}`);
     return realPath;
   }
 
   newSession(userId: string): boolean {
     const s = this.sessions.get(userId);
     if (s) {
+      const oldSessionId = s.sessionId;
+      const oldConvId = s.activeConvId;
       if (s.activeConvId && s.sessionId) {
         this.convSessionMap.set(`${userId}:${s.activeConvId}`, s.sessionId);
       }
       s.sessionId = undefined;
       s.activeConvId = randomBytes(4).toString('hex');
       s.totalTurns = 0;
+      // 清除旧的 convSessionMap 中的映射，防止恢复旧的 sessionId
+      if (oldConvId) {
+        this.convSessionMap.delete(`${userId}:${oldConvId}`);
+      }
       this.flushSync();
+      log.info(`New session for user ${userId}: oldConvId=${oldConvId}, oldSessionId=${oldSessionId}, newConvId=${s.activeConvId}, sessionId=undefined`);
       return true;
     }
     return false;
