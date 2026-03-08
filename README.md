@@ -1,5 +1,7 @@
 # IM CLI Bridge
 
+[English](README.md) | [中文](README.zh-CN.md)
+
 A bridge between IM platforms (Telegram, WeChat, Feishu) and CLI execution, allowing you to execute terminal commands through chat interfaces.
 
 ## Features

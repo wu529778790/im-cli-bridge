@@ -1,5 +1,7 @@
 # IM CLI Bridge
 
+[English](README.md) | [中文](README.zh-CN.md)
+
 即时通讯平台与命令行执行之间的桥梁，允许通过聊天界面执行终端命令。
 
 ## 功能特性
