@@ -82,7 +82,7 @@ Options:
 | Variable | Description |
 |----------|-------------|
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token (required) |
-| `AI_COMMAND` | AI CLI command (default claude, or codex/claudecode) |
+| `AI_COMMAND` | AI CLI command (default claude, or codex/cursor) |
 | `LOG_LEVEL` | Log level (default info) |
 
 ## Troubleshooting

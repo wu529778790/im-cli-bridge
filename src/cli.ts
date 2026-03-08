@@ -13,6 +13,7 @@ import { IMCLIBridge } from './index';
 import { logger } from './utils/logger';
 import { defaultConfig } from './config/default.config';
 import * as fs from 'fs';
+import * as readline from 'readline';
 import { spawn } from 'child_process';
 
 interface CLIOptions {
@@ -164,6 +165,46 @@ function getConfig(options: CLIOptions) {
   return config;
 }
 
+function question(rl: readline.Interface, prompt: string, defaultValue?: string): Promise<string> {
+  const p = defaultValue ? `${prompt} [${defaultValue}]: ` : `${prompt}: `;
+  return new Promise((resolve) => {
+    rl.question(p, (answer) => {
+      resolve(answer.trim() || defaultValue || '');
+    });
+  });
+}
+
+async function ensureConfigOrPrompt(): Promise<void> {
+  if (process.env.TELEGRAM_BOT_TOKEN?.trim()) return;
+
+  console.log('\n未检测到 TELEGRAM_BOT_TOKEN，请配置后启动。');
+  console.log('运行 im-cli-bridge init 可创建配置文件，或将 token 写入 ~/.im-cli-bridge/.env\n');
+
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+
+  const token = await question(rl, '请输入 TELEGRAM_BOT_TOKEN（直接回车跳过，将退出）');
+  if (!token) {
+    rl.close();
+    console.log('未输入 token，退出。');
+    process.exit(1);
+  }
+
+  const aiCmd = await question(rl, '请输入 AI_COMMAND', 'claude');
+  rl.close();
+
+  process.env.TELEGRAM_BOT_TOKEN = token;
+  if (aiCmd) process.env.AI_COMMAND = aiCmd;
+
+  const envPath = getEnvPath();
+  const lines = [
+    `TELEGRAM_BOT_TOKEN=${token}`,
+    `AI_COMMAND=${aiCmd || 'claude'}`,
+    'LOG_LEVEL=info'
+  ];
+  fs.writeFileSync(envPath, lines.join('\n') + '\n');
+  console.log(`\n已保存到 ${envPath}\n`);
+}
+
 async function runForeground(config: any): Promise<void> {
   const bridge = new IMCLIBridge(config);
 
@@ -194,7 +235,9 @@ async function runForeground(config: any): Promise<void> {
   logger.info('Bridge is running. Press Ctrl+C to stop.');
 }
 
-function startBackground(options: CLIOptions): void {
+async function startBackground(options: CLIOptions): Promise<void> {
+  await ensureConfigOrPrompt();
+
   if (fs.existsSync(PID_FILE)) {
     const pid = parseInt(fs.readFileSync(PID_FILE, 'utf-8').trim(), 10);
     try {
@@ -295,6 +338,7 @@ async function main(): Promise<void> {
   const command = options.command || 'run';
 
   if (command === 'start') {
+    await ensureConfigOrPrompt();
     startBackground(options);
     return;
   }
@@ -311,6 +355,7 @@ async function main(): Promise<void> {
 
   // run / foreground
   try {
+    await ensureConfigOrPrompt();
     await runForeground(config);
   } catch (error) {
     logger.error('Failed to start bridge', error);

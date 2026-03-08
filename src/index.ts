@@ -1,7 +1,7 @@
 /**
  * IM CLI Bridge - 简化版主入口
  *
- * 功能：通过 IM（Telegram/Feishu）控制 claudecode 命令行工具
+ * 功能：通过 IM（Telegram）控制 claude 等 AI CLI 工具
  */
 
 import { EventEmitter } from './core/event-emitter';

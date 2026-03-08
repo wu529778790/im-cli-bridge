@@ -89,7 +89,7 @@ im-cli-bridge start -c ./custom.config.js
 | 变量 | 说明 |
 |------|------|
 | `TELEGRAM_BOT_TOKEN` | Telegram Bot 令牌（必填） |
-| `AI_COMMAND` | AI CLI 命令（默认 claude，可选 codex/claudecode） |
+| `AI_COMMAND` | AI CLI 命令（默认 claude，可选 codex/cursor） |
 | `LOG_LEVEL` | 日志级别（默认 info） |
 
 ## 故障排除
