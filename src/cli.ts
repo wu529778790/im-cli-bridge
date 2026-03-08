@@ -15,6 +15,7 @@ const __dirname = dirname(__filename);
 // PID 文件路径
 const PID_DIR = join(homedir(), '.open-im');
 const PID_FILE = join(PID_DIR, 'daemon.pid');
+const STOP_FILE = join(PID_DIR, 'stop.flag');
 
 // 保存 PID 到文件
 async function savePid(pid: number): Promise<void> {
@@ -61,7 +62,7 @@ async function isProcessRunning(pid: number): Promise<boolean> {
   }
 }
 
-// 停止服务
+// 停止服务 - 创建停止标记文件，让服务优雅关闭
 async function stopService(): Promise<void> {
   const pid = await readPid();
 
@@ -79,43 +80,39 @@ async function stopService(): Promise<void> {
   }
 
   try {
-    // 尝试优雅终止 - Windows 使用 taskkill，其他系统使用 SIGTERM
-    const isWindows = platform() === 'win32';
-    if (isWindows) {
-      // taskkill 会发送控制台关闭事件，Node.js 会将其转换为 SIGINT
-      execFileSync('taskkill', ['/PID', String(pid)], {
-        stdio: 'ignore',
-        timeout: 5000,
-      });
-    } else {
-      process.kill(pid, 'SIGTERM');
-    }
+    // 创建停止标记文件，服务会定期检查并优雅关闭
+    await mkdir(PID_DIR, { recursive: true });
+    await writeFile(STOP_FILE, Date.now().toString(), 'utf-8');
+    console.log('正在停止服务...');
 
-    // 等待进程退出
-    const maxWait = 5000; // 最多等待 5 秒
-    const interval = 100;
+    // 等待进程退出（最多 10 秒）
+    const maxWait = 10000;
+    const interval = 200;
     let waited = 0;
 
     while (waited < maxWait) {
       await new Promise(resolve => setTimeout(resolve, interval));
       if (!(await isProcessRunning(pid))) {
-        break;
+        await removePidFile();
+        console.log('服务已停止');
+        return;
       }
       waited += interval;
     }
 
-    // 如果还在运行，强制终止
-    if (await isProcessRunning(pid)) {
+    // 超时后强制终止
+    console.log('等待超时，强制终止服务...');
+    const isWindows = platform() === 'win32';
+    if (isWindows) {
+      execFileSync('taskkill', ['/F', '/PID', String(pid)], { stdio: 'ignore' });
+    } else {
       process.kill(pid, 'SIGKILL');
-      await new Promise(resolve => setTimeout(resolve, 500));
     }
-
     await removePidFile();
-    console.log('服务已停止');
+    console.log('服务已强制停止');
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     console.error(`停止服务失败: ${errorMsg}`);
-    // 清理可能失效的 PID 文件
     await removePidFile();
   }
 }

@@ -9,11 +9,34 @@ import { loadActiveChats, getActiveChatId, flushActiveChats } from './shared/act
 import { initLogger, createLogger, closeLogger } from './logger.js';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
+import { rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 
 const require = createRequire(import.meta.url);
 const { version: APP_VERSION } = require('../package.json') as { version: string };
 
 const log = createLogger('Main');
+
+// 停止标记文件路径
+const STOP_FILE = join(homedir(), '.open-im', 'stop.flag');
+
+// 检查是否收到停止信号
+function checkStopSignal(): boolean {
+  return existsSync(STOP_FILE);
+}
+
+// 清理停止标记文件
+async function clearStopSignal(): Promise<void> {
+  try {
+    if (existsSync(STOP_FILE)) {
+      await rm(STOP_FILE);
+    }
+  } catch {
+    // 忽略错误
+  }
+}
 
 async function sendLifecycleNotification(platform: string, message: string) {
   const chatId = getActiveChatId('telegram');
@@ -66,10 +89,20 @@ export async function main() {
     log.info('Shutting down...');
     const uptimeSec = Math.floor((Date.now() - startedAt) / 1000);
     const m = Math.floor(uptimeSec / 60);
-    await sendLifecycleNotification(
-      'telegram',
-      `🔴 open-im 服务正在关闭...\n运行时长: ${m}分钟`
-    ).catch(() => {});
+
+    try {
+      await sendLifecycleNotification(
+        'telegram',
+        `🔴 open-im 服务正在关闭...\n运行时长: ${m}分钟`
+      );
+      // 等待消息发送完成
+      await new Promise(resolve => setTimeout(resolve, 500));
+    } catch (err) {
+      log.debug('Failed to send shutdown notification:', err);
+    }
+
+    // 清理停止标记文件
+    await clearStopSignal();
 
     telegramHandle?.stop();
     stopTelegram();
@@ -81,6 +114,14 @@ export async function main() {
 
   process.on('SIGINT', () => shutdown().catch(() => process.exit(1)));
   process.on('SIGTERM', () => shutdown().catch(() => process.exit(1)));
+
+  // 定期检查停止标记文件（用于 Windows 等无法发送信号的场景）
+  const stopCheckInterval = setInterval(() => {
+    if (checkStopSignal()) {
+      clearInterval(stopCheckInterval);
+      shutdown().catch(() => process.exit(1));
+    }
+  }, 1000);
 }
 
 const isEntry = process.argv[1]?.replace(/\\/g, '/').endsWith('/index.js') || process.argv[1]?.replace(/\\/g, '/').endsWith('/index.ts');
