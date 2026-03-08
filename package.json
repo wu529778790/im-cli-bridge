@@ -57,5 +57,8 @@
     "pkg": "^5.8.1",
     "ts-node": "^10.9.1",
     "typescript": "^5.3.2"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

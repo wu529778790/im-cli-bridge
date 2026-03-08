@@ -12,13 +12,30 @@
 - **会话管理**：持久化的对话会话和历史记录
 - **事件驱动架构**：灵活的发布订阅事件系统，易于扩展
 - **类型安全**：完整的 TypeScript 实现，包含全面的接口定义
-- **独立可执行文件**：可打包为单个可执行文件
 
 ## 安装
 
+### 方式一：从 npm 安装（推荐）
+
 ```bash
-npm install
+npm install -g im-cli-bridge
 ```
+
+### 方式二：从源码安装
+
+```bash
+git clone https://github.com/wu529778790/im-cli-bridge.git
+cd im-cli-bridge
+npm install
+npm run build
+npm link
+```
+
+### 方式三：下载二进制文件（用于部署）
+
+在 [Releases](https://github.com/wu529778790/im-cli-bridge/releases) 页面下载 Linux、Windows 或 macOS 版本。
+
+> **注意：** 这是一个**后台服务**，不是桌面应用程序。应该在服务器或终端中运行，不要双击可执行文件。
 
 ## 快速开始
 

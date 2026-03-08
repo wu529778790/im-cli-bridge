@@ -12,13 +12,30 @@ A bridge between IM platforms (Telegram, WeChat, Feishu) and CLI execution, allo
 - **Session Management**: Persistent conversation sessions with context history
 - **Event-Driven Architecture**: Flexible pub/sub event system for extensibility
 - **Type-Safe**: Full TypeScript implementation with comprehensive interfaces
-- **Standalone Binary**: Can be packaged as a single executable with pkg
 
 ## Installation
 
+### Option 1: Install from npm (Recommended)
+
 ```bash
-npm install
+npm install -g im-cli-bridge
 ```
+
+### Option 2: Install from source
+
+```bash
+git clone https://github.com/wu529778790/im-cli-bridge.git
+cd im-cli-bridge
+npm install
+npm run build
+npm link
+```
+
+### Option 3: Download binary (for deployment)
+
+Binaries are available on the [Releases](https://github.com/wu529778790/im-cli-bridge/releases) page for Linux, Windows, and macOS.
+
+> **Note:** This is a **backend service**, not a desktop application. It should be run on a server or in a terminal, not by double-clicking the executable.
 
 ## Quick Start
 
