@@ -27,7 +27,7 @@ npx @wu529778790/open-im &
 ### 全局安装（推荐常用用户）
 
 ```bash
-pnpm i @wu529778790/open-im -g
+npm i @wu529778790/open-im -g
 open-im start
 ```
 
@@ -61,14 +61,14 @@ open-im start
 # npx（无需安装）
 npx @wu529778790/open-im &
 
-# pnpm 全局安装
-pnpm i @wu529778790/open-im -g
-
 # npm 全局安装
 npm i @wu529778790/open-im -g
 
 # yarn 全局安装
 yarn global add @wu529778790/open-im
+
+# pnpm 全局安装
+pnpm i @wu529778790/open-im -g
 ```
 
 ## 📝 License
