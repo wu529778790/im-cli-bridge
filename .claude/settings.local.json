@@ -3,7 +3,11 @@
     "allow": [
       "Bash(mkdir:*)",
       "Bash(npm run:*)",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(tasklist:*)",
+      "Bash(cmd:*)",
+      "Bash(node:*)",
+      "Bash(tail:*)"
     ]
   }
 }
