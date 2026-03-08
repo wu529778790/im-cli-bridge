@@ -6,8 +6,17 @@ on:
       - 'v*'
   workflow_dispatch:
     inputs:
+      version_bump:
+        description: 'Version bump (manual trigger 时必须选，否则会报版本已存在)'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
       dry_run:
-        description: 'Dry run (do not publish)'
+        description: 'Dry run (不发布，仅打包)'
         required: false
         default: false
         type: boolean
@@ -28,6 +37,10 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
 
       - run: npm ci
+
+      - name: Bump version (manual trigger only)
+        if: github.event_name == 'workflow_dispatch'
+        run: npm version ${{ github.event.inputs.version_bump }} --no-git-tag-version
 
       - run: npm run build
 
