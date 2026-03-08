@@ -26,7 +26,10 @@
   ],
   "author": "",
   "license": "MIT",
-  "repository": "https://github.com/wu529778790/im-cli-bridge",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wu529778790/im-cli-bridge"
+  },
   "pkg": {
     "assets": [
       "node_modules/axios/dist/**/*.js",
@@ -64,6 +67,7 @@
     "README.zh-CN.md"
   ],
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "provenance": false
   }
 }
