@@ -23,6 +23,21 @@ export function getLogDir(): string {
   return path.join(getConfigDir(), 'logs');
 }
 
+/** Tmux 模式下 session_map 文件路径（window_id → session_id） */
+export function getSessionMapPath(): string {
+  return path.join(getConfigDir(), 'session_map.json');
+}
+
+/** 状态存储（user_id → window_id 映射） */
+export function getStatePath(): string {
+  return path.join(getConfigDir(), 'state.json');
+}
+
+/** Claude projects 目录（JSONL 所在） */
+export function getClaudeProjectsPath(): string {
+  return path.join(os.homedir(), '.claude', 'projects');
+}
+
 export function ensureConfigDir(): void {
   const dir = getConfigDir();
   if (!fs.existsSync(dir)) {

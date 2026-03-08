@@ -11,13 +11,14 @@ dotenv.config({ path: envPath }); // 不存在则 no-op，环境变量优先
 
 import { IMCLIBridge } from './index';
 import { logger } from './utils/logger';
+import { runHook, runHookInstall } from './hooks/claude-hook';
 import { defaultConfig } from './config/default.config';
 import * as fs from 'fs';
 import * as readline from 'readline';
 import { spawn } from 'child_process';
 
 interface CLIOptions {
-  command?: 'run' | 'start' | 'stop' | 'foreground' | 'init';
+  command?: 'run' | 'start' | 'stop' | 'foreground' | 'init' | 'hook';
   config?: string;
   port?: number;
   host?: string;
@@ -35,7 +36,7 @@ function parseArgs(args: string[]): CLIOptions {
 
   // 第一个参数可能是子命令
   const first = args[0];
-  if (first === 'run' || first === 'start' || first === 'stop' || first === 'foreground' || first === 'init') {
+  if (first === 'run' || first === 'start' || first === 'stop' || first === 'foreground' || first === 'init' || first === 'hook') {
     options.command = first;
     i = 1;
   } else if (first === '--help' || first === '-h' || first === '--version' || first === '-v') {
@@ -96,6 +97,8 @@ COMMANDS:
   start              后台模式：启动服务
   stop               后台模式：停止服务
   init               初始化配置目录和 .env 模板
+  hook                Claude SessionStart hook (写 session_map)
+  hook --install     安装 hook 到 ~/.claude/settings.json
 
 OPTIONS:
   -c, --config <path>   Custom configuration file
@@ -350,6 +353,12 @@ async function main(): Promise<void> {
 
   if (command === 'init') {
     runInit();
+    return;
+  }
+
+  if (command === 'hook') {
+    const installFlag = args.includes('--install');
+    process.exit(installFlag ? runHookInstall() : runHook());
     return;
   }
 

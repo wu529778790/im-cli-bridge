@@ -200,6 +200,12 @@ export interface IMClient {
   updateMessage(options: UpdateMessageOptions): Promise<IMMessage>;
 
   /**
+   * 发送「正在输入」状态（如 Telegram 的 typing 气泡）
+   * 可选实现，不支持则忽略
+   */
+  sendTyping?(userId: string): Promise<void>;
+
+  /**
    * 下载媒体文件
    * @param fileKey 文件key
    */

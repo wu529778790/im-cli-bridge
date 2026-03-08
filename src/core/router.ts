@@ -1,38 +1,34 @@
 /**
  * 简化版消息路由器
- * 直接将 IM 消息路由到 AI CLI，流式回传输出到 IM
- * 支持会话模式：每用户一个常驻进程，通过 stdin 持续输入
+ * MODE=oneshot: claude -p 逐条调用
+ * MODE=tmux: tmux + JSONL 常驻会话
  */
 
 import { Message } from '../interfaces/types';
 import { IMClient } from '../interfaces/im-client.interface';
-import { extractDisplayText, filterStreamOutput } from '../utils/output-extractor';
+import { filterStreamOutput, extractDisplayText } from '../utils/output-extractor';
 import { EventEmitter } from './event-emitter';
-import { CommandParser } from './command-parser';
 import { Logger } from '../utils/logger';
 import { ShellExecutor } from '../executors/shell-executor';
-import { AISession } from './ai-session';
-import { getAIAdapter, buildOneShotArgs } from '../config/ai-adapters';
-
-/** 会话模式需 CLI 支持非 TTY 的 stdin，多数工具会报 stdin is not a terminal，默认关闭 */
-const AI_SESSION_MODE = process.env.AI_SESSION_MODE === 'true';
+import { buildOneShotArgs } from '../config/ai-adapters';
+import { ClaudeAdapter } from '../adapters/claude-adapter';
+import { getTmuxState, setTmuxState, removeTmuxState, getUserIdByWindowId } from '../utils/tmux-state';
 
 /** Telegram 单条消息上限 4096 字符，留余量避免 MESSAGE_TOO_LONG */
 const MAX_MESSAGE_LENGTH = 3500;
 
+const isTmuxMode = (): boolean =>
+  (process.env.MODE || '').toLowerCase() === 'tmux';
+
 export class SimpleRouter {
   private logger: Logger;
   private eventEmitter: EventEmitter;
-  private commandParser: CommandParser;
   private shellExecutor: ShellExecutor;
+  private claudeAdapter: ClaudeAdapter | null = null;
   private imClients: Map<string, IMClient> = new Map();
   private aiCommand: string;
 
   private userLocks: Map<string, Promise<any>> = new Map();
-  /** 每用户一个 AI 会话（仅会话模式） */
-  private aiSessions: Map<string, AISession> = new Map();
-  /** 会话不可用时退回逐条 -p */
-  private sessionUnsupported: Set<string> = new Set();
 
   constructor(
     eventEmitter: EventEmitter,
@@ -40,7 +36,6 @@ export class SimpleRouter {
   ) {
     this.logger = new Logger('Router');
     this.eventEmitter = eventEmitter;
-    this.commandParser = new CommandParser();
     this.aiCommand = aiCommand;
     this.shellExecutor = new ShellExecutor();
   }
@@ -51,7 +46,15 @@ export class SimpleRouter {
   async initialize(): Promise<void> {
     this.logger.info('Initializing router...');
 
-    // 注册事件监听器
+    if (isTmuxMode()) {
+      this.claudeAdapter = new ClaudeAdapter({
+        pollIntervalSec: parseFloat(process.env.MONITOR_POLL_INTERVAL || '2') || 2
+      });
+      this.claudeAdapter.setOnNewMessage((msg) => this.onMonitorMessage(msg));
+      this.claudeAdapter.startMonitor();
+      this.logger.info('Tmux mode enabled');
+    }
+
     this.eventEmitter.on('message:received', async (message: Message) => {
       try {
         await this.handleMessage(message);
@@ -61,6 +64,16 @@ export class SimpleRouter {
     });
 
     this.logger.info('Router initialized');
+  }
+
+  private async onMonitorMessage(msg: { windowId: string; text: string }): Promise<void> {
+    const userId = getUserIdByWindowId(msg.windowId);
+    if (!userId) return;
+    const client = this.imClients.get('telegram');
+    if (!client) return;
+    if (msg.text) {
+      await this.sendMessage('telegram', userId, msg.text);
+    }
   }
 
   /**
@@ -87,13 +100,7 @@ export class SimpleRouter {
     // 串行化处理：等待前一个消息处理完成
     const nextLock = userLock.then(async () => {
       try {
-        if (AI_SESSION_MODE) {
-          await this.handleNormalMessage(message);
-        } else if (this.commandParser.isCommand(message.content)) {
-          await this.handleCommand(message);
-        } else {
-          await this.handleNormalMessage(message);
-        }
+        await this.processMessage(message);
       } finally {
         // 处理完成后，清理锁（如果没有新的等待）
         if (this.userLocks.get(userId) === nextLock) {
@@ -107,144 +114,85 @@ export class SimpleRouter {
   }
 
   /**
-   * 处理普通消息（流式转发给 AI CLI）
+   * 处理消息
    */
-  private async handleNormalMessage(message: Message): Promise<void> {
+  private async processMessage(message: Message): Promise<void> {
+    const client = this.imClients.get(message.platform);
+    if (!client) return;
+
+    if (isTmuxMode() && this.claudeAdapter) {
+      await this.processMessageTmux(message);
+      return;
+    }
+
     try {
       this.logger.info(`Processing message from ${message.userId}: ${message.content}`);
-
-      const sessionKey = `${message.platform}:${message.userId}`;
-
-      if (AI_SESSION_MODE && !this.sessionUnsupported.has(sessionKey)) {
-        await this.handleWithSession(message, sessionKey);
-      } else {
-        await this.handleWithOneShot(message);
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Failed to execute: ${errorMsg}`);
-
-      let userMessage = '❌ 处理失败\n\n';
-      if (errorMsg.includes('timed out')) {
-        userMessage += '命令执行超时（30秒）\n可能原因：API密钥未配置或网络问题';
-      } else if (errorMsg.includes('not found') || errorMsg.includes('ENOENT')) {
-        userMessage += `找不到命令: ${this.aiCommand}`;
-      } else {
-        userMessage += `错误: ${errorMsg}`;
-      }
-
-      await this.sendMessage(message.platform, message.userId, userMessage);
-    }
-  }
-
-  /**
-   * 处理命令消息（如 /help, /new）
-   */
-  private async handleCommand(message: Message): Promise<void> {
-    try {
-      const parsed = this.commandParser.parse(message.content);
-      if (!parsed) {
-        await this.sendMessage(message.platform, message.userId, '无效的命令');
-        return;
-      }
-
-      this.logger.info(`Processing command: ${parsed.type} from ${message.userId}`);
-
-      const adapter = getAIAdapter(this.aiCommand);
-      const args = [...adapter.baseArgs, parsed.type, ...(parsed.args || [])];
+      const args = buildOneShotArgs(this.aiCommand, message.content);
       const result = await this.executeWithStream(message, this.aiCommand, args);
 
       if (!result.streamed) {
         const text = extractDisplayText(result.stdout, result.stderr);
         if (text) {
           await this.sendMessage(message.platform, message.userId, text);
+        } else {
+          this.logger.warn('No output extracted from AI CLI');
         }
       }
     } catch (error) {
-      this.logger.error('Command execution failed:', error);
-      await this.sendMessage(
-        message.platform,
-        message.userId,
-        `命令执行失败: ${error instanceof Error ? error.message : String(error)}`
-      );
+      await this.sendErrorMessage(message, error);
     }
   }
 
-  /**
-   * 会话模式：一个常驻进程，消息通过 stdin 输入
-   * 若 CLI 需 TTY，会话会失败，onError 时退回逐条模式并重试当前消息
-   */
-  private async handleWithSession(message: Message, sessionKey: string): Promise<void> {
-    const client = this.imClients.get(message.platform);
-    if (!client) return;
+  private async processMessageTmux(message: Message): Promise<void> {
+    const sessionKey = this.getSessionKey(message);
+    const defaultWorkDir = process.env.CLAUDE_WORK_DIR || process.cwd();
 
-    let session = this.aiSessions.get(sessionKey);
-    if (!session) {
-      let accumulated = '';
-      let lastSentLength = 0;
-      let sendPromise: Promise<void> = Promise.resolve();
-      const replyTarget = message.userId;
-
-      const retryOneShot = () => {
-        this.sessionUnsupported.add(sessionKey);
-        this.aiSessions.delete(sessionKey);
-        this.handleWithOneShot(message).catch((e) => this.logger.error('One-shot retry failed', e));
-      };
-
-      session = new AISession({
-        command: this.aiCommand,
-        baseArgs: getAIAdapter(this.aiCommand).baseArgs,
-        onOutput: (text: string) => {
-          accumulated += text;
-          const current = filterStreamOutput(accumulated);
-          if (current.length <= lastSentLength) return;
-
-          sendPromise = sendPromise.then(async () => {
-            try {
-              const cur = filterStreamOutput(accumulated);
-              if (cur.length <= lastSentLength) return;
-              lastSentLength = await this.sendOrAppendChunked(
-                client!,
-                replyTarget,
-                cur,
-                lastSentLength
-              );
-            } catch (err) {
-              this.logger.debug('Session stream append failed:', err);
-            }
-          });
-        },
-        onEnd: () => {
-          this.logger.debug('Session turn ended');
-        },
-        onError: (err) => {
-          this.logger.warn('Session error, falling back to one-shot:', err?.message);
-          retryOneShot();
-        }
-      });
-
-      this.aiSessions.set(sessionKey, session);
-      session.start();
-    }
-
-    session.send(message.content);
-  }
-
-  /**
-   * 逐条模式：每条消息 spawn 一次，参数由 ai-adapters 决定
-   */
-  private async handleWithOneShot(message: Message): Promise<void> {
-    const args = buildOneShotArgs(this.aiCommand, message.content);
-    const result = await this.executeWithStream(message, this.aiCommand, args);
-
-    if (!result.streamed) {
-      const text = extractDisplayText(result.stdout, result.stderr);
-      if (text) {
-        await this.sendMessage(message.platform, message.userId, text);
-      } else {
-        this.logger.warn('No output extracted from AI CLI');
+    let state = getTmuxState(sessionKey);
+    if (!state) {
+      const handle = await this.claudeAdapter!.createSession(defaultWorkDir);
+      if (!handle) {
+        await this.sendMessage(
+          message.platform,
+          message.userId,
+          '❌ 无法创建 tmux 窗口，请确保 tmux 已安装并在 tmux 中运行'
+        );
+        return;
       }
+      setTmuxState(sessionKey, { windowId: handle.windowId, workDir: handle.workDir });
+      state = { windowId: handle.windowId, workDir: handle.workDir };
     }
+
+    const stopTyping = this.startTypingLoop(message.platform, message.userId);
+    try {
+      await this.claudeAdapter!.sendInput(
+        { windowId: state.windowId, sessionId: '', workDir: state.workDir },
+        message.content
+      );
+    } catch (error) {
+      await this.sendErrorMessage(message, error);
+    } finally {
+      stopTyping();
+    }
+  }
+
+  private getSessionKey(message: Message): string {
+    const threadId = message.metadata?.threadId;
+    if (threadId != null) return `thread:${threadId}`;
+    return message.userId;
+  }
+
+  private async sendErrorMessage(message: Message, error: unknown): Promise<void> {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    this.logger.error(`Failed: ${errorMsg}`);
+    let userMessage = '❌ 处理失败\n\n';
+    if (errorMsg.includes('not found') || errorMsg.includes('ENOENT')) {
+      userMessage += `找不到命令: ${this.aiCommand}`;
+    } else if (errorMsg.includes('timed out')) {
+      userMessage += '命令执行超时\n可能原因：API密钥未配置或网络问题';
+    } else {
+      userMessage += `错误: ${errorMsg}`;
+    }
+    await this.sendMessage(message.platform, message.userId, userMessage);
   }
 
   /**
@@ -261,43 +209,71 @@ export class SimpleRouter {
     const client = this.imClients.get(message.platform);
     const replyTarget = message.userId;
 
+    const stopTyping = this.startTypingLoop(message.platform, replyTarget);
     let sendPromise: Promise<void> = Promise.resolve();
 
-    const result = await this.shellExecutor.executeStream(command, args, {
-      timeout: 60000,
-      onText: (text: string) => {
-        accumulated += text;
-        const current = filterStreamOutput(accumulated);
+    try {
+      const result = await this.shellExecutor.executeStream(command, args, {
+        timeout: 60000,
+        onText: (text: string) => {
+          accumulated += text;
+          const current = filterStreamOutput(accumulated);
+          if (!client || !current || current.length <= lastSentLength) return;
 
-        if (!client) return;
-        if (!current) return; // 过滤后为空则等有内容再发
-        if (current.length <= lastSentLength) return; // 无新内容
+          sendPromise = sendPromise.then(async () => {
+            try {
+              const cur = filterStreamOutput(accumulated);
+              if (cur.length <= lastSentLength) return;
+              stopTyping();
+              lastSentLength = await this.sendOrAppendChunked(
+                client,
+                replyTarget,
+                cur,
+                lastSentLength
+              );
+              streamed = true;
+            } catch (err) {
+              this.logger.debug('Stream append failed:', err);
+            }
+          });
+        }
+      });
 
-        sendPromise = sendPromise.then(async () => {
-          try {
-            const cur = filterStreamOutput(accumulated);
-            if (cur.length <= lastSentLength) return;
-            lastSentLength = await this.sendOrAppendChunked(
-              client,
-              replyTarget,
-              cur,
-              lastSentLength
-            );
-            streamed = true;
-          } catch (err) {
-            this.logger.debug('Stream append failed:', err);
-          }
-        });
-      }
-    });
+      await sendPromise;
+      return { stdout: result.stdout, stderr: result.stderr, streamed };
+    } finally {
+      stopTyping();
+    }
+  }
 
-    await sendPromise;
+  /** typing 最大持续时间（秒），超时自动停止，避免一直显示「正在输入」 */
+  private static TYPING_MAX_SEC = 55;
 
-    return {
-      stdout: result.stdout,
-      stderr: result.stderr,
-      streamed
+  /**
+   * 启动 typing 循环，在 AI 思考期间持续显示「正在输入」
+   * 返回 stop 函数，在首条内容发出、执行结束或超时时调用
+   */
+  private startTypingLoop(platform: string, userId: string): () => void {
+    const client = this.imClients.get(platform);
+    const sendTyping = typeof client?.sendTyping === 'function' ? client.sendTyping.bind(client) : null;
+    if (!sendTyping) return () => {};
+
+    let stopped = false;
+    const stop = () => {
+      if (stopped) return;
+      stopped = true;
+      clearInterval(timer);
+      clearTimeout(timeoutId);
     };
+
+    sendTyping(userId).catch(() => {});
+    const timer = setInterval(() => {
+      if (stopped) return;
+      sendTyping(userId).catch(() => {});
+    }, 4000);
+
+    const timeoutId = setTimeout(stop, SimpleRouter.TYPING_MAX_SEC * 1000);
+    return stop;
   }
 
   /**
@@ -345,13 +321,14 @@ export class SimpleRouter {
   }
 
   /**
-   * 清理资源，包括杀掉后台 AI CLI 子进程
+   * 清理资源
    */
   async cleanup(): Promise<void> {
     this.logger.info('Cleaning up router...');
-    for (const s of this.aiSessions.values()) s.stop();
-    this.aiSessions.clear();
-    this.sessionUnsupported.clear();
+    if (this.claudeAdapter) {
+      this.claudeAdapter.stopMonitor();
+      this.claudeAdapter = null;
+    }
     this.shellExecutor.killAll();
     this.userLocks.clear();
     this.imClients.clear();

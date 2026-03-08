@@ -49,16 +49,21 @@ function getReplyTarget(imMessage: IMMessage, platform: Platform): string {
  * 将 IMMessage 转换为 Router 使用的 Message 格式
  */
 export function immessageToMessage(imMessage: IMMessage, platform: Platform): Message {
+  const metadata: Record<string, unknown> = {
+    ...imMessage.metadata,
+    originalType: imMessage.type,
+    senderId: imMessage.userId
+  };
+  const threadId = (imMessage.metadata as Record<string, unknown>)?.message_thread_id;
+  if (threadId != null) {
+    metadata.threadId = threadId;
+  }
   return {
     id: imMessage.id,
     userId: getReplyTarget(imMessage, platform),
     content: extractTextContent(imMessage.content),
     platform,
     timestamp: imMessage.timestamp,
-    metadata: {
-      ...imMessage.metadata,
-      originalType: imMessage.type,
-      senderId: imMessage.userId
-    }
+    metadata
   };
 }

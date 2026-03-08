@@ -235,6 +235,19 @@ export class TelegramClient implements IMClient {
   }
 
   /**
+   * 发送 typing 状态，显示「正在输入」气泡
+   * Telegram 的 typing 约 5 秒有效，需定期重发
+   */
+  async sendTyping(userId: string): Promise<void> {
+    if (!this.bot) return;
+    try {
+      await this.bot.sendChatAction(userId, 'typing');
+    } catch (e) {
+      logger.debug('sendTyping failed:', (e as Error)?.message);
+    }
+  }
+
+  /**
    * 更新消息
    * 流式 AI 输出使用纯文本（与 sendText 一致），避免 Markdown 转义导致 MESSAGE_TOO_LONG
    */
@@ -430,6 +443,7 @@ export class TelegramClient implements IMClient {
       metadata: {
         edited: msg.edit_date !== undefined,
         replyToMessageId: msg.reply_to_message?.message_id.toString(),
+        ...(msg.message_thread_id != null && { message_thread_id: msg.message_thread_id }),
       },
     };
   }
