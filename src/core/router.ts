@@ -17,6 +17,9 @@ import { getAIAdapter, buildOneShotArgs } from '../config/ai-adapters';
 /** 会话模式需 CLI 支持非 TTY 的 stdin，多数工具会报 stdin is not a terminal，默认关闭 */
 const AI_SESSION_MODE = process.env.AI_SESSION_MODE === 'true';
 
+/** Telegram 单条消息上限 4096 字符，留余量避免 MESSAGE_TOO_LONG */
+const MAX_MESSAGE_LENGTH = 3500;
+
 export class SimpleRouter {
   private logger: Logger;
   private eventEmitter: EventEmitter;
@@ -178,7 +181,7 @@ export class SimpleRouter {
     let session = this.aiSessions.get(sessionKey);
     if (!session) {
       let accumulated = '';
-      let streamedMessageId: string | null = null;
+      let streamedMessageIds: string[] = [];
       let sendPromise: Promise<void> = Promise.resolve();
       const replyTarget = message.userId;
 
@@ -195,12 +198,12 @@ export class SimpleRouter {
           accumulated += text;
           sendPromise = sendPromise.then(async () => {
             try {
-              if (!streamedMessageId) {
-                const sent = await client!.sendText(replyTarget, accumulated);
-                streamedMessageId = sent.id;
-              } else {
-                await client!.updateMessage({ messageId: streamedMessageId!, content: accumulated });
-              }
+              streamedMessageIds = await this.sendOrUpdateChunked(
+                client!,
+                replyTarget,
+                accumulated,
+                streamedMessageIds
+              );
             } catch (err) {
               this.logger.debug('Session stream update failed:', err);
             }
@@ -249,7 +252,7 @@ export class SimpleRouter {
   ): Promise<{ stdout: string; stderr: string; streamed: boolean }> {
     let accumulated = '';
     let lastSent = '';
-    let streamedMessageId: string | null = null;
+    let streamedMessageIds: string[] = [];
     const client = this.imClients.get(message.platform);
     const replyTarget = message.userId;
 
@@ -262,21 +265,20 @@ export class SimpleRouter {
         const toSend = filterStreamOutput(accumulated);
 
         if (!client) return;
-        if (!toSend && !streamedMessageId) return; // 过滤后为空（如 codex header）则等有内容再发
+        if (!toSend && streamedMessageIds.length === 0) return; // 过滤后为空（如 codex header）则等有内容再发
         if (toSend === lastSent) return; // 避免 Telegram "message is not modified"
 
         sendPromise = sendPromise.then(async () => {
           try {
             const current = filterStreamOutput(accumulated);
             if (current === lastSent) return;
-            if (!streamedMessageId) {
-              const sent = await client.sendText(replyTarget, current);
-              streamedMessageId = sent.id;
-              lastSent = current;
-            } else {
-              await client.updateMessage({ messageId: streamedMessageId!, content: current });
-              lastSent = current;
-            }
+            streamedMessageIds = await this.sendOrUpdateChunked(
+              client,
+              replyTarget,
+              current,
+              streamedMessageIds
+            );
+            lastSent = current;
           } catch (err) {
             this.logger.debug('Stream update failed, will send final result:', err);
           }
@@ -289,12 +291,47 @@ export class SimpleRouter {
     return {
       stdout: result.stdout,
       stderr: result.stderr,
-      streamed: streamedMessageId != null
+      streamed: streamedMessageIds.length > 0
     };
   }
 
   /**
-   * 发送消息到 IM 平台
+   * 分块发送/更新消息，避免 Telegram MESSAGE_TOO_LONG (4096 限制)
+   */
+  private async sendOrUpdateChunked(
+    client: IMClient,
+    replyTarget: string,
+    content: string,
+    streamedMessageIds: string[]
+  ): Promise<string[]> {
+    if (content.length <= MAX_MESSAGE_LENGTH) {
+      if (streamedMessageIds.length === 0) {
+        const sent = await client.sendText(replyTarget, content);
+        return [sent.id];
+      }
+      await client.updateMessage({ messageId: streamedMessageIds[0], content });
+      return streamedMessageIds;
+    }
+
+    const chunks: string[] = [];
+    for (let i = 0; i < content.length; i += MAX_MESSAGE_LENGTH) {
+      chunks.push(content.slice(i, i + MAX_MESSAGE_LENGTH));
+    }
+
+    const ids = [...streamedMessageIds];
+    for (let j = 0; j < chunks.length; j++) {
+      if (ids[j]) {
+        await client.updateMessage({ messageId: ids[j], content: chunks[j] });
+      } else {
+        const sent = await client.sendText(replyTarget, chunks[j]);
+        ids[j] = sent.id;
+      }
+    }
+    return ids;
+  }
+
+  /**
+   * 发送消息到 IM 平台（超长时自动分块）
    */
   private async sendMessage(platform: string, userId: string, text: string): Promise<void> {
     const client = this.imClients.get(platform);
@@ -304,7 +341,13 @@ export class SimpleRouter {
     }
 
     try {
-      await client.sendText(userId, text);
+      if (text.length <= MAX_MESSAGE_LENGTH) {
+        await client.sendText(userId, text);
+      } else {
+        for (let i = 0; i < text.length; i += MAX_MESSAGE_LENGTH) {
+          await client.sendText(userId, text.slice(i, i + MAX_MESSAGE_LENGTH));
+        }
+      }
       this.logger.debug(`Message sent to ${userId} on ${platform}`);
     } catch (error) {
       this.logger.error(`Failed to send message:`, error);

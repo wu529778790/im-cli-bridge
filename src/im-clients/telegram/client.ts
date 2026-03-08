@@ -236,6 +236,7 @@ export class TelegramClient implements IMClient {
 
   /**
    * 更新消息
+   * 流式 AI 输出使用纯文本（与 sendText 一致），避免 Markdown 转义导致 MESSAGE_TOO_LONG
    */
   async updateMessage(options: UpdateMessageOptions): Promise<IMMessage> {
     if (!this.bot) {
@@ -246,31 +247,24 @@ export class TelegramClient implements IMClient {
       const { messageId, content } = options;
 
       // 确定聊天ID和消息ID
-      // Telegram的messageId是全局的，但我们需要chat_id来编辑消息
-      // 这里假设messageId格式为 "chatId:messageId"
       const [chatId, telegramMessageId] = messageId.split(':');
 
       let text: string;
       let keyboard: TelegramBot.InlineKeyboardButton[][] | undefined;
 
       if (typeof content === 'string') {
-        text = this.messageFormatter.formatMarkdown(content);
+        // 纯文本透传，与 sendText 一致，避免转义后超长
+        text = content;
       } else {
         text = this.formatCardToText(content);
         keyboard = this.formatCardToKeyboard(content);
       }
 
-      const editOptions: TelegramBot.EditMessageTextOptions = {
-        parse_mode: 'Markdown',
-      };
+      const editOptions: TelegramBot.EditMessageTextOptions = keyboard
+        ? { reply_markup: { inline_keyboard: keyboard } }
+        : {};
 
-      if (keyboard) {
-        editOptions.reply_markup = {
-          inline_keyboard: keyboard,
-        };
-      }
-
-      // 编辑消息
+      // 编辑消息（纯文本，无 parse_mode）
       const message = await this.bot.editMessageText(text, {
         chat_id: chatId,
         message_id: parseInt(telegramMessageId),

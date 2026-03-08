@@ -19,10 +19,16 @@ function extractDisplayTextFromOutput(output: string): string {
   const trimmed = output.trim();
   if (!trimmed) return '';
 
-  // Codex: 仅保留 "codex" 行之后的 AI 回复
+  // Codex: 仅保留 "codex" 行之后的 AI 回复；若无 codex 标记则尝试去掉 header 取正文
   if (trimmed.includes('OpenAI Codex') || /session id:/i.test(trimmed)) {
     const codex = extractCodexResponse(trimmed);
     if (codex) return codex;
+    // 无 codex 时去掉 header（OpenAI Codex...user\nxxx\nmcp startup 等），只保留 AI 回复
+    const afterMcp = trimmed.replace(/^[\s\S]*?mcp startup[^\n]*\n?/i, '');
+    if (afterMcp && afterMcp !== trimmed) {
+      const stripped = stripCodexNoise(afterMcp.trim());
+      if (stripped) return stripped;
+    }
   }
 
   // stream-json 格式
@@ -36,25 +42,117 @@ function extractDisplayTextFromOutput(output: string): string {
 }
 
 /**
- * 从 Codex 输出中提取 AI 回复（去掉 header、user、mcp 等）
+ * 从 Codex 输出中提取 AI 回复（去掉 header、user、mcp、exec、thinking 等）
+ * 只保留有用的人类可读回复
  */
 function extractCodexResponse(output: string): string {
   const marker = '\ncodex\n';
-  const idx = output.indexOf(marker);
+  const idx = output.lastIndexOf(marker);
+  let extracted = '';
   if (idx >= 0) {
-    return output.slice(idx + marker.length).trim();
+    extracted = output.slice(idx + marker.length).trim();
+  } else if (output.startsWith('codex\n')) {
+    extracted = output.slice(6).trim();
+  } else {
+    return '';
   }
-  if (output.startsWith('codex\n')) {
-    return output.slice(6).trim();
-  }
-  return '';
+  return stripCodexNoise(extracted);
 }
 
 /**
- * 去掉 Telegram 等对 markdown 的转义（如 \. \-）
+ * 移除 Codex 输出中的噪音块：exec、thinking、命令输出等
+ */
+function stripCodexNoise(text: string): string {
+  const lines = text.split('\n');
+  const result: string[] = [];
+  let inExec = false;
+  let inThinking = false;
+  let inExecOutput = false;
+  let skipNextTokenCount = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    const lower = trimmed.toLowerCase();
+
+    // 进入 exec 块
+    if (lower === 'exec' || /^exec\s+/.test(lower) || trimmed.startsWith('exec "') || trimmed.startsWith('exec \'')) {
+      inExec = true;
+      inExecOutput = false;
+      inThinking = false;
+      continue;
+    }
+    // 进入 thinking 块
+    if (lower === 'thinking') {
+      inThinking = true;
+      inExec = false;
+      inExecOutput = false;
+      continue;
+    }
+    // exec 输出标记
+    if (/^succeeded in \d+ms/i.test(trimmed) || /^failed in \d+ms/i.test(trimmed)) {
+      inExecOutput = true;
+      inExec = false;
+      continue;
+    }
+    // 新的 codex 段，重置
+    if (lower === 'codex') {
+      inExec = inThinking = inExecOutput = false;
+      continue;
+    }
+    // 跳过 exec 命令行（带 "in D:\path" 等）
+    if (inExec && (trimmed.includes(' in ') && /[a-z]:[\\\/]?/i.test(trimmed) || trimmed.includes('powershell') || trimmed.includes('.exe'))) {
+      continue;
+    }
+    // 跳过 exec/thinking 块内的内容
+    if (inExec || inThinking || inExecOutput) {
+      continue;
+    }
+    // 跳过占位符行（如 __INLINE_CODE_0__）
+    if (/^__[A-Z_]+_\d+__$/i.test(trimmed)) {
+      continue;
+    }
+    // 跳过 tokens used 行（如 "tokens used" "tokens used 1,186" 或下一行的 "1,186"）
+    if (/^tokens used\b/i.test(trimmed)) {
+      skipNextTokenCount = true;
+      continue;
+    }
+    if (skipNextTokenCount && /^[\d,]+$/.test(trimmed)) {
+      skipNextTokenCount = false;
+      continue;
+    }
+    skipNextTokenCount = false;
+    result.push(line);
+  }
+
+  return deduplicateTail(result.join('\n').trim());
+}
+
+/**
+ * 移除末尾重复内容（Codex 有时会重复输出同一段回复）
+ */
+function deduplicateTail(text: string): string {
+  const t = text.trim();
+  if (!t) return '';
+  const half = Math.floor(t.length / 2);
+  // 检查是否后半段与前半段相同
+  if (half > 10 && t.slice(0, half).trim() === t.slice(half).trim()) {
+    return t.slice(0, half).trim();
+  }
+  // 检查末尾是否有重复段落（按双换行分割）
+  const blocks = t.split(/\n\s*\n/).filter(Boolean);
+  if (blocks.length >= 2 && blocks[blocks.length - 1] === blocks[blocks.length - 2]) {
+    return blocks.slice(0, -1).join('\n\n').trim();
+  }
+  return t;
+}
+
+/**
+ * 去掉 Markdown 转义：\\. \\- \\* 等还原为 . - *
+ * 覆盖 Telegram MarkdownV2 及常见转义字符
  */
 function unescapeMarkdown(text: string): string {
-  return text.replace(/\\([\\_.*[\]()~`>#+=|-])/g, '$1');
+  return text.replace(/\\(.)/g, (_, c) => c);
 }
 
 /**
