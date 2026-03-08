@@ -101,7 +101,10 @@ export class AICliPoolManager {
     if (idleWorker) {
       this.logger.debug(`Using idle worker for ${command} (${userId})`);
       try {
-        return await idleWorker.execute(command, args, options);
+        const result = await idleWorker.execute(command, args, options);
+        // 执行完成后释放 worker 以处理队列中的任务
+        this.releaseWorker(pool, idleWorker);
+        return result;
       } catch (error) {
         // 执行失败，移除该 worker
         this.removeWorker(pool, idleWorker);
@@ -115,7 +118,10 @@ export class AICliPoolManager {
       pool.workers.push(newWorker);
       this.logger.debug(`Created new worker for ${command} (${userId}), total: ${pool.workers.length}`);
       try {
-        return await newWorker.execute(command, args, options);
+        const result = await newWorker.execute(command, args, options);
+        // 执行完成后释放 worker 以处理队列中的任务
+        this.releaseWorker(pool, newWorker);
+        return result;
       } catch (error) {
         this.removeWorker(pool, newWorker);
         throw error;
@@ -136,9 +142,18 @@ export class AICliPoolManager {
     // 处理队列中的任务
     if (pool.queue.length > 0) {
       const task = pool.queue.shift()!;
+      this.logger.debug(`Processing queued task for ${task.command}`);
       worker.execute(task.command, task.args, task.options)
-        .then(task.resolve)
-        .catch(task.reject);
+        .then((result) => {
+          // 任务完成后再次释放 worker 以处理下一个队列任务
+          this.releaseWorker(pool, worker);
+          task.resolve(result);
+        })
+        .catch((error) => {
+          // 任务失败，移除该 worker
+          this.removeWorker(pool, worker);
+          task.reject(error);
+        });
     }
   }
 

@@ -9,7 +9,7 @@ import { EventEmitter } from './event-emitter';
 import { CommandParser } from './command-parser';
 import { SessionManager } from './session-manager';
 import { Logger } from '../utils/logger';
-import { ICommandExecutor } from '../interfaces/command-executor';
+import { ICommandExecutor, ExecutionResult } from '../interfaces/command-executor';
 import { IWatchdog } from '../utils/watchdog.interface';
 import { UserLockManager } from './concurrency';
 import { AICliPoolManager } from '../executors/pool';
@@ -59,9 +59,13 @@ export class Router {
   async initialize(): Promise<void> {
     this.logger.info('Initializing router...');
 
-    // 注册事件监听器
+    // 注册事件监听器 - 确保捕获异步错误
     this.eventEmitter.on('message:received', async (message: Message) => {
-      await this.handleMessage(message);
+      try {
+        await this.handleMessage(message);
+      } catch (error) {
+        this.logger.error('Error in message:received handler:', error);
+      }
     });
 
     this.eventEmitter.on('command:executed', async (data) => {
@@ -149,15 +153,19 @@ export class Router {
       // 确保用户有会话
       let session = this.sessionManager.getCurrentSession(message.userId);
       if (!session) {
+        this.logger.debug(`Creating new session for user ${message.userId}`);
         session = await this.sessionManager.createSession(message.userId);
       }
 
-      // 使用进程池执行命令
+      // 使用进程池执行命令，添加超时
+      this.logger.debug(`Executing command ${parsed.type} with args: ${parsed.args?.join(' ') || 'none'}`);
       const result = await this.aiCliPoolManager.execute(
         message.userId,
         this.aiCommand,
-        [this.aiCommand, ...parsed.args || []]
+        [this.aiCommand, ...parsed.args || []],
+        { timeout: 30000 } // 30秒超时
       );
+      this.logger.debug(`Command execution completed: ${result.exitCode}`);
 
       // 发送响应（从 stream-json 中提取可读文本）
       if (result) {
@@ -192,10 +200,12 @@ export class Router {
       // 获取或创建会话
       let session = this.sessionManager.getCurrentSession(message.userId);
       if (!session) {
+        this.logger.debug(`Creating new session for user ${message.userId}`);
         session = await this.sessionManager.createSession(message.userId);
       }
 
       // 添加用户消息到会话
+      this.logger.debug(`Adding user message to session ${session.sessionId}`);
       await this.sessionManager.addMessage(
         session.sessionId,
         'user',
@@ -203,12 +213,52 @@ export class Router {
       );
 
       // 使用进程池发送给 AI CLI 处理（使用 -p 传入 prompt）
+      // 添加超时防止命令永久挂起
       this.logger.info(`Sending to AI CLI (${this.aiCommand}): ${message.content}`);
-      const result = await this.aiCliPoolManager.execute(
-        message.userId,
-        this.aiCommand,
-        ['-p', message.content]
-      );
+      this.logger.debug(`Executing AI command with timeout: 30000ms`);
+
+      let result: ExecutionResult;
+      try {
+        result = await this.aiCliPoolManager.execute(
+          message.userId,
+          this.aiCommand,
+          ['-p', message.content],
+          { timeout: 30000 } // 30秒超时
+        );
+        this.logger.debug(`AI CLI execution completed: ${result.exitCode}, stdout length: ${result.stdout?.length || 0}`);
+      } catch (aiError) {
+        // AI CLI 执行失败，返回友好错误消息
+        const errorMsg = aiError instanceof Error ? aiError.message : String(aiError);
+        this.logger.error(`AI CLI execution failed: ${errorMsg}`);
+
+        // 检查是否是超时错误
+        if (errorMsg.includes('timed out')) {
+          await this.sendMessage(
+            message.platform,
+            message.userId,
+            `⚠️ AI命令执行超时 (30秒)\n\n可能原因:\n- ANTHROPIC_API_KEY 未配置\n- 网络连接问题\n- AI服务响应慢\n\n请检查环境配置后重试。`
+          );
+          return;
+        }
+
+        // 检查是否是命令不存在
+        if (errorMsg.includes('not found') || errorMsg.includes('ENOENT')) {
+          await this.sendMessage(
+            message.platform,
+            message.userId,
+            `❌ AI命令未找到: ${this.aiCommand}\n\n请确保已安装 ${this.aiCommand} 并在 PATH 中。`
+          );
+          return;
+        }
+
+        // 其他错误
+        await this.sendMessage(
+          message.platform,
+          message.userId,
+          `❌ AI命令执行失败\n\n错误: ${errorMsg}`
+        );
+        return;
+      }
 
       // 发送响应（从 stream-json 中提取可读文本，避免发送原始 JSON）
       if (result) {

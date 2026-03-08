@@ -185,6 +185,9 @@ export class AICliWorker {
       }
     }
 
+    // 移除 CLAUDECODE 环境变量，允许在 Claude Code 内运行 claude 命令
+    delete env.CLAUDECODE;
+
     // 强制 UTF-8 编码
     env.PYTHONIOENCODING = 'utf-8';
     env.PYTHONUTF8 = '1';
