@@ -1,44 +1,16 @@
 /**
- * Main configuration interface for im-cli-bridge
+ * 配置接口
  */
 
-export interface IServerConfig {
-  port: number;
-  host: string;
-}
-
-export interface IFeishuConfig {
-  appId: string;
-  appSecret: string;
-  encryptKey?: string;
-  verificationToken?: string;
-  baseUrl: string;
-}
-
-export interface ITelegramConfig {
-  botToken: string;
-  webhookUrl?: string;
-  pollTimeout: number;
-}
-
-export interface IExecutorConfig {
-  timeout: number;
-  maxConcurrent: number;
-  aiCommand: string;
-  allowedCommands: string[];
-  blockedCommands: string[];
-}
-
-export interface ILoggingConfig {
-  level: 'debug' | 'info' | 'warn' | 'error';
-  maxFiles: number;
-  maxSize: string;
-}
-
 export interface IConfig {
-  server: IServerConfig;
-  feishu?: IFeishuConfig;
-  telegram?: ITelegramConfig;
-  executor: IExecutorConfig;
-  logging: ILoggingConfig;
+  server: { port: number; host: string };
+  feishu?: { appId: string; appSecret: string };
+  telegram?: { botToken: string; webhookUrl?: string };
+  executor: {
+    timeout: number;
+    aiCommand: string;
+    allowedCommands: string[];
+    blockedCommands: string[];
+  };
+  logging: { level: 'debug' | 'info' | 'warn' | 'error' };
 }

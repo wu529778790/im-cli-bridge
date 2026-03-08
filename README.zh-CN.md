@@ -48,22 +48,7 @@ npm link
 cp .env.example .env
 ```
 
-编辑 `.env` 文件：
-
-```bash
-# Telegram 机器人令牌（从 @BotFather 获取）
-TELEGRAM_BOT_TOKEN=你的bot令牌
-
-# 飞书应用凭证（可选）
-FEISHU_APP_ID=你的应用ID
-FEISHU_APP_SECRET=你的应用密钥
-
-# AI CLI 命令（claudecode、cursor、codex、aider 等）
-AI_COMMAND=claudecode
-
-# 日志
-LOG_LEVEL=info
-```
+编辑 `.env`，至少配置 `TELEGRAM_BOT_TOKEN` 和 `AI_COMMAND`（如 codex/claude）。
 
 ### 2. 构建和运行
 
@@ -136,65 +121,23 @@ im-cli-bridge start -c ./config/custom.js
 
 ### 环境变量
 
-| 变量 | 说明 | 必需 | 默认值 |
-|------|------|------|--------|
-| `TELEGRAM_BOT_TOKEN` | 从 @BotFather 获取的 Telegram bot 令牌 | 条件* | - |
-| `FEISHU_APP_ID` | 飞书应用 ID | 条件* | - |
-| `FEISHU_APP_SECRET` | 飞书应用密钥 | 条件* | - |
-| `AI_COMMAND` | AI CLI 工具名称（claudecode、cursor、codex、aider） | 否 | `claudecode` |
-| `LOG_LEVEL` | 日志级别（debug/info/warn/error） | 否 | `info` |
-| `AI_SESSION_MODE` | 启用会话模式（需 CLI 支持 stdin） | 否 | `false` |
-
-*至少需要配置一个 IM 平台
+| 变量 | 说明 | 默认 |
+|------|------|------|
+| `TELEGRAM_BOT_TOKEN` | Telegram Bot 令牌 | 必填 |
+| `AI_COMMAND` | AI CLI（codex/claude/claudecode） | `claude` |
+| `LOG_LEVEL` | 日志级别 | `info` |
 
 ## 架构
 
 ```
-┌─────────────┐      ┌──────────────┐      ┌─────────────┐
-│  Telegram   │─────▶│              │─────▶│   AI CLI    │
-│   客户端    │      │    路由器    │      │   工具      │
-└─────────────┘      │              │      └─────────────┘
-                     │              │
-┌─────────────┐      │   事件       │      ┌─────────────┐
-│   飞书      │─────▶│  发射器      │─────▶│   会话管理  │
-│   客户端    │      │              │      │     器      │
-└─────────────┘      └──────────────┘      └─────────────┘
+Telegram → EventEmitter → Router → ShellExecutor → AI CLI
+                ↓                        ↓
+            output-extractor ← 过滤 Codex 输出
 ```
 
-### 核心组件
+## 自定义配置
 
-| 组件 | 说明 |
-|------|------|
-| **IM 客户端** | 平台集成（Telegram、飞书） |
-| **事件发射器** | 消息路由的发布订阅系统 |
-| **路由器** | 将消息转发给 AI CLI 工具 |
-| **Shell 执行器** | 流式命令执行 |
-| **输出解析器** | 过滤 Codex/Claude 输出，提取可读回复 |
-
-## 配置文件
-
-可以通过 JavaScript/TypeScript 模块提供自定义配置：
-
-```javascript
-// custom.config.js
-module.exports = {
-  server: {
-    port: 8080,
-    host: '0.0.0.0'
-  },
-  executor: {
-    timeout: 60000,
-    aiCommand: 'claudecode',  // 或 'cursor', 'codex', 'aider'
-    allowedCommands: ['*'],
-    blockedCommands: ['rm -rf /', 'mkfs', 'dd if=/dev/zero']
-  },
-  logging: {
-    level: 'debug'
-  }
-};
-```
-
-使用：`im-cli-bridge run --config ./custom.config.js`
+`im-cli-bridge run --config ./custom.config.js` 可加载自定义配置，覆盖 `server`、`executor`、`logging` 等。
 
 ## 安全性
 
@@ -222,28 +165,14 @@ module.exports = {
 ## 项目结构
 
 ```
-im-cli-bridge/
-├── src/
-│   ├── core/              # 核心逻辑（路由器、事件发射器）
-│   ├── interfaces/        # TypeScript 接口和类型
-│   ├── im-clients/        # 平台客户端（telegram、feishu）
-│   ├── executors/         # 带流式输出的命令执行
-│   ├── utils/             # 工具类（日志、输出解析）
-│   └── config/            # 配置
-├── dist/                  # 编译输出
-├── logs/                  # 应用日志
-├── .env.example           # 环境变量模板
-└── CLAUDE.md              # 开发者架构指南
+src/
+├── core/        # 路由器、事件、命令解析
+├── im-clients/  # Telegram、飞书客户端
+├── executors/   # Shell 执行器
+├── utils/       # 日志、输出过滤、消息适配
+├── config/      # 配置、AI 适配器
+└── interfaces/  # 类型定义
 ```
-
-## 事件
-
-系统通过 `EventEmitter` 发出以下事件：
-
-- `message:received` - 从 IM 平台收到新消息
-- `message:sent` - 消息已发送到平台
-- `command:executed` - 命令执行完成
-- `error` - 发生错误
 
 ## 开发
 

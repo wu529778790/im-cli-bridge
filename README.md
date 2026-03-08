@@ -136,65 +136,21 @@ im-cli-bridge start -c ./config/custom.js
 
 ### Environment Variables
 
-| Variable | Description | Required | Default |
-|----------|-------------|----------|---------|
-| `TELEGRAM_BOT_TOKEN` | Telegram bot token from @BotFather | No* | - |
-| `FEISHU_APP_ID` | Feishu/Lark app ID | No* | - |
-| `FEISHU_APP_SECRET` | Feishu/Lark app secret | No* | - |
-| `AI_COMMAND` | AI CLI tool to use (claudecode, cursor, codex, aider) | No | `claudecode` |
-| `LOG_LEVEL` | Logging level (debug/info/warn/error) | No | `info` |
-| `AI_SESSION_MODE` | Enable session mode (requires stdin support) | No | `false` |
-
-*At least one IM platform must be configured
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `TELEGRAM_BOT_TOKEN` | Telegram bot token | Required |
+| `AI_COMMAND` | AI CLI (codex/claude/claudecode) | `claude` |
+| `LOG_LEVEL` | Logging level | `info` |
 
 ## Architecture
 
 ```
-┌─────────────┐      ┌──────────────┐      ┌─────────────┐
-│  Telegram   │─────▶│              │─────▶│   Command   │
-│   Client    │      │   Router     │      │  Executor   │
-└─────────────┘      │              │      └─────────────┘
-                     │              │
-┌─────────────┐      │   Event      │      ┌─────────────┐
-│   Feishu    │─────▶│   Emitter    │─────▶│    Session  │
-│   Client    │      │              │      │   Manager   │
-└─────────────┘      └──────────────┘      └─────────────┘
+Telegram → EventEmitter → Router → ShellExecutor → AI CLI
+                ↓                        ↓
+            output-extractor ← filters Codex output
 ```
 
-### Core Components
-
-| Component | Description |
-|-----------|-------------|
-| **IM Clients** | Platform integrations (Telegram, Feishu) |
-| **EventEmitter** | Pub/sub event system for message routing |
-| **Router** | Forwards messages to AI CLI tool |
-| **ShellExecutor** | Streaming command execution |
-| **Output Extractor** | Filters Codex/Claude output for readable replies |
-
-## Configuration File
-
-Custom configuration can be provided via JavaScript/TypeScript module:
-
-```javascript
-// custom.config.js
-module.exports = {
-  server: {
-    port: 8080,
-    host: '0.0.0.0'
-  },
-  executor: {
-    timeout: 60000,
-    aiCommand: 'claudecode',  // or 'cursor', 'codex', 'aider'
-    allowedCommands: ['*'],
-    blockedCommands: ['rm -rf /', 'mkfs', 'dd if=/dev/zero']
-  },
-  logging: {
-    level: 'debug'
-  }
-};
-```
-
-Use: `im-cli-bridge run --config ./custom.config.js`
+Use `--config ./custom.config.js` to override `server`, `executor`, `logging`.
 
 ## Security
 
@@ -222,28 +178,14 @@ This bridge forwards messages to your configured AI CLI tool (e.g., Claude Code)
 ## Project Structure
 
 ```
-im-cli-bridge/
-├── src/
-│   ├── core/              # Core logic (router, event-emitter)
-│   ├── interfaces/        # TypeScript interfaces and types
-│   ├── im-clients/        # Platform clients (telegram, feishu)
-│   ├── executors/         # Command execution with streaming
-│   ├── utils/             # Utilities (logger, output extractor)
-│   └── config/            # Configuration
-├── dist/                  # Compiled output
-├── logs/                  # Application logs
-├── .env.example           # Environment template
-└── CLAUDE.md              # Architecture guide for developers
+src/
+├── core/        # Router, event emitter, command parser
+├── im-clients/  # Telegram, Feishu clients
+├── executors/   # Shell executor
+├── utils/       # Logger, output filter, message adapter
+├── config/      # Config, AI adapters
+└── interfaces/  # Type definitions
 ```
-
-## Events
-
-The system emits the following events through `EventEmitter`:
-
-- `message:received` - New message from IM platform
-- `message:sent` - Message sent to platform
-- `command:executed` - Command execution completed
-- `error` - Error occurred
 
 ## Development
 
