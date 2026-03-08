@@ -58,14 +58,14 @@ export async function sendThinkingMessage(
   const msg = await bot.telegram.sendMessage(
     Number(chatId),
     formatMessage('正在思考...', 'thinking', '请稍候', toolId),
-    extra
+    { ...extra, parse_mode: 'Markdown' }
   );
   await bot.telegram.editMessageText(
     Number(chatId),
     msg.message_id,
     undefined,
     formatMessage('正在思考...', 'thinking', '请稍候', toolId),
-    { reply_markup: buildStopKeyboard(msg.message_id) }
+    { reply_markup: buildStopKeyboard(msg.message_id), parse_mode: 'Markdown' }
   );
   return String(msg.message_id);
 }
@@ -89,7 +89,7 @@ export async function updateMessage(
       Number(messageId),
       undefined,
       formatMessage(content, status, note, toolId),
-      opts
+      { ...opts, parse_mode: 'Markdown' }
     );
   } catch (err) {
     if (err && typeof err === 'object' && 'message' in err && String((err as { message: string }).message).includes('not modified')) {
@@ -114,7 +114,8 @@ export async function sendFinalMessages(
     try {
       await bot.telegram.sendMessage(
         Number(chatId),
-        formatMessage(parts[i], 'done', `(续 ${i + 1}/${parts.length}) ${note}`, toolId)
+        formatMessage(parts[i], 'done', `(续 ${i + 1}/${parts.length}) ${note}`, toolId),
+        { parse_mode: 'Markdown' }
       );
     } catch (err) {
       log.error('Failed to send continuation:', err);
@@ -125,7 +126,7 @@ export async function sendFinalMessages(
 export async function sendTextReply(chatId: string, text: string): Promise<void> {
   const bot = getBot();
   try {
-    await bot.telegram.sendMessage(Number(chatId), text);
+    await bot.telegram.sendMessage(Number(chatId), text, { parse_mode: 'Markdown' });
   } catch (err) {
     log.error('Failed to send text:', err);
   }
