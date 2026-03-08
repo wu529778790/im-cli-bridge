@@ -1,6 +1,6 @@
 # open-im
 
-多平台 IM 桥接，支持多种 AI CLI 工具（Claude Code、Codex、Cursor 等）。参考 [cc-im](https://github.com/congqiu/cc-im) 架构，借鉴 [ShellRemoteBot](https://github.com/Al-Muhandis/ShellRemoteBot) 的交互模式。
+多平台 IM 桥接，支持多种 AI CLI 工具（Claude Code、Codex、Cursor 等）。
 
 ## 功能
 
