@@ -11,17 +11,21 @@
 
 ## 快速开始
 
-```bash
-# 配置
-export TELEGRAM_BOT_TOKEN=your_bot_token
-export ALLOWED_USER_IDS=your_telegram_user_id
-export AI_COMMAND=claude
+首次运行时会进入交互式配置：
 
-# 运行
+```bash
 npx open-im@latest
 # 或
 npm run dev
 ```
+
+按提示依次输入：
+
+1. **Telegram Bot Token**（必填，从 [@BotFather](https://t.me/BotFather) 获取）
+2. **白名单用户 ID**（可选，逗号分隔，留空=所有人可访问。可通过 [@userinfobot](https://t.me/userinfobot) 获取）
+3. **工作目录**（可选，留空为当前目录）
+
+配置将保存到 `~/.open-im/config.json`，下次启动直接运行即可。
 
 ## 配置
 

@@ -43,13 +43,21 @@ interface FileConfig {
   logLevel?: LogLevel;
 }
 
+const CONFIG_PATH = join(APP_HOME, 'config.json');
+
 function loadFileConfig(): FileConfig {
-  const configPath = join(APP_HOME, 'config.json');
   try {
-    return JSON.parse(readFileSync(configPath, 'utf-8'));
+    return JSON.parse(readFileSync(CONFIG_PATH, 'utf-8'));
   } catch {
     return {};
   }
+}
+
+/** 检测是否需要交互式配置（无 token 且无环境变量） */
+export function needsSetup(): boolean {
+  if (process.env.TELEGRAM_BOT_TOKEN) return false;
+  const file = loadFileConfig();
+  return !file.telegramBotToken;
 }
 
 function parseCommaSeparated(value: string): string[] {

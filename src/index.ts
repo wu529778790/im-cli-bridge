@@ -1,4 +1,5 @@
-import { loadConfig } from './config.js';
+import { loadConfig, needsSetup } from './config.js';
+import { runInteractiveSetup } from './setup.js';
 import { initTelegram, stopTelegram } from './telegram/client.js';
 import { setupTelegramHandlers } from './telegram/event-handler.js';
 import { sendTextReply } from './telegram/message-sender.js';
@@ -25,6 +26,14 @@ async function sendLifecycleNotification(platform: string, message: string) {
 }
 
 export async function main() {
+  if (needsSetup()) {
+    const saved = await runInteractiveSetup();
+    if (!saved) {
+      console.log('请配置 TELEGRAM_BOT_TOKEN 后重新运行。');
+      process.exit(1);
+    }
+  }
+
   const config = loadConfig();
   initLogger(config.logDir, config.logLevel);
   loadActiveChats();
