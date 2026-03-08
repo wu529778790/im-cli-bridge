@@ -7,35 +7,31 @@ export interface AIAdapter {
   /** 启动时的固定参数（不含 prompt） */
   baseArgs: string[];
   /** 如何传入用户消息：'p' 表示 -p "msg"，'positional' 表示作为最后一个参数 */
-  promptStyle: 'p' | 'positional';
+  promptStyle: "p" | "positional";
 }
 
 const adapters: Record<string, AIAdapter> = {
   claude: {
-    baseArgs: ['--dangerously-skip-permissions'],
-    promptStyle: 'p'
+    baseArgs: ["--dangerously-skip-permissions"],
+    promptStyle: "p",
   },
   claudecode: {
-    baseArgs: ['--dangerously-skip-permissions'],
-    promptStyle: 'p'
+    baseArgs: ["--dangerously-skip-permissions"],
+    promptStyle: "p",
   },
   codex: {
     // exec 子命令为 CI/脚本设计，无需 TTY，避免 "stdin is not a terminal"
-    baseArgs: ['exec', '--dangerously-bypass-approvals-and-sandbox'],
-    promptStyle: 'positional'
+    baseArgs: ["exec", "--dangerously-bypass-approvals-and-sandbox"],
+    promptStyle: "positional",
   },
   cc: {
-    baseArgs: ['--dangerously-skip-permissions'],
-    promptStyle: 'p'
+    baseArgs: ["--dangerously-skip-permissions"],
+    promptStyle: "p",
   },
   cursor: {
     baseArgs: [],
-    promptStyle: 'positional'
+    promptStyle: "positional",
   },
-  aider: {
-    baseArgs: [],
-    promptStyle: 'positional'
-  }
 };
 
 /**
@@ -43,7 +39,7 @@ const adapters: Record<string, AIAdapter> = {
  */
 function getCommandKey(command: string): string {
   const base = command.split(/[/\\]/).pop() || command;
-  return base.replace(/\.(exe|cmd)$/i, '').toLowerCase();
+  return base.replace(/\.(exe|cmd)$/i, "").toLowerCase();
 }
 
 /**
@@ -51,7 +47,7 @@ function getCommandKey(command: string): string {
  */
 export function getAIAdapter(command: string): AIAdapter {
   const key = getCommandKey(command);
-  return adapters[key] ?? { baseArgs: [], promptStyle: 'p' };
+  return adapters[key] ?? { baseArgs: [], promptStyle: "p" };
 }
 
 /**
@@ -59,8 +55,8 @@ export function getAIAdapter(command: string): AIAdapter {
  */
 export function buildOneShotArgs(command: string, message: string): string[] {
   const adapter = getAIAdapter(command);
-  if (adapter.promptStyle === 'positional') {
+  if (adapter.promptStyle === "positional") {
     return [...adapter.baseArgs, message];
   }
-  return [...adapter.baseArgs, '-p', message];
+  return [...adapter.baseArgs, "-p", message];
 }

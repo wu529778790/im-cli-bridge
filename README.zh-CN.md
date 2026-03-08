@@ -7,48 +7,24 @@
 ## 功能特性
 
 - **多平台支持**：支持 Telegram
-- **AI CLI 集成**：兼容 Claude Code、Cursor、Codex、Aider 等
-- **实时流式输出**：输出追加为新消息，不覆盖已发送内容
-- **Codex 输出优化**：过滤 header、exec、thinking、tokens 等噪音，只保留 AI 回复
+- **AI CLI 集成**：兼容 Claude Code、Cursor、Codex等
 - **两种运行模式**：前台模式（Ctrl+C 退出）和后台模式（start/stop 管理）
-
-## 安装
-
-```bash
-npm install -g im-cli-bridge
-```
 
 ## 快速开始
 
-### 1. 配置
-
-**方式一：环境变量**（推荐）
-
-在 shell 配置（.bashrc / .zshrc）或系统环境变量中设置：
-
 ```bash
-export TELEGRAM_BOT_TOKEN=your_bot_token
-export AI_COMMAND=claude
+npx im-cli-bridge
 ```
 
-**方式二：配置文件**
+首次运行时，若未配置，命令行会引导你输入 `TELEGRAM_BOT_TOKEN` 和 `AI_COMMAND`，保存到 `~/.im-cli-bridge/.env` 后自动启动。
+
+之后再次运行 `npx im-cli-bridge` 将直接启动。
+
+**后台模式**（需先 `npm install -g im-cli-bridge` 或确保 npx 可找到）：
 
 ```bash
-im-cli-bridge init   # 创建 ~/.im-cli-bridge/.env 模板
-# 编辑 ~/.im-cli-bridge/.env，填入 TELEGRAM_BOT_TOKEN 和 AI_COMMAND
-```
-
-### 2. 运行
-
-```bash
-# 前台模式（Ctrl+C 退出）
-im-cli-bridge
-# 或
-im-cli-bridge run
-
-# 后台模式
-im-cli-bridge start   # 启动
-im-cli-bridge stop    # 停止
+npx im-cli-bridge start   # 启动
+npx im-cli-bridge stop    # 停止
 ```
 
 ## 使用方法
@@ -65,7 +41,7 @@ im-cli-bridge stop    # 停止
 ### 选项
 
 ```bash
-im-cli-bridge [COMMAND] [OPTIONS]
+npx im-cli-bridge [COMMAND] [OPTIONS]
 
 选项:
   -c, --config <路径>   自定义配置文件
@@ -80,8 +56,8 @@ im-cli-bridge [COMMAND] [OPTIONS]
 ### 示例
 
 ```bash
-im-cli-bridge run --log-level debug
-im-cli-bridge start -c ./custom.config.js
+npx im-cli-bridge run --log-level debug
+npx im-cli-bridge start -c ./custom.config.js
 ```
 
 ### 环境变量
@@ -95,14 +71,17 @@ im-cli-bridge start -c ./custom.config.js
 ## 故障排除
 
 ### 机器人不响应？
+
 1. 检查 bot 令牌是否正确
 2. 检查日志：`tail -f ~/.im-cli-bridge/logs/combined.log`
 3. 确保只运行一个 bridge 实例（避免 409 Conflict）
 
 ### 409 Conflict？
-同一 Bot 只能有一个连接。确保没有同时运行多个实例，后台模式用 `im-cli-bridge stop` 停掉后再重启。
+
+同一 Bot 只能有一个连接。确保没有同时运行多个实例，后台模式用 `npx im-cli-bridge stop` 停掉后再重启。
 
 ### AI 命令不工作？
+
 1. 验证 `AI_COMMAND` 正确
 2. 在终端手动测试：`claude "hello"`
 

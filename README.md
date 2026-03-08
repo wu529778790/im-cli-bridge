@@ -12,43 +12,23 @@ A message routing bridge that connects IM platforms (Telegram) with AI CLI tools
 - **Codex Output Filtering**: Strips header, exec, thinking; keeps only AI replies
 - **Two Run Modes**: Foreground (Ctrl+C) and background (start/stop)
 
-## Installation
-
-```bash
-npm install -g im-cli-bridge
-```
-
 ## Quick Start
 
-### 1. Configure
-
-**Option A: Environment variables** (recommended)
-
-Set in your shell profile (.bashrc / .zshrc) or system env:
+Run with `npx`, no global install needed:
 
 ```bash
-export TELEGRAM_BOT_TOKEN=your_bot_token
-export AI_COMMAND=claude
+npx im-cli-bridge
 ```
 
-**Option B: Config file**
+On first run, if not configured, the CLI will prompt for `TELEGRAM_BOT_TOKEN` and `AI_COMMAND`, save to `~/.im-cli-bridge/.env`, then start automatically.
+
+Subsequent runs will start directly.
+
+**Background mode** (requires `npm install -g im-cli-bridge` or npx availability):
 
 ```bash
-im-cli-bridge init   # Creates ~/.im-cli-bridge/.env
-# Edit and add TELEGRAM_BOT_TOKEN and AI_COMMAND
-```
-
-### 2. Run
-
-```bash
-# Foreground (Ctrl+C to exit)
-im-cli-bridge
-# or
-im-cli-bridge run
-
-# Background
-im-cli-bridge start   # Start
-im-cli-bridge stop    # Stop
+npx im-cli-bridge start   # Start
+npx im-cli-bridge stop    # Stop
 ```
 
 ## Usage
@@ -65,7 +45,7 @@ im-cli-bridge stop    # Stop
 ### Options
 
 ```bash
-im-cli-bridge [COMMAND] [OPTIONS]
+npx im-cli-bridge [COMMAND] [OPTIONS]
 
 Options:
   -c, --config <path>    Custom config file
@@ -93,7 +73,7 @@ Options:
 3. Ensure only one bridge instance (avoid 409 Conflict)
 
 ### 409 Conflict?
-Only one connection per Bot. Use `im-cli-bridge stop` before restarting.
+Only one connection per Bot. Use `npx im-cli-bridge stop` before restarting.
 
 ### AI command not working?
 1. Verify `AI_COMMAND`
