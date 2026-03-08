@@ -1,20 +1,31 @@
 /**
- * 从 Claude CLI 输出中提取可发送的纯文本
- * 代理模式：优先原样透传；若检测到 stream-json 则提取文本
+ * 从 Claude / Codex 等 CLI 输出中提取可发送的纯文本
  */
 
 /**
  * 从 stdout 中提取应发送给用户的消息文本
- * - 若输出像 stream-json（多行 JSON），则解析提取 AI 文本
- * - 否则原样透传（代理模式，直接和 claudecode 对话）
  */
 export function extractDisplayText(stdout: string, stderr?: string): string {
   if (!stdout && !stderr) return '';
   const output = (stdout || '') + (stderr ? '\n' + stderr : '');
+  let result = extractDisplayTextFromOutput(output);
+  return unescapeMarkdown(result);
+}
+
+/**
+ * 从输出中提取展示文本（未做 markdown 反转义）
+ */
+function extractDisplayTextFromOutput(output: string): string {
   const trimmed = output.trim();
   if (!trimmed) return '';
 
-  // 仅当输出明显为 stream-json（首行是合法 JSON 且包含 type）时才解析
+  // Codex: 仅保留 "codex" 行之后的 AI 回复
+  if (trimmed.includes('OpenAI Codex') || /session id:/i.test(trimmed)) {
+    const codex = extractCodexResponse(trimmed);
+    if (codex) return codex;
+  }
+
+  // stream-json 格式
   const firstLine = trimmed.split('\n')[0]?.trim() || '';
   if (firstLine.startsWith('{') && firstLine.includes('"type"')) {
     const extracted = extractFromStreamJson(trimmed);
@@ -22,6 +33,36 @@ export function extractDisplayText(stdout: string, stderr?: string): string {
   }
 
   return trimmed;
+}
+
+/**
+ * 从 Codex 输出中提取 AI 回复（去掉 header、user、mcp 等）
+ */
+function extractCodexResponse(output: string): string {
+  const marker = '\ncodex\n';
+  const idx = output.indexOf(marker);
+  if (idx >= 0) {
+    return output.slice(idx + marker.length).trim();
+  }
+  if (output.startsWith('codex\n')) {
+    return output.slice(6).trim();
+  }
+  return '';
+}
+
+/**
+ * 去掉 Telegram 等对 markdown 的转义（如 \. \-）
+ */
+function unescapeMarkdown(text: string): string {
+  return text.replace(/\\([\\_.*[\]()~`>#+=|-])/g, '$1');
+}
+
+/**
+ * 流式场景：从已累积的输出中提取应展示的部分（Codex 仅取 codex 之后）
+ */
+export function filterStreamOutput(accumulated: string): string {
+  const raw = extractDisplayTextFromOutput(accumulated);
+  return unescapeMarkdown(raw);
 }
 
 /**

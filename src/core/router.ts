@@ -6,7 +6,7 @@
 
 import { Message } from '../interfaces/types';
 import { IMClient } from '../interfaces/im-client.interface';
-import { extractDisplayText } from '../utils/output-extractor';
+import { extractDisplayText, filterStreamOutput } from '../utils/output-extractor';
 import { EventEmitter } from './event-emitter';
 import { CommandParser } from './command-parser';
 import { Logger } from '../utils/logger';
@@ -248,6 +248,7 @@ export class SimpleRouter {
     args: string[]
   ): Promise<{ stdout: string; stderr: string; streamed: boolean }> {
     let accumulated = '';
+    let lastSent = '';
     let streamedMessageId: string | null = null;
     const client = this.imClients.get(message.platform);
     const replyTarget = message.userId;
@@ -258,16 +259,23 @@ export class SimpleRouter {
       timeout: 60000,
       onText: (text: string) => {
         accumulated += text;
+        const toSend = filterStreamOutput(accumulated);
 
         if (!client) return;
+        if (!toSend && !streamedMessageId) return; // 过滤后为空（如 codex header）则等有内容再发
+        if (toSend === lastSent) return; // 避免 Telegram "message is not modified"
 
         sendPromise = sendPromise.then(async () => {
           try {
+            const current = filterStreamOutput(accumulated);
+            if (current === lastSent) return;
             if (!streamedMessageId) {
-              const sent = await client.sendText(replyTarget, accumulated);
+              const sent = await client.sendText(replyTarget, current);
               streamedMessageId = sent.id;
+              lastSent = current;
             } else {
-              await client.updateMessage({ messageId: streamedMessageId!, content: accumulated });
+              await client.updateMessage({ messageId: streamedMessageId!, content: current });
+              lastSent = current;
             }
           } catch (err) {
             this.logger.debug('Stream update failed, will send final result:', err);

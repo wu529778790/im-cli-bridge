@@ -20,7 +20,8 @@ const adapters: Record<string, AIAdapter> = {
     promptStyle: 'p'
   },
   codex: {
-    baseArgs: ['--dangerously-bypass-approvals-and-sandbox'],
+    // exec 子命令为 CI/脚本设计，无需 TTY，避免 "stdin is not a terminal"
+    baseArgs: ['exec', '--dangerously-bypass-approvals-and-sandbox'],
     promptStyle: 'positional'
   },
   cc: {
