@@ -9,7 +9,9 @@
   },
   "files": [
     "dist",
-    ".env.example"
+    ".env.example",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc",
