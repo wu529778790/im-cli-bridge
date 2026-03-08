@@ -47,7 +47,8 @@ jobs:
           NPM_VER=$(npm view @wu529778790/open-im version 2>/dev/null) || NPM_VER="0.0.0"
           BUMP="${{ github.event.inputs.version_bump || 'patch' }}"
           NEXT=$(npx -y semver@7 -i $BUMP $NPM_VER)
-          npm version $NEXT --no-git-tag-version
+          # 直接修改 package.json，不使用 npm version（避免版本检查）
+          npm pkg set version=$NEXT
 
       - run: npm run build
 
