@@ -79,7 +79,11 @@ export type EventType =
   | 'bot:added'
   | 'bot:removed'
   | 'callback_query'
-  | 'error';
+  | 'error'
+  | 'rate_limit:exceeded'
+  | 'ai_cli:timeout'
+  | 'auth:failed'
+  | 'network:error';
 
 // 事件回调
 export type EventCallback = (data: any) => void | Promise<void>;

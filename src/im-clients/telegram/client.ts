@@ -20,6 +20,7 @@ import { EventEmitter } from '../../core/event-emitter';
 import { logger } from '../../utils/logger';
 import { MessageFormatter } from './message-formatter';
 import { InlineKeyboardBuilder } from './inline-keyboard';
+import { RateLimiter } from '../../utils/rate-limit';
 
 /**
  * Telegram客户端配置接口
@@ -62,11 +63,23 @@ export class TelegramClient implements IMClient {
   private isInitializedFlag: boolean = false;
   private isRunningFlag: boolean = false;
   private pollingTimeout: NodeJS.Timeout | null = null;
+  private rateLimiter: RateLimiter;
 
   constructor() {
     this.eventEmitter = new EventEmitter();
     this.messageFormatter = new MessageFormatter();
     this.keyboardBuilder = new InlineKeyboardBuilder();
+    this.rateLimiter = new RateLimiter({
+      enabled: true,
+      platforms: {
+        telegram: { rate: 30, capacity: 100 } // Telegram: 30 msg/sec
+      },
+      retryPolicy: {
+        maxRetries: 3,
+        initialDelay: 1000,
+        backoffStrategy: 'exponential_with_jitter'
+      }
+    });
   }
 
   /**
@@ -185,11 +198,14 @@ export class TelegramClient implements IMClient {
     }
 
     try {
-      // 代理模式：原样透传 claudecode 输出，不使用 Markdown 格式化，避免中文等字符被转义导致乱码
-      const message = await this.bot.sendMessage(userId, text, {});
+      // 使用限流器控制发送速率
+      return await this.rateLimiter.execute('telegram', async () => {
+        // 代理模式：原样透传 claudecode 输出，不使用 Markdown 格式化，避免中文等字符被转义导致乱码
+        const message = await this.bot!.sendMessage(userId, text, {});
 
-      // 转换为IMMessage格式
-      return this.convertToIMMessage(message, chatType);
+        // 转换为IMMessage格式
+        return this.convertToIMMessage(message, chatType);
+      });
     } catch (error) {
       logger.error(`Failed to send text message to ${userId}:`, error);
       throw error;

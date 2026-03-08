@@ -10,7 +10,10 @@ import { CommandParser } from './command-parser';
 import { SessionManager } from './session-manager';
 import { Logger } from '../utils/logger';
 import { ICommandExecutor } from '../interfaces/command-executor';
-import { Watchdog } from '../utils/watchdog';
+import { IWatchdog } from '../utils/watchdog.interface';
+import { UserLockManager } from './concurrency';
+import { AICliPoolManager } from '../executors/pool';
+import { ErrorHandler } from './errors';
 
 export class Router {
   private logger: Logger;
@@ -19,14 +22,17 @@ export class Router {
   private sessionManager: SessionManager;
   private commandExecutor: ICommandExecutor;
   private imClients: Map<string, IMClient> = new Map();
-  private watchdog?: Watchdog;
+  private watchdog?: IWatchdog;
   private aiCommand: string;
+  private userLockManager: UserLockManager;
+  private aiCliPoolManager: AICliPoolManager;
+  private errorHandler: ErrorHandler;
 
   constructor(
     eventEmitter: EventEmitter,
     sessionManager: SessionManager,
     commandExecutor: ICommandExecutor,
-    watchdog?: Watchdog,
+    watchdog?: IWatchdog,
     aiCommand: string = 'claude'
   ) {
     this.logger = new Logger('Router');
@@ -36,6 +42,15 @@ export class Router {
     this.commandParser = new CommandParser();
     this.watchdog = watchdog;
     this.aiCommand = aiCommand;
+    this.userLockManager = new UserLockManager();
+    this.aiCliPoolManager = new AICliPoolManager({
+      maxWorkerIdleTime: 5 * 60 * 1000, // 5分钟
+      maxWorkerExecutions: 100, // 最多执行100次
+      maxWorkersPerPool: 3, // 每个池最多3个worker
+      minWorkersPerPool: 0, // 不预创建
+      reapInterval: 60 * 1000 // 每分钟回收
+    });
+    this.errorHandler = new ErrorHandler(eventEmitter);
   }
 
   /**
@@ -85,32 +100,36 @@ export class Router {
 
   /**
    * 处理接收到的消息
+   * 使用用户锁管理器确保同一用户的消息串行处理
    * @param message 消息对象
    */
   private async handleMessage(message: Message): Promise<void> {
-    try {
-      // 重置 Watchdog 计时器，表明服务正常运行
-      if (this.watchdog) {
-        this.watchdog.reset();
+    // 使用用户锁管理器确保同一用户的请求串行处理
+    return this.userLockManager.execute(message.userId, async () => {
+      try {
+        // 重置 Watchdog 计时器，表明服务正常运行
+        if (this.watchdog) {
+          this.watchdog.reset();
+        }
+
+        this.logger.info(`Received message from ${message.userId}: ${message.content}`);
+
+        // 检查是否是命令
+        if (this.commandParser.isCommand(message.content)) {
+          await this.handleCommand(message);
+        } else {
+          await this.handleNormalMessage(message);
+        }
+
+      } catch (error) {
+        this.logger.error('Error handling message:', error);
+        await this.eventEmitter.emit('error', {
+          type: 'message_handling',
+          message: message.id,
+          error: error instanceof Error ? error.message : String(error)
+        });
       }
-
-      this.logger.info(`Received message from ${message.userId}: ${message.content}`);
-
-      // 检查是否是命令
-      if (this.commandParser.isCommand(message.content)) {
-        await this.handleCommand(message);
-      } else {
-        await this.handleNormalMessage(message);
-      }
-
-    } catch (error) {
-      this.logger.error('Error handling message:', error);
-      await this.eventEmitter.emit('error', {
-        type: 'message_handling',
-        message: message.id,
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
+    });
   }
 
   /**
@@ -133,10 +152,11 @@ export class Router {
         session = await this.sessionManager.createSession(message.userId);
       }
 
-      // 执行命令
-      const result = await this.commandExecutor.execute(
-        `${this.aiCommand} ${parsed.raw}`,
-        parsed.args || []
+      // 使用进程池执行命令
+      const result = await this.aiCliPoolManager.execute(
+        message.userId,
+        this.aiCommand,
+        [this.aiCommand, ...parsed.args || []]
       );
 
       // 发送响应（从 stream-json 中提取可读文本）
@@ -153,11 +173,12 @@ export class Router {
       });
 
     } catch (error) {
-      this.logger.error('Error executing command:', error);
-      await this.sendMessage(
-        message.platform,
+      // 使用错误处理器处理错误
+      await this.errorHandler.handleWithUserContext(
+        error,
+        'command_execution',
         message.userId,
-        `命令执行失败: ${error instanceof Error ? error.message : String(error)}`
+        message.platform
       );
     }
   }
@@ -181,9 +202,10 @@ export class Router {
         message.content
       );
 
-      // 发送给 Claude CLI 处理（使用 -p 传入 prompt）
-      this.logger.info(`Sending to Claude CLI (${this.aiCommand}): ${message.content}`);
-      const result = await this.commandExecutor.execute(
+      // 使用进程池发送给 AI CLI 处理（使用 -p 传入 prompt）
+      this.logger.info(`Sending to AI CLI (${this.aiCommand}): ${message.content}`);
+      const result = await this.aiCliPoolManager.execute(
+        message.userId,
         this.aiCommand,
         ['-p', message.content]
       );
@@ -203,11 +225,12 @@ export class Router {
       this.logger.debug(`Added user message to session ${session.sessionId}`);
 
     } catch (error) {
-      this.logger.error('Error handling normal message:', error);
-      await this.sendMessage(
-        message.platform,
+      // 使用错误处理器处理错误
+      await this.errorHandler.handleWithUserContext(
+        error,
+        'message_handling',
         message.userId,
-        `消息处理失败: ${error instanceof Error ? error.message : String(error)}`
+        message.platform
       );
     }
   }
@@ -268,11 +291,24 @@ export class Router {
     registeredClients: string[];
     commandParserReady: boolean;
     sessionManagerStats: { totalSessions: number; totalMessages: number };
+    concurrencyStats: {
+      activeLocks: number;
+      totalAcquisitions: number;
+      totalQueued: number;
+    };
+    poolStats: {
+      totalPools: number;
+      totalWorkers: number;
+      totalQueued: number;
+      totalExecutions: number;
+    };
   } {
     return {
       registeredClients: Array.from(this.imClients.keys()),
       commandParserReady: true,
-      sessionManagerStats: this.sessionManager.getStats()
+      sessionManagerStats: this.sessionManager.getStats(),
+      concurrencyStats: this.userLockManager.getStats(),
+      poolStats: this.aiCliPoolManager.getStats()
     };
   }
 
@@ -281,6 +317,12 @@ export class Router {
    */
   async shutdown(): Promise<void> {
     this.logger.info('Shutting down router...');
+
+    // 清理用户锁管理器
+    this.userLockManager.clearAll();
+
+    // 关闭进程池管理器
+    this.aiCliPoolManager.shutdown();
 
     // 停止所有IM客户端
     const shutdownPromises = Array.from(this.imClients.values()).map(

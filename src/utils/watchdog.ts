@@ -1,4 +1,5 @@
 import { logger } from './logger';
+import { IWatchdog } from './watchdog.interface';
 
 export interface WatchdogOptions {
   timeout: number; // milliseconds
@@ -6,7 +7,7 @@ export interface WatchdogOptions {
   name?: string;
 }
 
-export class Watchdog {
+export class Watchdog implements IWatchdog {
   private timeoutId: NodeJS.Timeout | null = null;
   private lastReset: number = Date.now();
   private options: WatchdogOptions;

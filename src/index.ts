@@ -5,6 +5,7 @@ import { IConfig } from './interfaces/config';
 import { logger } from './utils/logger';
 import { AsyncQueue } from './utils/async-queue';
 import { Watchdog } from './utils/watchdog';
+import { EnhancedWatchdog } from './utils/watchdog-v2';
 import { ShellExecutor } from './executors/shell-executor';
 import { FileStorage } from './storage/file-storage';
 import { FeishuClient } from './im-clients/feishu';
@@ -30,7 +31,7 @@ export class IMCLIBridge {
   private sessionManager?: SessionManager;
   private eventEmitter?: EventEmitter;
   private queue!: AsyncQueue;
-  private watchdog?: Watchdog;
+  private watchdog?: EnhancedWatchdog;
 
   constructor(config: Partial<IConfig> = {}) {
     // Merge with default config
@@ -76,14 +77,63 @@ export class IMCLIBridge {
     // Initialize session manager
     this.sessionManager = new SessionManager(this.storage);
 
-    // Initialize watchdog if enabled (create but don't start yet)
+    // Initialize enhanced watchdog if enabled
     if (this.config.watchdog.enabled) {
-      this.watchdog = new Watchdog({
+      this.watchdog = new EnhancedWatchdog({
         name: 'IMCLIBridge-Watchdog',
         timeout: this.config.watchdog.timeout,
+        checkInterval: this.config.watchdog.checkInterval || 30000, // 30秒检查一次
         onTimeout: async () => {
           logger.warn('Watchdog timeout triggered, restarting...');
           await this.restart();
+        },
+        healthChecks: [
+          // 存储健康检查
+          {
+            name: 'storage',
+            interval: 60000,
+            timeout: 5000,
+            check: async () => {
+              try {
+                await this.storage.get('health_check');
+                return true;
+              } catch {
+                return false;
+              }
+            }
+          },
+          // 会话管理器健康检查
+          {
+            name: 'session_manager',
+            interval: 60000,
+            timeout: 5000,
+            check: async () => {
+              return this.sessionManager !== undefined;
+            }
+          }
+        ]
+      });
+
+      // 注册恢复动作
+      this.watchdog.registerRecoveryAction('telegram', {
+        name: 'restart_telegram',
+        action: async () => {
+          if (this.telegramClient?.isRunning()) {
+            await this.telegramClient.stop();
+          }
+          if (this.telegramClient && this.config.telegram) {
+            await this.telegramClient.initialize({
+              appId: this.config.telegram.botToken,
+              appSecret: '',
+              polling: {
+                autoStart: true,
+                params: {
+                  timeout: this.config.telegram.pollTimeout || 10
+                }
+              }
+            } as any);
+            await this.telegramClient.start();
+          }
         }
       });
     }
