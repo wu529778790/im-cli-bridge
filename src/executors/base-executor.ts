@@ -76,6 +76,10 @@ export abstract class BaseExecutor implements ICommandExecutor {
       }
     }
 
+    // 强制子进程使用 UTF-8，避免中文等多字节字符出现乱码
+    env.PYTHONIOENCODING = 'utf-8';
+    env.PYTHONUTF8 = '1';
+
     // Merge with custom environment
     return {
       ...env,

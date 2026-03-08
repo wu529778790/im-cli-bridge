@@ -185,13 +185,8 @@ export class TelegramClient implements IMClient {
     }
 
     try {
-      // 格式化消息为Telegram Markdown
-      const formattedText = this.messageFormatter.formatMarkdown(text);
-
-      // 发送消息
-      const message = await this.bot.sendMessage(userId, formattedText, {
-        parse_mode: 'Markdown',
-      });
+      // 代理模式：原样透传 claudecode 输出，不使用 Markdown 格式化，避免中文等字符被转义导致乱码
+      const message = await this.bot.sendMessage(userId, text, {});
 
       // 转换为IMMessage格式
       return this.convertToIMMessage(message, chatType);

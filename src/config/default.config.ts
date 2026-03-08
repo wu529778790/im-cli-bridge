@@ -20,7 +20,7 @@ export const defaultConfig: IConfig = {
   executor: {
     timeout: 30000,
     maxConcurrent: 3,
-    aiCommand: process.env.AI_COMMAND || 'claudecode',
+    aiCommand: process.env.AI_COMMAND || 'claude',
     allowedCommands: ['*'],
     blockedCommands: [
       'rm -rf /',

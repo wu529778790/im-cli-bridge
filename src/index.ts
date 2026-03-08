@@ -12,6 +12,9 @@ import { TelegramClient } from './im-clients/telegram';
 import { Router } from './core/router';
 import { SessionManager } from './core/session-manager';
 import { EventEmitter } from './core/event-emitter';
+import { immessageToMessage } from './utils/message-adapter';
+import type { Platform } from './interfaces/types';
+import type { IMMessage } from './interfaces/im-client.interface';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -110,6 +113,32 @@ export class IMCLIBridge {
     logger.info('All components initialized');
   }
 
+  /**
+   * 连接 IM 客户端到中央 EventEmitter，将消息转发到 Router
+   * 并注册 IM 客户端到 Router 以便发送回复
+   */
+  private connectIMClients(): void {
+    if (!this.eventEmitter || !this.router) return;
+
+    if (this.feishuClient) {
+      this.feishuClient.on('message:received', (imMessage: IMMessage) => {
+        const message = immessageToMessage(imMessage, 'feishu');
+        this.eventEmitter!.emit('message:received', message);
+      });
+      this.router.registerClient('feishu', this.feishuClient);
+      logger.info('Feishu client connected to router');
+    }
+
+    if (this.telegramClient) {
+      this.telegramClient.on('message:received', (imMessage: IMMessage) => {
+        const message = immessageToMessage(imMessage, 'telegram');
+        this.eventEmitter!.emit('message:received', message);
+      });
+      this.router.registerClient('telegram', this.telegramClient);
+      logger.info('Telegram client connected to router');
+    }
+  }
+
   async start(): Promise<void> {
     try {
       logger.info('Starting IM CLI Bridge...');
@@ -127,6 +156,9 @@ export class IMCLIBridge {
         await this.router.initialize();
         logger.info('Router initialized');
       }
+
+      // 连接 IM 客户端到中央 EventEmitter，并注册到 Router
+      this.connectIMClients();
 
       // Start IM clients
       if (this.feishuClient) {

@@ -133,6 +133,18 @@ export class ShellExecutor extends BaseExecutor {
   }
 
   /**
+   * 构建带引号的 shell 命令字符串，避免 DEP0190 警告并正确传递中文等参数
+   */
+  private buildShellCommand(command: string, args: string[]): string {
+    const escapedArgs = args.map((arg) => {
+      if (arg.startsWith('-') && /^[\w-]+$/.test(arg)) return arg;
+      const escaped = arg.replace(/"/g, process.platform === 'win32' ? '""' : '\\"');
+      return `"${escaped}"`;
+    });
+    return [command, ...escapedArgs].join(' ');
+  }
+
+  /**
    * Spawn a command and collect output
    */
   private spawnCommand(
@@ -145,11 +157,12 @@ export class ShellExecutor extends BaseExecutor {
       let stdout = '';
       let stderr = '';
       let exitCode = 0;
+      const shellCommand = this.buildShellCommand(command, args);
 
-      const childProcess = spawn(command, args, {
+      const childProcess = spawn(shellCommand, [], {
         cwd,
         env,
-        shell: true,
+        shell: true, // Windows 需要 shell 才能解析 PATH 和 .cmd
         stdio: ['pipe', 'pipe', 'pipe']
       });
 
@@ -198,7 +211,9 @@ export class ShellExecutor extends BaseExecutor {
       let exitCode = 0;
       let buffer = '';
 
-      const childProcess = spawn(command, args, {
+      const shellCommand = this.buildShellCommand(command, args);
+
+      const childProcess = spawn(shellCommand, [], {
         cwd,
         env,
         shell: true,

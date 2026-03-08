@@ -4,6 +4,7 @@
 
 import { Message } from '../interfaces/types';
 import { IMClient } from '../interfaces/im-client.interface';
+import { extractDisplayText } from '../utils/output-extractor';
 import { EventEmitter } from './event-emitter';
 import { CommandParser } from './command-parser';
 import { SessionManager } from './session-manager';
@@ -26,7 +27,7 @@ export class Router {
     sessionManager: SessionManager,
     commandExecutor: ICommandExecutor,
     watchdog?: Watchdog,
-    aiCommand: string = 'claudecode'
+    aiCommand: string = 'claude'
   ) {
     this.logger = new Logger('Router');
     this.eventEmitter = eventEmitter;
@@ -138,9 +139,10 @@ export class Router {
         parsed.args || []
       );
 
-      // 发送响应
+      // 发送响应（从 stream-json 中提取可读文本）
       if (result) {
-        await this.sendMessage(message.platform, message.userId, result.stdout);
+        const text = extractDisplayText(result.stdout, result.stderr);
+        if (text) await this.sendMessage(message.platform, message.userId, text);
       }
 
       // 触发命令执行事件
@@ -179,18 +181,17 @@ export class Router {
         message.content
       );
 
-      // 发送给 Claude CLI 处理
+      // 发送给 Claude CLI 处理（使用 -p 传入 prompt）
       this.logger.info(`Sending to Claude CLI (${this.aiCommand}): ${message.content}`);
       const result = await this.commandExecutor.execute(
         this.aiCommand,
-        [message.content]
+        ['-p', message.content]
       );
 
-      // 发送响应
-      if (result && result.stdout) {
-        await this.sendMessage(message.platform, message.userId, result.stdout);
-      } else if (result && result.stderr) {
-        await this.sendMessage(message.platform, message.userId, result.stderr);
+      // 发送响应（从 stream-json 中提取可读文本，避免发送原始 JSON）
+      if (result) {
+        const text = extractDisplayText(result.stdout, result.stderr);
+        if (text) await this.sendMessage(message.platform, message.userId, text);
       }
 
       // 触发普通消息处理事件

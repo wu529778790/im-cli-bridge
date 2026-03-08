@@ -3,7 +3,7 @@
  */
 
 // IM平台类型
-export type Platform = 'feishu' | 'wechat' | 'dingtalk';
+export type Platform = 'feishu' | 'telegram' | 'wechat' | 'dingtalk';
 
 // 消息类型
 export interface Message {
