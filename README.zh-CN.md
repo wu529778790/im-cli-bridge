@@ -60,13 +60,6 @@ npm run start:bg   # 启动后台服务
 npm run stop       # 停止后台服务
 ```
 
-### 3. 创建独立可执行文件
-
-```bash
-npm run pkg:build
-# 输出：dist/im-cli-bridge（单个可执行文件）
-```
-
 ## 使用方法
 
 ### 运行模式
@@ -138,11 +131,10 @@ Telegram → EventEmitter → Router → ShellExecutor → AI CLI
 ### 最佳实践
 
 1. 永远不要提交 `.env` 文件或凭证
-2. 生产环境使用 HTTPS webhook
-3. 保持 AI CLI 工具更新
-4. 设置合理的命令超时时间
-5. 监控日志中的可疑活动
-6. 保持依赖项更新
+2. 保持 AI CLI 工具更新
+3. 设置合理的命令超时时间
+4. 监控日志中的可疑活动
+5. 保持依赖项更新
 
 ### 注意事项
 
@@ -183,9 +175,6 @@ npm run build
 # 后台启动/停止
 npm run start:bg
 npm run stop
-
-# 创建独立可执行文件
-npm run pkg:build
 ```
 
 ## 故障排除
@@ -223,4 +212,3 @@ MIT 许可证 - 详见 [LICENSE](LICENSE) 文件。
 - 使用 TypeScript 和 Node.js 构建
 - 使用 [node-telegram-bot-api](https://github.com/yagop/node-telegram-bot-api) 支持 Telegram
 - 使用 Winston 进行日志记录
-- 使用 pkg 创建独立可执行文件

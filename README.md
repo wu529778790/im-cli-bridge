@@ -75,13 +75,6 @@ npm run start:bg   # Start in background
 npm run stop       # Stop background service
 ```
 
-### 3. Create Standalone Binary
-
-```bash
-npm run pkg:build
-# Output: dist/im-cli-bridge (single executable)
-```
-
 ## Usage
 
 ### Run Modes
@@ -151,11 +144,10 @@ Use `--config ./custom.config.js` to override `server`, `executor`, `logging`.
 ### Best Practices
 
 1. Never commit `.env` files or credentials
-2. Use HTTPS webhooks in production
-3. Keep your AI CLI tool updated
-4. Set reasonable command timeouts
-5. Monitor logs for suspicious activity
-6. Keep dependencies updated
+2. Keep your AI CLI tool updated
+3. Set reasonable command timeouts
+4. Monitor logs for suspicious activity
+5. Keep dependencies updated
 
 ### Note
 
@@ -196,9 +188,6 @@ npm run build
 # Background start/stop
 npm run start:bg
 npm run stop
-
-# Create standalone binary
-npm run pkg:build
 ```
 
 ## Troubleshooting
@@ -236,4 +225,3 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - Built with TypeScript and Node.js
 - Uses [node-telegram-bot-api](https://github.com/yagop/node-telegram-bot-api) for Telegram
 - Uses Winston for logging
-- Uses pkg for creating standalone binaries
