@@ -58,7 +58,7 @@ export function runClaude(
   if (options?.chatId) env.CC_IM_CHAT_ID = options.chatId;
   if (options?.hookPort) env.CC_IM_HOOK_PORT = String(options.hookPort);
 
-  const child = spawn(cliPath, args, { cwd: workDir, stdio: ['ignore', 'pipe', 'pipe'], env });
+  const child = spawn(cliPath, args, { cwd: workDir, stdio: ['ignore', 'pipe', 'pipe'], env, windowsHide: true });
 
   log.debug(`Claude CLI spawned: pid=${child.pid}, cwd=${workDir}, session=${sessionId ?? 'new'}`);
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { main } from './index.js';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdir, writeFile, rm, readFile } from 'node:fs/promises';
@@ -79,8 +79,17 @@ async function stopService(): Promise<void> {
   }
 
   try {
-    // 尝试优雅终止
-    process.kill(pid, 'SIGTERM');
+    // 尝试优雅终止 - Windows 使用 taskkill，其他系统使用 SIGTERM
+    const isWindows = platform() === 'win32';
+    if (isWindows) {
+      // taskkill 会发送控制台关闭事件，Node.js 会将其转换为 SIGINT
+      execFileSync('taskkill', ['/PID', String(pid)], {
+        stdio: 'ignore',
+        timeout: 5000,
+      });
+    } else {
+      process.kill(pid, 'SIGTERM');
+    }
 
     // 等待进程退出
     const maxWait = 5000; // 最多等待 5 秒
@@ -125,7 +134,8 @@ if (args[0] === 'stop') {
   // 使用 detached 模式创建独立进程
   const child = spawn(process.execPath, [distPath], {
     detached: true,
-    stdio: ['ignore', 'ignore', 'ignore']
+    stdio: ['ignore', 'ignore', 'ignore'],
+    windowsHide: true  // Windows 上隐藏控制台窗口
   });
 
   // 保存 PID
