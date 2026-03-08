@@ -32,12 +32,6 @@ npm run build
 npm link
 ```
 
-### 方式三：下载二进制文件（用于部署）
-
-在 [Releases](https://github.com/wu529778790/im-cli-bridge/releases) 页面下载 Linux、Windows 或 macOS 版本。
-
-> **注意：** 这是一个**后台服务**，不是桌面应用程序。应该在服务器或终端中运行，不要双击可执行文件。
-
 ## 快速开始
 
 ### 1. 配置环境

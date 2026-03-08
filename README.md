@@ -32,12 +32,6 @@ npm run build
 npm link
 ```
 
-### Option 3: Download binary (for deployment)
-
-Binaries are available on the [Releases](https://github.com/wu529778790/im-cli-bridge/releases) page for Linux, Windows, and macOS.
-
-> **Note:** This is a **backend service**, not a desktop application. It should be run on a server or in a terminal, not by double-clicking the executable.
-
 ## Quick Start
 
 ### 1. Configure Environment
