@@ -199,16 +199,14 @@ This bridge forwards messages to your configured AI CLI tool (e.g., Claude Code)
 ```
 im-cli-bridge/
 ├── src/
-│   ├── core/              # Core logic (router, event-emitter, sessions)
+│   ├── core/              # Core logic (router, event-emitter)
 │   ├── interfaces/        # TypeScript interfaces and types
 │   ├── im-clients/        # Platform clients (telegram, feishu)
 │   ├── executors/         # Command execution with streaming
-│   ├── storage/           # Data persistence layer
-│   ├── utils/             # Utilities (logger, queue, watchdog)
-│   └── config/            # Configuration and schema validation
+│   ├── utils/             # Utilities (logger, output extractor)
+│   └── config/            # Configuration
 ├── dist/                  # Compiled output
 ├── logs/                  # Application logs
-├── data/                  # Storage and sessions
 ├── .env.example           # Environment template
 └── CLAUDE.md              # Architecture guide for developers
 ```
@@ -220,8 +218,6 @@ The system emits the following events through `EventEmitter`:
 - `message:received` - New message from IM platform
 - `message:sent` - Message sent to platform
 - `command:executed` - Command execution completed
-- `session:created` - New conversation session created
-- `session:updated` - Session messages updated
 - `error` - Error occurred
 
 ## Development
@@ -251,16 +247,6 @@ npm run pkg:build
 1. Verify `AI_COMMAND` is set correctly (default: `claudecode`)
 2. Test the command manually in your terminal: `claudecode "hello"`
 3. Check logs for execution errors
-
-### Watchdog keeps restarting?
-1. Increase `WATCHDOG_TIMEOUT` if AI responses take longer
-2. Check if AI CLI tool is hanging
-3. Review logs for timeout patterns
-
-### Session issues?
-1. Check storage file permissions
-2. Ensure `data/` directory exists
-3. Review session manager logs
 
 ## License
 

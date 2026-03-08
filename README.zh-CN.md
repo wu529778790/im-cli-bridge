@@ -199,16 +199,14 @@ module.exports = {
 ```
 im-cli-bridge/
 ├── src/
-│   ├── core/              # 核心逻辑（路由器、事件发射器、会话）
+│   ├── core/              # 核心逻辑（路由器、事件发射器）
 │   ├── interfaces/        # TypeScript 接口和类型
 │   ├── im-clients/        # 平台客户端（telegram、feishu）
 │   ├── executors/         # 带流式输出的命令执行
-│   ├── storage/           # 数据持久化层
-│   ├── utils/             # 工具类（日志、队列、看门狗）
-│   └── config/            # 配置和模式验证
+│   ├── utils/             # 工具类（日志、输出解析）
+│   └── config/            # 配置
 ├── dist/                  # 编译输出
 ├── logs/                  # 应用日志
-├── data/                  # 存储和会话
 ├── .env.example           # 环境变量模板
 └── CLAUDE.md              # 开发者架构指南
 ```
@@ -220,8 +218,6 @@ im-cli-bridge/
 - `message:received` - 从 IM 平台收到新消息
 - `message:sent` - 消息已发送到平台
 - `command:executed` - 命令执行完成
-- `session:created` - 创建新对话会话
-- `session:updated` - 会话消息已更新
 - `error` - 发生错误
 
 ## 开发
@@ -252,11 +248,6 @@ npm run pkg:build
 1. 验证命令在 `ALLOWED_COMMANDS` 中
 2. 检查命令超时设置
 3. 查看日志中的验证错误
-
-### 会话问题？
-1. 检查存储文件权限
-2. 确保 `data/` 目录存在
-3. 查看会话管理器日志
 
 ## 许可证
 
