@@ -27,6 +27,14 @@
     "bridge"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wu529778790/open-im.git"
+  },
+  "homepage": "https://github.com/wu529778790/open-im#readme",
+  "bugs": {
+    "url": "https://github.com/wu529778790/open-im/issues"
+  },
   "dependencies": {
     "prompts": "^2.4.2",
     "telegraf": "^4.16.3"
