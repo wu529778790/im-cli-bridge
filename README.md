@@ -22,13 +22,21 @@ npm install -g im-cli-bridge
 
 ### 1. Configure
 
-Create `.env` in your working directory:
+**Option A: Environment variables** (recommended)
+
+Set in your shell profile (.bashrc / .zshrc) or system env:
 
 ```bash
-cp .env.example .env
+export TELEGRAM_BOT_TOKEN=your_bot_token
+export AI_COMMAND=codex
 ```
 
-Edit `.env` with `TELEGRAM_BOT_TOKEN` and `AI_COMMAND` (e.g. codex/claude).
+**Option B: Config file**
+
+```bash
+im-cli-bridge init   # Creates ~/.im-cli-bridge/.env
+# Edit and add TELEGRAM_BOT_TOKEN and AI_COMMAND
+```
 
 ### 2. Run
 
@@ -52,6 +60,7 @@ im-cli-bridge stop    # Stop
 | `run`, `foreground` | Foreground mode (default) |
 | `start` | Start in background |
 | `stop` | Stop background service |
+| `init` | Create config dir and .env template |
 
 ### Options
 
@@ -80,7 +89,7 @@ Options:
 
 ### Bot not responding?
 1. Check bot token
-2. Check logs: `tail -f logs/combined.log`
+2. Check logs: `tail -f ~/.im-cli-bridge/logs/combined.log`
 3. Ensure only one bridge instance (avoid 409 Conflict)
 
 ### 409 Conflict?

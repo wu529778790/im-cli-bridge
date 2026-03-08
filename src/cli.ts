@@ -1,18 +1,22 @@
 #!/usr/bin/env node
 
-// Load environment variables from .env file
+// 全局安装时从用户目录加载配置
 import * as dotenv from 'dotenv';
-dotenv.config();
+import * as path from 'path';
+import { getEnvPath, getConfigDir, getPidPath, ensureConfigDir } from './utils/config-path';
+
+ensureConfigDir();
+const envPath = getEnvPath();
+dotenv.config({ path: envPath }); // 不存在则 no-op，环境变量优先
 
 import { IMCLIBridge } from './index';
 import { logger } from './utils/logger';
 import { defaultConfig } from './config/default.config';
 import * as fs from 'fs';
-import * as path from 'path';
 import { spawn } from 'child_process';
 
 interface CLIOptions {
-  command?: 'run' | 'start' | 'stop' | 'foreground';
+  command?: 'run' | 'start' | 'stop' | 'foreground' | 'init';
   config?: string;
   port?: number;
   host?: string;
@@ -22,7 +26,7 @@ interface CLIOptions {
   help?: boolean;
 }
 
-const PID_FILE = path.join(process.cwd(), '.im-cli-bridge.pid');
+const PID_FILE = getPidPath();
 
 function parseArgs(args: string[]): CLIOptions {
   const options: CLIOptions = {};
@@ -30,7 +34,7 @@ function parseArgs(args: string[]): CLIOptions {
 
   // 第一个参数可能是子命令
   const first = args[0];
-  if (first === 'run' || first === 'start' || first === 'stop' || first === 'foreground') {
+  if (first === 'run' || first === 'start' || first === 'stop' || first === 'foreground' || first === 'init') {
     options.command = first;
     i = 1;
   } else if (first === '--help' || first === '-h' || first === '--version' || first === '-v') {
@@ -87,9 +91,10 @@ USAGE:
   im-cli-bridge [COMMAND] [OPTIONS]
 
 COMMANDS:
-  run, foreground    前台模式：直接运行，日志输出到控制台，Ctrl+C 退出（默认）
-  start              后台模式：启动后台服务，需用 stop 停止
-  stop               后台模式：停止后台服务
+  run, foreground    前台模式：直接运行，Ctrl+C 退出（默认）
+  start              后台模式：启动服务
+  stop               后台模式：停止服务
+  init               初始化配置目录和 .env 模板
 
 OPTIONS:
   -c, --config <path>   Custom configuration file
@@ -127,7 +132,9 @@ function printVersion(): void {
 
 function loadCustomConfig(configPath: string): Partial<any> {
   try {
-    const absolutePath = path.resolve(process.cwd(), configPath);
+    const absolutePath = path.isAbsolute(configPath)
+      ? configPath
+      : path.resolve(process.cwd(), configPath);
     if (!fs.existsSync(absolutePath)) {
       throw new Error(`Configuration file not found: ${configPath}`);
     }
@@ -211,7 +218,7 @@ function startBackground(options: CLIOptions): void {
   const child = spawn(process.execPath, args, {
     detached: true,
     stdio: 'ignore',
-    cwd: process.cwd(),
+    cwd: getConfigDir(),
     env: { ...process.env, IM_CLI_BRIDGE_DAEMON: '1' },
     windowsHide: true
   });
@@ -221,6 +228,31 @@ function startBackground(options: CLIOptions): void {
   fs.writeFileSync(PID_FILE, String(child.pid));
   console.log(`Bridge started in background (PID: ${child.pid})`);
   console.log('Use "im-cli-bridge stop" to stop.');
+}
+
+function runInit(): void {
+  const envPath = getEnvPath();
+  if (fs.existsSync(envPath)) {
+    console.log(`Config already exists: ${envPath}`);
+    return;
+  }
+  const pkgRoot = path.join(__dirname, '..');
+  const examplePath = path.join(pkgRoot, '.env.example');
+  if (!fs.existsSync(examplePath)) {
+    fs.writeFileSync(envPath, [
+      '# Telegram（必填）',
+      'TELEGRAM_BOT_TOKEN=your_bot_token',
+      '',
+      '# AI CLI',
+      'AI_COMMAND=codex',
+      '',
+      'LOG_LEVEL=info'
+    ].join('\n'));
+  } else {
+    fs.copyFileSync(examplePath, envPath);
+  }
+  console.log(`Created ${envPath}`);
+  console.log('Edit the file and add your TELEGRAM_BOT_TOKEN.');
 }
 
 function stopBackground(): void {
@@ -269,6 +301,11 @@ async function main(): Promise<void> {
 
   if (command === 'stop') {
     stopBackground();
+    return;
+  }
+
+  if (command === 'init') {
+    runInit();
     return;
   }
 

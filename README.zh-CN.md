@@ -20,15 +20,23 @@ npm install -g im-cli-bridge
 
 ## 快速开始
 
-### 1. 配置环境
+### 1. 配置
 
-在运行目录下创建 `.env` 文件：
+**方式一：环境变量**（推荐）
+
+在 shell 配置（.bashrc / .zshrc）或系统环境变量中设置：
 
 ```bash
-cp .env.example .env
+export TELEGRAM_BOT_TOKEN=your_bot_token
+export AI_COMMAND=codex
 ```
 
-编辑 `.env`，至少配置 `TELEGRAM_BOT_TOKEN` 和 `AI_COMMAND`（如 codex/claude）。
+**方式二：配置文件**
+
+```bash
+im-cli-bridge init   # 创建 ~/.im-cli-bridge/.env 模板
+# 编辑 ~/.im-cli-bridge/.env，填入 TELEGRAM_BOT_TOKEN 和 AI_COMMAND
+```
 
 ### 2. 运行
 
@@ -52,6 +60,7 @@ im-cli-bridge stop    # 停止
 | `run`, `foreground` | 前台运行（默认） |
 | `start` | 后台启动 |
 | `stop` | 后台停止 |
+| `init` | 初始化配置目录和 .env 模板 |
 
 ### 选项
 
@@ -87,7 +96,7 @@ im-cli-bridge start -c ./custom.config.js
 
 ### 机器人不响应？
 1. 检查 bot 令牌是否正确
-2. 检查日志：`tail -f logs/combined.log`
+2. 检查日志：`tail -f ~/.im-cli-bridge/logs/combined.log`
 3. 确保只运行一个 bridge 实例（避免 409 Conflict）
 
 ### 409 Conflict？

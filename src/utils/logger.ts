@@ -1,5 +1,9 @@
 import winston from 'winston';
+import * as path from 'path';
+import { getLogDir, ensureConfigDir } from './config-path';
 
+ensureConfigDir();
+const logDir = getLogDir();
 const logFormat = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
   winston.format.errors({ stack: true }),
@@ -27,13 +31,13 @@ export class Logger {
           )
         }),
         new winston.transports.File({
-          filename: 'logs/error.log',
+          filename: path.join(logDir, 'error.log'),
           level: 'error',
           maxsize: 5242880, // 5MB
           maxFiles: 5
         }),
         new winston.transports.File({
-          filename: 'logs/combined.log',
+          filename: path.join(logDir, 'combined.log'),
           maxsize: 5242880, // 5MB
           maxFiles: 5
         })

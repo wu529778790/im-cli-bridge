@@ -58,6 +58,7 @@
   },
   "files": [
     "dist",
+    ".env.example",
     "README.md",
     "README.zh-CN.md"
   ],

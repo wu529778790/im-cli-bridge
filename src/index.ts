@@ -4,7 +4,6 @@
  * 功能：通过 IM（Telegram/Feishu）控制 claudecode 命令行工具
  */
 
-import dotenv from 'dotenv';
 import { EventEmitter } from './core/event-emitter';
 import { SimpleRouter } from './core/router';
 import { TelegramClient } from './im-clients/telegram';
@@ -12,9 +11,6 @@ import { Logger } from './utils/logger';
 import { immessageToMessage } from './utils/message-adapter';
 import { IConfig } from './interfaces/config';
 import { defaultConfig } from './config/default.config';
-
-// 加载环境变量
-dotenv.config();
 
 /**
  * 主 Bridge 类
