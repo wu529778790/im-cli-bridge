@@ -158,11 +158,36 @@ export class SessionManager {
   }
 
   private async resolveAndValidate(baseDir: string, targetDir: string): Promise<string> {
-    const resolved = resolve(baseDir, targetDir);
+    let resolved: string;
+
+    // 处理 Windows 驱动器路径 (如 d:, d:/path, d:\path)
+    const drivePathMatch = targetDir.match(/^([a-zA-Z]):(.*)$/);
+    if (drivePathMatch) {
+      const [, drive, rest] = drivePathMatch;
+      // 如果 rest 为空或以 \ 或 / 开头，则是驱动器根目录的绝对路径
+      // 如果 rest 不为空且不以 \ 或 / 开头，则是驱动器当前目录的相对路径
+      if (rest === '' || rest.startsWith('/') || rest.startsWith('\\')) {
+        resolved = `${drive}:${rest}`;
+      } else {
+        // 需要获取该驱动器的当前目录，这里简化处理，当作绝对路径
+        resolved = `${drive}:${rest}`;
+      }
+    } else if (targetDir === '~' || targetDir.startsWith('~/')) {
+      // 处理家目录
+      const home = process.env.USERPROFILE || process.env.HOME || '';
+      resolved = join(home, targetDir.slice(1));
+    } else if (targetDir.startsWith('/') || (targetDir.length >= 3 && targetDir[1] === ':' && (targetDir[2] === '\\' || targetDir[2] === '/'))) {
+      // 绝对路径
+      resolved = targetDir;
+    } else {
+      // 相对路径
+      resolved = resolve(baseDir, targetDir);
+    }
+
     if (!existsSync(resolved)) throw new Error(`目录不存在: ${resolved}`);
     const realPath = await realpath(resolved);
     const allowed = this.allowedBaseDirs.some(
-      (base) => realPath === base || realPath.startsWith(base + '/')
+      (base) => realPath === base || realPath.startsWith(base + '/') || realPath.startsWith(base + '\\')
     );
     if (!allowed) throw new Error(`目录不在允许范围内: ${realPath}`);
     return realPath;
