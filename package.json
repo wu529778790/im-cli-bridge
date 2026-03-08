@@ -1,6 +1,6 @@
 {
   "name": "@wu529778790/open-im",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Multi-platform IM bridge for AI CLI tools (Claude, Codex, Cursor)",
   "type": "module",
   "main": "dist/index.js",
