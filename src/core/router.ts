@@ -9,6 +9,7 @@ import { CommandParser } from './command-parser';
 import { SessionManager } from './session-manager';
 import { Logger } from '../utils/logger';
 import { ICommandExecutor } from '../interfaces/command-executor';
+import { Watchdog } from '../utils/watchdog';
 
 export class Router {
   private logger: Logger;
@@ -17,17 +18,23 @@ export class Router {
   private sessionManager: SessionManager;
   private commandExecutor: ICommandExecutor;
   private imClients: Map<string, IMClient> = new Map();
+  private watchdog?: Watchdog;
+  private aiCommand: string;
 
   constructor(
     eventEmitter: EventEmitter,
     sessionManager: SessionManager,
-    commandExecutor: ICommandExecutor
+    commandExecutor: ICommandExecutor,
+    watchdog?: Watchdog,
+    aiCommand: string = 'claudecode'
   ) {
     this.logger = new Logger('Router');
     this.eventEmitter = eventEmitter;
     this.sessionManager = sessionManager;
     this.commandExecutor = commandExecutor;
     this.commandParser = new CommandParser();
+    this.watchdog = watchdog;
+    this.aiCommand = aiCommand;
   }
 
   /**
@@ -37,8 +44,8 @@ export class Router {
     this.logger.info('Initializing router...');
 
     // 注册事件监听器
-    this.eventEmitter.on('message:received', async (data: { message: Message }) => {
-      await this.handleMessage(data.message);
+    this.eventEmitter.on('message:received', async (message: Message) => {
+      await this.handleMessage(message);
     });
 
     this.eventEmitter.on('command:executed', async (data) => {
@@ -81,10 +88,12 @@ export class Router {
    */
   private async handleMessage(message: Message): Promise<void> {
     try {
-      this.logger.debug(`Received message from ${message.userId}: ${message.content}`);
+      // 重置 Watchdog 计时器，表明服务正常运行
+      if (this.watchdog) {
+        this.watchdog.reset();
+      }
 
-      // 触发消息接收事件
-      await this.eventEmitter.emit('message:received', { message });
+      this.logger.info(`Received message from ${message.userId}: ${message.content}`);
 
       // 检查是否是命令
       if (this.commandParser.isCommand(message.content)) {
@@ -125,7 +134,7 @@ export class Router {
 
       // 执行命令
       const result = await this.commandExecutor.execute(
-        `claude ${parsed.raw}`,
+        `${this.aiCommand} ${parsed.raw}`,
         parsed.args || []
       );
 
@@ -170,8 +179,21 @@ export class Router {
         message.content
       );
 
+      // 发送给 Claude CLI 处理
+      this.logger.info(`Sending to Claude CLI (${this.aiCommand}): ${message.content}`);
+      const result = await this.commandExecutor.execute(
+        this.aiCommand,
+        [message.content]
+      );
+
+      // 发送响应
+      if (result && result.stdout) {
+        await this.sendMessage(message.platform, message.userId, result.stdout);
+      } else if (result && result.stderr) {
+        await this.sendMessage(message.platform, message.userId, result.stderr);
+      }
+
       // 触发普通消息处理事件
-      // 注意: 这里不直接调用AI，而是让订阅者来处理
       await this.eventEmitter.emit('session:updated', {
         sessionId: session.sessionId,
         message

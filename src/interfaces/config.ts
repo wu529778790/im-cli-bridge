@@ -24,6 +24,7 @@ export interface ITelegramConfig {
 export interface IExecutorConfig {
   timeout: number;
   maxConcurrent: number;
+  aiCommand: string;
   allowedCommands: string[];
   blockedCommands: string[];
 }

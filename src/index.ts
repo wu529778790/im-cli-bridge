@@ -73,6 +73,18 @@ export class IMCLIBridge {
     // Initialize session manager
     this.sessionManager = new SessionManager(this.storage);
 
+    // Initialize watchdog if enabled (create but don't start yet)
+    if (this.config.watchdog.enabled) {
+      this.watchdog = new Watchdog({
+        name: 'IMCLIBridge-Watchdog',
+        timeout: this.config.watchdog.timeout,
+        onTimeout: async () => {
+          logger.warn('Watchdog timeout triggered, restarting...');
+          await this.restart();
+        }
+      });
+    }
+
     // Initialize IM clients
     if (this.config.feishu && this.config.feishu.appId) {
       this.feishuClient = new FeishuClient();
@@ -84,25 +96,15 @@ export class IMCLIBridge {
       logger.info('Telegram client created');
     }
 
-    // Initialize router
+    // Initialize router with watchdog and config
     if (this.eventEmitter && this.sessionManager) {
       this.router = new Router(
         this.eventEmitter,
         this.sessionManager,
-        this.commandExecutor
+        this.commandExecutor,
+        this.watchdog,
+        this.config.executor.aiCommand
       );
-    }
-
-    // Initialize watchdog if enabled
-    if (this.config.watchdog.enabled) {
-      this.watchdog = new Watchdog({
-        name: 'IMCLIBridge-Watchdog',
-        timeout: this.config.watchdog.timeout,
-        onTimeout: async () => {
-          logger.warn('Watchdog timeout triggered, restarting...');
-          await this.restart();
-        }
-      });
     }
 
     logger.info('All components initialized');
@@ -137,7 +139,13 @@ export class IMCLIBridge {
         await this.telegramClient.initialize({
           appId: this.config.telegram.botToken,
           appSecret: '', // Telegram doesn't use appSecret
-        });
+          polling: {
+            autoStart: true,
+            params: {
+              timeout: this.config.telegram.pollTimeout || 10
+            }
+          }
+        } as any);
         await this.telegramClient.start();
         logger.info('Telegram client started');
       }

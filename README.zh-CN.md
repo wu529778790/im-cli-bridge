@@ -2,15 +2,16 @@
 
 [English](README.md) | [中文](README.zh-CN.md)
 
-即时通讯平台与命令行执行之间的桥梁，允许通过聊天界面执行终端命令。
+连接 IM 平台（Telegram、飞书等）与 AI CLI 工具（如 Claude Code、Cursor 等）的桥梁，让你通过聊天界面使用 AI 编程助手。
 
 ## 功能特性
 
 - **多平台支持**：支持 Telegram、飞书等平台
-- **安全执行**：可配置的命令白名单和用户权限控制
-- **实时流式输出**：支持 Claude CLI stream-json 格式的实时命令输出
+- **AI CLI 集成**：兼容 Claude Code、Cursor、Codex、Aider 等
+- **实时流式输出**：支持 Claude CLI stream-json 格式的实时响应
 - **会话管理**：持久化的对话会话和历史记录
 - **事件驱动架构**：灵活的发布订阅事件系统，易于扩展
+- **看门狗保护**：服务卡死自动重启
 - **类型安全**：完整的 TypeScript 实现，包含全面的接口定义
 
 ## 安装
@@ -53,13 +54,15 @@ cp .env.example .env
 # Telegram 机器人令牌（从 @BotFather 获取）
 TELEGRAM_BOT_TOKEN=你的bot令牌
 
-# 飞书应用凭证
+# 飞书应用凭证（可选）
 FEISHU_APP_ID=你的应用ID
 FEISHU_APP_SECRET=你的应用密钥
 
-# 安全设置
-ALLOWED_USERS=你的Telegram ID,其他用户ID
-ALLOWED_COMMANDS=ls,pwd,echo,cat,git
+# AI CLI 命令（claudecode、cursor、codex、aider 等）
+AI_COMMAND=claudecode
+
+# 日志
+LOG_LEVEL=info
 ```
 
 ### 2. 构建和运行
@@ -101,14 +104,15 @@ im-cli-bridge [选项]
 
 ### 环境变量
 
-| 变量 | 说明 | 必需 |
-|------|------|------|
-| `TELEGRAM_BOT_TOKEN` | 从 @BotFather 获取的 Telegram bot 令牌 | 条件* |
-| `FEISHU_APP_ID` | 飞书应用 ID | 条件* |
-| `FEISHU_APP_SECRET` | 飞书应用密钥 | 条件* |
-| `ALLOWED_USERS` | 允许使用机器人的逗号分隔用户 ID 列表 | 是 |
-| `ALLOWED_COMMANDS` | 允许执行的逗号分隔命令列表 | 是 |
-| `LOG_LEVEL` | 日志级别（debug/info/warn/error） | 否 |
+| 变量 | 说明 | 必需 | 默认值 |
+|------|------|------|--------|
+| `TELEGRAM_BOT_TOKEN` | 从 @BotFather 获取的 Telegram bot 令牌 | 条件* | - |
+| `FEISHU_APP_ID` | 飞书应用 ID | 条件* | - |
+| `FEISHU_APP_SECRET` | 飞书应用密钥 | 条件* | - |
+| `AI_COMMAND` | AI CLI 工具名称（claudecode、cursor、codex、aider） | 否 | `claudecode` |
+| `LOG_LEVEL` | 日志级别（debug/info/warn/error） | 否 | `info` |
+| `WATCHDOG_ENABLED` | 启用看门狗自动重启 | 否 | `true` |
+| `WATCHDOG_TIMEOUT` | 看门狗超时时间（毫秒） | 否 | `60000` |
 
 *至少需要配置一个 IM 平台
 
@@ -116,8 +120,8 @@ im-cli-bridge [选项]
 
 ```
 ┌─────────────┐      ┌──────────────┐      ┌─────────────┐
-│  Telegram   │─────▶│              │─────▶│   命令执行   │
-│   客户端    │      │    路由器    │      │    器       │
+│  Telegram   │─────▶│              │─────▶│   AI CLI    │
+│   客户端    │      │    路由器    │      │   工具      │
 └─────────────┘      │              │      └─────────────┘
                      │              │
 ┌─────────────┐      │   事件       │      ┌─────────────┐
@@ -132,10 +136,10 @@ im-cli-bridge [选项]
 |------|------|
 | **IM 客户端** | 平台特定的集成（Telegram、飞书） |
 | **事件发射器** | 用于消息路由的发布订阅事件系统 |
-| **路由器** | 带命令解析和会话管理的消息处理器 |
-| **命令执行器** | 支持流式输出的 Shell 命令执行 |
+| **路由器** | 将消息转发给 AI CLI 工具的处理器 |
+| **Shell 执行器** | 支持流式输出的命令执行器 |
 | **会话管理器** | 持久化的对话历史和上下文 |
-| **命令验证器** | 用于命令验证的安全层 |
+| **看门狗** | 服务卡死检测和自动重启 |
 
 ## 配置文件
 
@@ -151,8 +155,13 @@ module.exports = {
   executor: {
     timeout: 60000,
     maxConcurrent: 5,
-    allowedCommands: ['git', 'npm', 'ls', 'cat'],
-    blockedCommands: ['rm', 'dd', 'mkfs']
+    aiCommand: 'claudecode',  // 或 'cursor', 'codex', 'aider'
+    allowedCommands: ['*'],
+    blockedCommands: ['rm -rf /', 'mkfs', 'dd if=/dev/zero']
+  },
+  watchdog: {
+    enabled: true,
+    timeout: 60000
   },
   logging: {
     level: 'debug'
@@ -164,23 +173,18 @@ module.exports = {
 
 ## 安全性
 
-### 内置保护
-
-- **命令白名单**：只能执行明确允许的命令
-- **用户授权**：只有指定的用户 ID 才能与机器人交互
-- **危险模式检测**：阻止破坏性命令如 `rm -rf /`
-- **路径遍历保护**：防止 `../` 目录逃逸攻击
-- **命令超时**：自动终止长时间运行的命令
-- **参数清理**：移除危险的输入字符
-
 ### 最佳实践
 
 1. 永远不要提交 `.env` 文件或凭证
 2. 生产环境使用 HTTPS webhook
-3. 将 `ALLOWED_COMMANDS` 限制为最小必要集
+3. 保持 AI CLI 工具更新
 4. 设置合理的命令超时时间
 5. 监控日志中的可疑活动
 6. 保持依赖项更新
+
+### 注意事项
+
+此桥接服务将消息转发给配置的 AI CLI 工具（如 Claude Code）。AI 工具本身处理命令执行和安全。请确保你的 AI 工具已正确配置并具有适当的安全措施。
 
 ## 支持的 IM 平台
 

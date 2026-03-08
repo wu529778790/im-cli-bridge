@@ -2,15 +2,16 @@
 
 [English](README.md) | [中文](README.zh-CN.md)
 
-A bridge between IM platforms (Telegram, WeChat, Feishu) and CLI execution, allowing you to execute terminal commands through chat interfaces.
+A message routing bridge that connects IM platforms (Telegram, Feishu) with AI CLI tools like Claude Code, Cursor, etc. Allows you to interact with AI coding assistants through chat interfaces.
 
 ## Features
 
 - **Multi-Platform Support**: Works with Telegram, Feishu (Lark), and more
-- **Secure Execution**: Configurable command whitelist and user permissions
-- **Real-time Streaming**: Live command output streaming with Claude CLI stream-json format support
+- **AI CLI Integration**: Compatible with Claude Code, Cursor, Codex, Aider, etc.
+- **Real-time Streaming**: Supports Claude CLI stream-json format for live responses
 - **Session Management**: Persistent conversation sessions with context history
 - **Event-Driven Architecture**: Flexible pub/sub event system for extensibility
+- **Watchdog Protection**: Auto-restart on service hang detection
 - **Type-Safe**: Full TypeScript implementation with comprehensive interfaces
 
 ## Installation
@@ -53,13 +54,15 @@ Edit `.env` with your settings:
 # Telegram Bot Token (get from @BotFather)
 TELEGRAM_BOT_TOKEN=your_bot_token_here
 
-# Feishu App Credentials
+# Feishu App Credentials (optional)
 FEISHU_APP_ID=your_app_id
 FEISHU_APP_SECRET=your_app_secret
 
-# Security Settings
-ALLOWED_USERS=your_telegram_id,another_user_id
-ALLOWED_COMMANDS=ls,pwd,echo,cat,git
+# AI CLI Command (claudecode, cursor, codex, aider, etc.)
+AI_COMMAND=claudecode
+
+# Logging
+LOG_LEVEL=info
 ```
 
 ### 2. Build and Run
@@ -101,14 +104,15 @@ Options:
 
 ### Environment Variables
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `TELEGRAM_BOT_TOKEN` | Telegram bot token from @BotFather | No* |
-| `FEISHU_APP_ID` | Feishu/Lark app ID | No* |
-| `FEISHU_APP_SECRET` | Feishu/Lark app secret | No* |
-| `ALLOWED_USERS` | Comma-separated user IDs allowed to use the bot | Yes |
-| `ALLOWED_COMMANDS` | Comma-separated list of allowed commands | Yes |
-| `LOG_LEVEL` | Logging level (debug/info/warn/error) | No |
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `TELEGRAM_BOT_TOKEN` | Telegram bot token from @BotFather | No* | - |
+| `FEISHU_APP_ID` | Feishu/Lark app ID | No* | - |
+| `FEISHU_APP_SECRET` | Feishu/Lark app secret | No* | - |
+| `AI_COMMAND` | AI CLI tool to use (claudecode, cursor, codex, aider) | No | `claudecode` |
+| `LOG_LEVEL` | Logging level (debug/info/warn/error) | No | `info` |
+| `WATCHDOG_ENABLED` | Enable watchdog auto-restart | No | `true` |
+| `WATCHDOG_TIMEOUT` | Watchdog timeout in milliseconds | No | `60000` |
 
 *At least one IM platform must be configured
 
@@ -132,10 +136,10 @@ Options:
 |-----------|-------------|
 | **IM Clients** | Platform-specific integrations (Telegram, Feishu) |
 | **EventEmitter** | Pub/sub event system for message routing |
-| **Router** | Message handler with command parsing and session management |
-| **CommandExecutor** | Shell command execution with streaming output |
+| **Router** | Message handler that forwards to AI CLI tool |
+| **ShellExecutor** | Command execution with streaming output support |
 | **SessionManager** | Persistent conversation history and context |
-| **CommandValidator** | Security layer for command validation |
+| **Watchdog** | Auto-restart on service hang detection |
 
 ## Configuration File
 
@@ -151,8 +155,13 @@ module.exports = {
   executor: {
     timeout: 60000,
     maxConcurrent: 5,
-    allowedCommands: ['git', 'npm', 'ls', 'cat'],
-    blockedCommands: ['rm', 'dd', 'mkfs']
+    aiCommand: 'claudecode',  // or 'cursor', 'codex', 'aider'
+    allowedCommands: ['*'],
+    blockedCommands: ['rm -rf /', 'mkfs', 'dd if=/dev/zero']
+  },
+  watchdog: {
+    enabled: true,
+    timeout: 60000
   },
   logging: {
     level: 'debug'
@@ -164,23 +173,18 @@ Use with: `im-cli-bridge --config ./custom.config.js`
 
 ## Security
 
-### Built-in Protections
-
-- **Command Whitelist**: Only explicitly allowed commands can be executed
-- **User Authorization**: Only specified user IDs can interact with the bot
-- **Dangerous Pattern Detection**: Blocks destructive commands like `rm -rf /`
-- **Path Traversal Protection**: Prevents `../` directory escape attacks
-- **Command Timeout**: Automatic termination of long-running commands
-- **Argument Sanitization**: Removes dangerous input characters
-
 ### Best Practices
 
 1. Never commit `.env` files or credentials
 2. Use HTTPS webhooks in production
-3. Restrict `ALLOWED_COMMANDS` to minimum necessary
+3. Keep your AI CLI tool updated
 4. Set reasonable command timeouts
 5. Monitor logs for suspicious activity
 6. Keep dependencies updated
+
+### Note
+
+This bridge forwards messages to your configured AI CLI tool (e.g., Claude Code). The AI tool itself handles command execution and safety. Ensure your AI tool is properly configured with appropriate safeguards.
 
 ## Supported IM Platforms
 
@@ -240,14 +244,18 @@ npm run pkg:build
 
 ### Bot not responding?
 1. Check bot token is correct
-2. Verify user ID is in `ALLOWED_USERS`
-3. Check logs: `tail -f logs/app.log`
-4. Ensure webhook/port is accessible
+2. Check logs: `tail -f logs/combined.log`
+3. Ensure webhook/port is accessible
 
-### Commands not executing?
-1. Verify command is in `ALLOWED_COMMANDS`
-2. Check command timeout setting
-3. Review logs for validation errors
+### AI command not working?
+1. Verify `AI_COMMAND` is set correctly (default: `claudecode`)
+2. Test the command manually in your terminal: `claudecode "hello"`
+3. Check logs for execution errors
+
+### Watchdog keeps restarting?
+1. Increase `WATCHDOG_TIMEOUT` if AI responses take longer
+2. Check if AI CLI tool is hanging
+3. Review logs for timeout patterns
 
 ### Session issues?
 1. Check storage file permissions

@@ -368,7 +368,7 @@ export class TelegramClient implements IMClient {
         // 触发消息接收事件
         await this.eventEmitter.emit('message:received', imMessage);
 
-        logger.debug(`Received message from ${msg.chat.id}: ${msg.text}`);
+        logger.info(`Received message from ${msg.chat.id}: ${msg.text}`);
       } catch (error) {
         logger.error('Error processing message:', error);
       }
