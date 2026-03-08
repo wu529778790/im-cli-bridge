@@ -14,7 +14,7 @@
 ### 方式一：npx（推荐，无需安装）
 
 ```bash
-npx @wu529778790/open-im
+npx @wu529778790/open-im &
 ```
 
 ### 方式二：全局安装
@@ -24,20 +24,10 @@ npx @wu529778790/open-im
 pnpm i @wu529778790/open-im -g
 
 # 启动
-open-im
+open-im &
 ```
 
 首次运行会进入交互式配置，按提示输入后自动启动服务。配置保存到 `~/.open-im/config.json`。
-
-### 后台运行
-
-```bash
-# Linux / macOS
-nohup open-im > /dev/null 2>&1 &
-
-# Windows (PowerShell)
-Start-Process -WindowStyle Hidden -FilePath "open-im"
-```
 
 ## 配置
 
