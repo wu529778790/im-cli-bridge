@@ -8,11 +8,11 @@
 
 - **多平台支持**：支持 Telegram、飞书等平台
 - **AI CLI 集成**：兼容 Claude Code、Cursor、Codex、Aider 等
-- **实时流式输出**：支持 Claude CLI stream-json 格式的实时响应
-- **会话管理**：持久化的对话会话和历史记录
-- **事件驱动架构**：灵活的发布订阅事件系统，易于扩展
-- **看门狗保护**：服务卡死自动重启
-- **类型安全**：完整的 TypeScript 实现，包含全面的接口定义
+- **实时流式输出**：输出追加为新消息，不覆盖已发送内容
+- **Codex 输出优化**：过滤 header、exec、thinking、tokens 等噪音，只保留 AI 回复
+- **两种运行模式**：前台模式（Ctrl+C 退出）和后台模式（start/stop 管理）
+- **事件驱动架构**：灵活的发布订阅事件系统
+- **类型安全**：完整的 TypeScript 实现
 
 ## 安装
 
@@ -68,14 +68,17 @@ LOG_LEVEL=info
 ### 2. 构建和运行
 
 ```bash
-# 开发模式（使用 ts-node）
-npm run dev
-
 # 编译 TypeScript
 npm run build
 
-# 生产模式
+# 前台模式（日志输出到控制台，Ctrl+C 退出）
 npm start
+# 或
+npm run dev
+
+# 后台模式（需 start/stop 管理）
+npm run start:bg   # 启动后台服务
+npm run stop       # 停止后台服务
 ```
 
 ### 3. 创建独立可执行文件
@@ -87,19 +90,48 @@ npm run pkg:build
 
 ## 使用方法
 
+### 运行模式
+
+| 命令 | 说明 |
+|------|------|
+| `run`, `foreground` | 前台模式：直接运行，日志输出到控制台，**Ctrl+C 退出**（默认） |
+| `start` | 后台模式：启动后台服务，需用 `stop` 停止 |
+| `stop` | 后台模式：停止后台服务 |
+
 ### 命令行选项
 
 ```bash
-im-cli-bridge [选项]
+im-cli-bridge [COMMAND] [OPTIONS]
+
+命令:
+  run, foreground    前台运行（默认）
+  start              后台启动
+  stop               后台停止
 
 选项:
-  -c, --config <路径>     自定义配置文件路径
-  -p, --port <端口>       服务器端口（默认：3000）
-  -h, --host <地址>       服务器主机（默认：localhost）
-  -l, --log-level <级别>  日志级别：debug, info, warn, error
-  -v, --verbose           启用详细日志
-      --version           显示版本信息
-      --help              显示帮助信息
+  -c, --config <路径>   自定义配置文件
+  -p, --port <端口>     服务器端口（默认：3000）
+  -H, --host <地址>     服务器主机
+  -l, --log-level <级别> 日志级别：debug, info, warn, error
+  -v, --verbose         详细日志
+      --version         显示版本
+      --help            显示帮助
+```
+
+### 示例
+
+```bash
+# 前台运行，Ctrl+C 退出
+im-cli-bridge
+im-cli-bridge run
+
+# 后台运行
+im-cli-bridge start
+im-cli-bridge stop
+
+# 带参数
+im-cli-bridge run --log-level debug
+im-cli-bridge start -c ./config/custom.js
 ```
 
 ### 环境变量
@@ -111,8 +143,7 @@ im-cli-bridge [选项]
 | `FEISHU_APP_SECRET` | 飞书应用密钥 | 条件* | - |
 | `AI_COMMAND` | AI CLI 工具名称（claudecode、cursor、codex、aider） | 否 | `claudecode` |
 | `LOG_LEVEL` | 日志级别（debug/info/warn/error） | 否 | `info` |
-| `WATCHDOG_ENABLED` | 启用看门狗自动重启 | 否 | `true` |
-| `WATCHDOG_TIMEOUT` | 看门狗超时时间（毫秒） | 否 | `60000` |
+| `AI_SESSION_MODE` | 启用会话模式（需 CLI 支持 stdin） | 否 | `false` |
 
 *至少需要配置一个 IM 平台
 
@@ -134,12 +165,11 @@ im-cli-bridge [选项]
 
 | 组件 | 说明 |
 |------|------|
-| **IM 客户端** | 平台特定的集成（Telegram、飞书） |
-| **事件发射器** | 用于消息路由的发布订阅事件系统 |
-| **路由器** | 将消息转发给 AI CLI 工具的处理器 |
-| **Shell 执行器** | 支持流式输出的命令执行器 |
-| **会话管理器** | 持久化的对话历史和上下文 |
-| **看门狗** | 服务卡死检测和自动重启 |
+| **IM 客户端** | 平台集成（Telegram、飞书） |
+| **事件发射器** | 消息路由的发布订阅系统 |
+| **路由器** | 将消息转发给 AI CLI 工具 |
+| **Shell 执行器** | 流式命令执行 |
+| **输出解析器** | 过滤 Codex/Claude 输出，提取可读回复 |
 
 ## 配置文件
 
@@ -154,14 +184,9 @@ module.exports = {
   },
   executor: {
     timeout: 60000,
-    maxConcurrent: 5,
     aiCommand: 'claudecode',  // 或 'cursor', 'codex', 'aider'
     allowedCommands: ['*'],
     blockedCommands: ['rm -rf /', 'mkfs', 'dd if=/dev/zero']
-  },
-  watchdog: {
-    enabled: true,
-    timeout: 60000
   },
   logging: {
     level: 'debug'
@@ -169,7 +194,7 @@ module.exports = {
 };
 ```
 
-使用方式：`im-cli-bridge --config ./custom.config.js`
+使用：`im-cli-bridge run --config ./custom.config.js`
 
 ## 安全性
 
@@ -223,7 +248,7 @@ im-cli-bridge/
 ## 开发
 
 ```bash
-# 开发模式运行
+# 前台开发模式
 npm run dev
 
 # 运行测试
@@ -231,6 +256,10 @@ npm test
 
 # 生产构建
 npm run build
+
+# 后台启动/停止
+npm run start:bg
+npm run stop
 
 # 创建独立可执行文件
 npm run pkg:build
@@ -240,14 +269,17 @@ npm run pkg:build
 
 ### 机器人不响应？
 1. 检查 bot 令牌是否正确
-2. 验证用户 ID 在 `ALLOWED_USERS` 中
-3. 检查日志：`tail -f logs/app.log`
-4. 确保 webhook/端口可访问
+2. 检查日志：`tail -f logs/combined.log`
+3. 确保只运行一个 bridge 实例（避免 409 Conflict）
 
-### 命令无法执行？
-1. 验证命令在 `ALLOWED_COMMANDS` 中
-2. 检查命令超时设置
-3. 查看日志中的验证错误
+### 409 Conflict: terminated by other getUpdates？
+同一 Bot 只能有一个长轮询连接。请确保：
+- 没有同时运行 `npm start` 和 `npm run start:bg`
+- 后台模式用 `npm run stop` 停掉后再重启
+
+### AI 命令不工作？
+1. 验证 `AI_COMMAND` 正确（codex、claudecode 等）
+2. 在终端手动测试：`codex "hello"`
 
 ## 许可证
 

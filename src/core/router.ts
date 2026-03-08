@@ -181,7 +181,7 @@ export class SimpleRouter {
     let session = this.aiSessions.get(sessionKey);
     if (!session) {
       let accumulated = '';
-      let streamedMessageIds: string[] = [];
+      let lastSentLength = 0;
       let sendPromise: Promise<void> = Promise.resolve();
       const replyTarget = message.userId;
 
@@ -196,16 +196,21 @@ export class SimpleRouter {
         baseArgs: getAIAdapter(this.aiCommand).baseArgs,
         onOutput: (text: string) => {
           accumulated += text;
+          const current = filterStreamOutput(accumulated);
+          if (current.length <= lastSentLength) return;
+
           sendPromise = sendPromise.then(async () => {
             try {
-              streamedMessageIds = await this.sendOrUpdateChunked(
+              const cur = filterStreamOutput(accumulated);
+              if (cur.length <= lastSentLength) return;
+              lastSentLength = await this.sendOrAppendChunked(
                 client!,
                 replyTarget,
-                accumulated,
-                streamedMessageIds
+                cur,
+                lastSentLength
               );
             } catch (err) {
-              this.logger.debug('Session stream update failed:', err);
+              this.logger.debug('Session stream append failed:', err);
             }
           });
         },
@@ -251,8 +256,8 @@ export class SimpleRouter {
     args: string[]
   ): Promise<{ stdout: string; stderr: string; streamed: boolean }> {
     let accumulated = '';
-    let lastSent = '';
-    let streamedMessageIds: string[] = [];
+    let lastSentLength = 0;
+    let streamed = false;
     const client = this.imClients.get(message.platform);
     const replyTarget = message.userId;
 
@@ -262,25 +267,25 @@ export class SimpleRouter {
       timeout: 60000,
       onText: (text: string) => {
         accumulated += text;
-        const toSend = filterStreamOutput(accumulated);
+        const current = filterStreamOutput(accumulated);
 
         if (!client) return;
-        if (!toSend && streamedMessageIds.length === 0) return; // 过滤后为空（如 codex header）则等有内容再发
-        if (toSend === lastSent) return; // 避免 Telegram "message is not modified"
+        if (!current) return; // 过滤后为空则等有内容再发
+        if (current.length <= lastSentLength) return; // 无新内容
 
         sendPromise = sendPromise.then(async () => {
           try {
-            const current = filterStreamOutput(accumulated);
-            if (current === lastSent) return;
-            streamedMessageIds = await this.sendOrUpdateChunked(
+            const cur = filterStreamOutput(accumulated);
+            if (cur.length <= lastSentLength) return;
+            lastSentLength = await this.sendOrAppendChunked(
               client,
               replyTarget,
-              current,
-              streamedMessageIds
+              cur,
+              lastSentLength
             );
-            lastSent = current;
+            streamed = true;
           } catch (err) {
-            this.logger.debug('Stream update failed, will send final result:', err);
+            this.logger.debug('Stream append failed:', err);
           }
         });
       }
@@ -291,43 +296,28 @@ export class SimpleRouter {
     return {
       stdout: result.stdout,
       stderr: result.stderr,
-      streamed: streamedMessageIds.length > 0
+      streamed
     };
   }
 
   /**
-   * 分块发送/更新消息，避免 Telegram MESSAGE_TOO_LONG (4096 限制)
+   * 追加模式：只发送新增内容作为新消息，不更新前一条
+   * 避免用户还没看完就被更新覆盖
    */
-  private async sendOrUpdateChunked(
+  private async sendOrAppendChunked(
     client: IMClient,
     replyTarget: string,
     content: string,
-    streamedMessageIds: string[]
-  ): Promise<string[]> {
-    if (content.length <= MAX_MESSAGE_LENGTH) {
-      if (streamedMessageIds.length === 0) {
-        const sent = await client.sendText(replyTarget, content);
-        return [sent.id];
-      }
-      await client.updateMessage({ messageId: streamedMessageIds[0], content });
-      return streamedMessageIds;
-    }
+    lastSentLength: number
+  ): Promise<number> {
+    const delta = content.slice(lastSentLength);
+    if (!delta) return lastSentLength;
 
-    const chunks: string[] = [];
-    for (let i = 0; i < content.length; i += MAX_MESSAGE_LENGTH) {
-      chunks.push(content.slice(i, i + MAX_MESSAGE_LENGTH));
+    for (let i = 0; i < delta.length; i += MAX_MESSAGE_LENGTH) {
+      const chunk = delta.slice(i, i + MAX_MESSAGE_LENGTH);
+      await client.sendText(replyTarget, chunk);
     }
-
-    const ids = [...streamedMessageIds];
-    for (let j = 0; j < chunks.length; j++) {
-      if (ids[j]) {
-        await client.updateMessage({ messageId: ids[j], content: chunks[j] });
-      } else {
-        const sent = await client.sendText(replyTarget, chunks[j]);
-        ids[j] = sent.id;
-      }
-    }
-    return ids;
+    return content.length;
   }
 
   /**

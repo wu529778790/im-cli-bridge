@@ -8,11 +8,11 @@ A message routing bridge that connects IM platforms (Telegram, Feishu) with AI C
 
 - **Multi-Platform Support**: Works with Telegram, Feishu (Lark), and more
 - **AI CLI Integration**: Compatible with Claude Code, Cursor, Codex, Aider, etc.
-- **Real-time Streaming**: Supports Claude CLI stream-json format for live responses
-- **Session Management**: Persistent conversation sessions with context history
-- **Event-Driven Architecture**: Flexible pub/sub event system for extensibility
-- **Watchdog Protection**: Auto-restart on service hang detection
-- **Type-Safe**: Full TypeScript implementation with comprehensive interfaces
+- **Streaming Output**: Appends new content as messages instead of overwriting
+- **Codex Output Filtering**: Strips header, exec, thinking, tokens; keeps only AI replies
+- **Two Run Modes**: Foreground (Ctrl+C to exit) and background (start/stop)
+- **Event-Driven Architecture**: Pub/sub event system
+- **Type-Safe**: Full TypeScript implementation
 
 ## Installation
 
@@ -68,14 +68,17 @@ LOG_LEVEL=info
 ### 2. Build and Run
 
 ```bash
-# Development mode (with ts-node)
-npm run dev
-
 # Build TypeScript
 npm run build
 
-# Production mode
+# Foreground mode (logs to console, Ctrl+C to exit)
 npm start
+# or
+npm run dev
+
+# Background mode
+npm run start:bg   # Start in background
+npm run stop       # Stop background service
 ```
 
 ### 3. Create Standalone Binary
@@ -87,19 +90,48 @@ npm run pkg:build
 
 ## Usage
 
+### Run Modes
+
+| Command | Description |
+|---------|-------------|
+| `run`, `foreground` | Foreground: logs to console, **Ctrl+C to exit** (default) |
+| `start` | Background: start daemon, use `stop` to stop |
+| `stop` | Background: stop daemon |
+
 ### CLI Options
 
 ```bash
-im-cli-bridge [OPTIONS]
+im-cli-bridge [COMMAND] [OPTIONS]
+
+Commands:
+  run, foreground    Foreground mode (default)
+  start              Start in background
+  stop               Stop background service
 
 Options:
-  -c, --config <path>      Path to custom configuration file
-  -p, --port <number>      Server port (default: 3000)
-  -h, --host <address>     Server host (default: localhost)
-  -l, --log-level <level>  Log level: debug, info, warn, error
-  -v, --verbose            Enable verbose logging
-      --version            Show version information
-      --help               Show help message
+  -c, --config <path>    Custom config file
+  -p, --port <number>    Server port (default: 3000)
+  -H, --host <address>   Server host
+  -l, --log-level <level>  debug, info, warn, error
+  -v, --verbose          Verbose logging
+      --version          Show version
+      --help             Show help
+```
+
+### Examples
+
+```bash
+# Foreground, Ctrl+C to exit
+im-cli-bridge
+im-cli-bridge run
+
+# Background
+im-cli-bridge start
+im-cli-bridge stop
+
+# With options
+im-cli-bridge run --log-level debug
+im-cli-bridge start -c ./config/custom.js
 ```
 
 ### Environment Variables
@@ -111,8 +143,7 @@ Options:
 | `FEISHU_APP_SECRET` | Feishu/Lark app secret | No* | - |
 | `AI_COMMAND` | AI CLI tool to use (claudecode, cursor, codex, aider) | No | `claudecode` |
 | `LOG_LEVEL` | Logging level (debug/info/warn/error) | No | `info` |
-| `WATCHDOG_ENABLED` | Enable watchdog auto-restart | No | `true` |
-| `WATCHDOG_TIMEOUT` | Watchdog timeout in milliseconds | No | `60000` |
+| `AI_SESSION_MODE` | Enable session mode (requires stdin support) | No | `false` |
 
 *At least one IM platform must be configured
 
@@ -134,12 +165,11 @@ Options:
 
 | Component | Description |
 |-----------|-------------|
-| **IM Clients** | Platform-specific integrations (Telegram, Feishu) |
+| **IM Clients** | Platform integrations (Telegram, Feishu) |
 | **EventEmitter** | Pub/sub event system for message routing |
-| **Router** | Message handler that forwards to AI CLI tool |
-| **ShellExecutor** | Command execution with streaming output support |
-| **SessionManager** | Persistent conversation history and context |
-| **Watchdog** | Auto-restart on service hang detection |
+| **Router** | Forwards messages to AI CLI tool |
+| **ShellExecutor** | Streaming command execution |
+| **Output Extractor** | Filters Codex/Claude output for readable replies |
 
 ## Configuration File
 
@@ -154,14 +184,9 @@ module.exports = {
   },
   executor: {
     timeout: 60000,
-    maxConcurrent: 5,
     aiCommand: 'claudecode',  // or 'cursor', 'codex', 'aider'
     allowedCommands: ['*'],
     blockedCommands: ['rm -rf /', 'mkfs', 'dd if=/dev/zero']
-  },
-  watchdog: {
-    enabled: true,
-    timeout: 60000
   },
   logging: {
     level: 'debug'
@@ -169,7 +194,7 @@ module.exports = {
 };
 ```
 
-Use with: `im-cli-bridge --config ./custom.config.js`
+Use: `im-cli-bridge run --config ./custom.config.js`
 
 ## Security
 
@@ -223,7 +248,7 @@ The system emits the following events through `EventEmitter`:
 ## Development
 
 ```bash
-# Run in development mode
+# Foreground dev mode
 npm run dev
 
 # Run tests
@@ -231,6 +256,10 @@ npm test
 
 # Build for production
 npm run build
+
+# Background start/stop
+npm run start:bg
+npm run stop
 
 # Create standalone binary
 npm run pkg:build
@@ -241,12 +270,16 @@ npm run pkg:build
 ### Bot not responding?
 1. Check bot token is correct
 2. Check logs: `tail -f logs/combined.log`
-3. Ensure webhook/port is accessible
+3. Ensure only one bridge instance is running (avoid 409 Conflict)
+
+### 409 Conflict: terminated by other getUpdates?
+Only one polling connection per Bot. Ensure:
+- Not running both `npm start` and `npm run start:bg`
+- Use `npm run stop` before restarting in background mode
 
 ### AI command not working?
-1. Verify `AI_COMMAND` is set correctly (default: `claudecode`)
-2. Test the command manually in your terminal: `claudecode "hello"`
-3. Check logs for execution errors
+1. Verify `AI_COMMAND` (codex, claudecode, etc.)
+2. Test manually: `codex "hello"`
 
 ## License
 

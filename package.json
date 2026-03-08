@@ -8,8 +8,10 @@
   },
   "scripts": {
     "build": "tsc",
-    "dev": "ts-node src/cli.ts",
-    "start": "node dist/cli.js",
+    "dev": "ts-node src/cli.ts run",
+    "start": "node dist/cli.js run",
+    "start:bg": "node dist/cli.js start",
+    "stop": "node dist/cli.js stop",
     "start:direct": "node dist/index.js",
     "test": "jest",
     "pkg:build": "npm run build && esbuild src/cli.ts --bundle --platform=node --target=node18 --outfile=dist/bundle.js && pkg dist/bundle.js --targets node18-win-x64,node18-linux-x64,node18-macos-x64 --output dist/im-cli-bridge"

@@ -29,6 +29,8 @@ function extractDisplayTextFromOutput(output: string): string {
       const stripped = stripCodexNoise(afterMcp.trim());
       if (stripped) return stripped;
     }
+    // 过滤后为空（如只有 thinking）时返回空，避免显示 header
+    return '';
   }
 
   // stream-json 格式
@@ -66,7 +68,6 @@ function stripCodexNoise(text: string): string {
   const lines = text.split('\n');
   const result: string[] = [];
   let inExec = false;
-  let inThinking = false;
   let inExecOutput = false;
   let skipNextTokenCount = false;
 
@@ -79,33 +80,33 @@ function stripCodexNoise(text: string): string {
     if (lower === 'exec' || /^exec\s+/.test(lower) || trimmed.startsWith('exec "') || trimmed.startsWith('exec \'')) {
       inExec = true;
       inExecOutput = false;
-      inThinking = false;
       continue;
     }
-    // 进入 thinking 块
+    // 只跳过 "thinking" 行及紧跟的一行状态（如 **Preparing...**），不跳过后续 AI 回复
     if (lower === 'thinking') {
-      inThinking = true;
       inExec = false;
       inExecOutput = false;
+      skipNextTokenCount = false;
       continue;
     }
-    // exec 输出标记
+    // 跳过 thinking 状态行（如 **Preparing concise Chinese reply**）
+    if (/^\*\*[^*]+\*\*$/.test(trimmed) && trimmed.length < 80) {
+      continue;
+    }
     if (/^succeeded in \d+ms/i.test(trimmed) || /^failed in \d+ms/i.test(trimmed)) {
       inExecOutput = true;
       inExec = false;
       continue;
     }
-    // 新的 codex 段，重置
     if (lower === 'codex') {
-      inExec = inThinking = inExecOutput = false;
+      inExec = inExecOutput = false;
       continue;
     }
     // 跳过 exec 命令行（带 "in D:\path" 等）
     if (inExec && (trimmed.includes(' in ') && /[a-z]:[\\\/]?/i.test(trimmed) || trimmed.includes('powershell') || trimmed.includes('.exe'))) {
       continue;
     }
-    // 跳过 exec/thinking 块内的内容
-    if (inExec || inThinking || inExecOutput) {
+    if (inExec || inExecOutput) {
       continue;
     }
     // 跳过占位符行（如 __INLINE_CODE_0__）

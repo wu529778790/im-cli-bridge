@@ -32,3 +32,6 @@ Thumbs.db
 
 # Data (removed - no longer used)
 data/
+
+# Bridge PID file (background mode)
+.im-cli-bridge.pid

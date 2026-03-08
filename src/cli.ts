@@ -9,8 +9,10 @@ import { logger } from './utils/logger';
 import { defaultConfig } from './config/default.config';
 import * as fs from 'fs';
 import * as path from 'path';
+import { spawn } from 'child_process';
 
 interface CLIOptions {
+  command?: 'run' | 'start' | 'stop' | 'foreground';
   config?: string;
   port?: number;
   host?: string;
@@ -20,10 +22,22 @@ interface CLIOptions {
   help?: boolean;
 }
 
+const PID_FILE = path.join(process.cwd(), '.im-cli-bridge.pid');
+
 function parseArgs(args: string[]): CLIOptions {
   const options: CLIOptions = {};
+  let i = 0;
 
-  for (let i = 0; i < args.length; i++) {
+  // 第一个参数可能是子命令
+  const first = args[0];
+  if (first === 'run' || first === 'start' || first === 'stop' || first === 'foreground') {
+    options.command = first;
+    i = 1;
+  } else if (first === '--help' || first === '-h' || first === '--version' || first === '-v') {
+    // 保持原有逻辑
+  }
+
+  for (; i < args.length; i++) {
     const arg = args[i];
     const nextArg = args[i + 1];
 
@@ -38,7 +52,7 @@ function parseArgs(args: string[]): CLIOptions {
         options.port = parseInt(nextArg, 10);
         i++;
         break;
-      case '-h':
+      case '-H':
       case '--host':
         options.host = nextArg;
         i++;
@@ -56,6 +70,7 @@ function parseArgs(args: string[]): CLIOptions {
         options.version = true;
         break;
       case '--help':
+      case '-h':
         options.help = true;
         break;
     }
@@ -69,44 +84,35 @@ function printHelp(): void {
 IM CLI Bridge - Bridge between IM platforms and CLI tools
 
 USAGE:
-  im-cli-bridge [OPTIONS]
+  im-cli-bridge [COMMAND] [OPTIONS]
+
+COMMANDS:
+  run, foreground    前台模式：直接运行，日志输出到控制台，Ctrl+C 退出（默认）
+  start              后台模式：启动后台服务，需用 stop 停止
+  stop               后台模式：停止后台服务
 
 OPTIONS:
-  -c, --config <path>      Path to custom configuration file
-  -p, --port <number>      Server port (default: 3000)
-  -h, --host <address>     Server host (default: localhost)
-  -l, --log-level <level>  Log level: debug, info, warn, error (default: info)
-  -v, --verbose            Enable verbose logging
-      --version            Show version information
-      --help               Show this help message
-
-ENVIRONMENT VARIABLES:
-  FEISHU_APP_ID           Feishu application ID
-  FEISHU_APP_SECRET       Feishu application secret
-  FEISHU_ENCRYPT_KEY      Feishu encryption key
-  FEISHU_VERIFICATION_TOKEN  Feishu verification token
-  TELEGRAM_BOT_TOKEN      Telegram bot token
-  TELEGRAM_WEBHOOK_URL    Telegram webhook URL
-  LOG_LEVEL               Logging level
+  -c, --config <path>   Custom configuration file
+  -p, --port <number>   Server port (default: 3000)
+  -H, --host <address>  Server host
+  -l, --log-level <level>  Log level: debug, info, warn, error
+  -v, --verbose          Verbose logging
+      --version          Show version
+      --help             Show this help
 
 EXAMPLES:
-  # Start with default configuration
+  # 前台运行（默认），Ctrl+C 退出
   im-cli-bridge
+  im-cli-bridge run
 
-  # Start with custom port
-  im-cli-bridge --port 8080
+  # 后台运行
+  im-cli-bridge start
+  im-cli-bridge stop
 
-  # Start with custom configuration file
-  im-cli-bridge --config ./config/custom.config.js
-
-  # Start with verbose logging
-  im-cli-bridge --verbose
-
-  # Start using environment variables
-  FEISHU_APP_ID=xxx FEISHU_APP_SECRET=xxx im-cli-bridge
-
-For more information, visit: https://github.com/yourusername/im-cli-bridge
-  `);
+  # 带参数
+  im-cli-bridge run --log-level debug
+  im-cli-bridge start -c ./config/custom.js
+`);
 }
 
 function printVersion(): void {
@@ -125,10 +131,7 @@ function loadCustomConfig(configPath: string): Partial<any> {
     if (!fs.existsSync(absolutePath)) {
       throw new Error(`Configuration file not found: ${configPath}`);
     }
-
-    // Clear require cache to allow config reloading
     delete require.cache[require.resolve(absolutePath)];
-
     const config = require(absolutePath);
     return config.default || config;
   } catch (error) {
@@ -137,82 +140,141 @@ function loadCustomConfig(configPath: string): Partial<any> {
   }
 }
 
+function getConfig(options: CLIOptions) {
+  let config = { ...defaultConfig };
+  if (options.config) {
+    const customConfig = loadCustomConfig(options.config);
+    config = { ...config, ...customConfig };
+  }
+  if (options.port) config.server.port = options.port;
+  if (options.host) config.server.host = options.host;
+  if (options.logLevel || options.verbose) {
+    config.logging.level = (options.logLevel || 'debug') as any;
+  }
+  if (config.logging.level) {
+    process.env.LOG_LEVEL = config.logging.level;
+  }
+  return config;
+}
+
+async function runForeground(config: any): Promise<void> {
+  const bridge = new IMCLIBridge(config);
+
+  process.on('SIGINT', async () => {
+    logger.info('Received SIGINT, shutting down...');
+    await bridge.stop();
+    process.exit(0);
+  });
+
+  process.on('SIGTERM', async () => {
+    logger.info('Received SIGTERM, shutting down...');
+    await bridge.stop();
+    process.exit(0);
+  });
+
+  process.on('uncaughtException', (error) => {
+    logger.error('Uncaught exception', error);
+    bridge.stop().then(() => process.exit(1));
+  });
+
+  process.on('unhandledRejection', (reason, promise) => {
+    logger.error('Unhandled rejection', reason);
+    bridge.stop().then(() => process.exit(1));
+  });
+
+  await bridge.initialize();
+  await bridge.start();
+  logger.info('Bridge is running. Press Ctrl+C to stop.');
+}
+
+function startBackground(options: CLIOptions): void {
+  if (fs.existsSync(PID_FILE)) {
+    const pid = parseInt(fs.readFileSync(PID_FILE, 'utf-8').trim(), 10);
+    try {
+      process.kill(pid, 0);
+      console.log(`Bridge is already running (PID: ${pid}). Use 'im-cli-bridge stop' first.`);
+      return;
+    } catch {
+      // 进程不存在，删除旧 pid 文件
+      fs.unlinkSync(PID_FILE);
+    }
+  }
+
+  const cliPath = path.join(__dirname, 'cli.js');
+  const args = [cliPath, 'run'];
+  if (options.config) args.push('-c', options.config);
+  if (options.port) args.push('-p', String(options.port));
+  if (options.host) args.push('-H', options.host);
+  if (options.logLevel) args.push('-l', options.logLevel);
+  if (options.verbose) args.push('-v');
+
+  const child = spawn(process.execPath, args, {
+    detached: true,
+    stdio: 'ignore',
+    cwd: process.cwd(),
+    env: { ...process.env, IM_CLI_BRIDGE_DAEMON: '1' },
+    windowsHide: true
+  });
+
+  child.unref();
+
+  fs.writeFileSync(PID_FILE, String(child.pid));
+  console.log(`Bridge started in background (PID: ${child.pid})`);
+  console.log('Use "im-cli-bridge stop" to stop.');
+}
+
+function stopBackground(): void {
+  if (!fs.existsSync(PID_FILE)) {
+    console.log('Bridge is not running (no PID file found).');
+    return;
+  }
+
+  const pid = parseInt(fs.readFileSync(PID_FILE, 'utf-8').trim(), 10);
+  try {
+    process.kill(pid, 'SIGTERM');
+    fs.unlinkSync(PID_FILE);
+    console.log(`Bridge stopped (PID: ${pid}).`);
+  } catch (err: any) {
+    if (err.code === 'ESRCH') {
+      fs.unlinkSync(PID_FILE);
+      console.log('Bridge was not running (stale PID file removed).');
+    } else {
+      console.error(`Failed to stop bridge: ${err.message}`);
+      process.exit(1);
+    }
+  }
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const options = parseArgs(args);
 
-  // Handle help
   if (options.help) {
     printHelp();
     process.exit(0);
   }
 
-  // Handle version
   if (options.version) {
     printVersion();
     process.exit(0);
   }
 
-  // Load configuration
-  let config = { ...defaultConfig };
+  const config = getConfig(options);
+  const command = options.command || 'run';
 
-  if (options.config) {
-    const customConfig = loadCustomConfig(options.config);
-    config = { ...config, ...customConfig };
+  if (command === 'start') {
+    startBackground(options);
+    return;
   }
 
-  // Apply CLI options
-  if (options.port) {
-    config.server.port = options.port;
+  if (command === 'stop') {
+    stopBackground();
+    return;
   }
 
-  if (options.host) {
-    config.server.host = options.host;
-  }
-
-  if (options.logLevel || options.verbose) {
-    config.logging.level = (options.logLevel || 'debug') as any;
-  }
-
-  // Override logger level
-  if (config.logging.level) {
-    process.env.LOG_LEVEL = config.logging.level;
-  }
-
+  // run / foreground
   try {
-    // Create and start bridge
-    const bridge = new IMCLIBridge(config);
-
-    // Graceful shutdown
-    process.on('SIGINT', async () => {
-      logger.info('Received SIGINT, shutting down gracefully...');
-      await bridge.stop();
-      process.exit(0);
-    });
-
-    process.on('SIGTERM', async () => {
-      logger.info('Received SIGTERM, shutting down gracefully...');
-      await bridge.stop();
-      process.exit(0);
-    });
-
-    // Handle uncaught errors
-    process.on('uncaughtException', (error) => {
-      logger.error('Uncaught exception', error);
-      bridge.stop().then(() => process.exit(1));
-    });
-
-    process.on('unhandledRejection', (reason, promise) => {
-      logger.error('Unhandled rejection', reason);
-      bridge.stop().then(() => process.exit(1));
-    });
-
-    // Initialize and start the bridge
-    await bridge.initialize();
-    await bridge.start();
-
-    logger.info('Bridge is running. Press Ctrl+C to stop.');
-
+    await runForeground(config);
   } catch (error) {
     logger.error('Failed to start bridge', error);
     process.exit(1);
