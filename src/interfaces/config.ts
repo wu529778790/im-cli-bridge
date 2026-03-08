@@ -29,23 +29,6 @@ export interface IExecutorConfig {
   blockedCommands: string[];
 }
 
-export interface IQueueConfig {
-  concurrency: number;
-  maxRetries: number;
-  retryDelay: number;
-}
-
-export interface IWatchdogConfig {
-  enabled: boolean;
-  timeout: number;
-  checkInterval: number;
-}
-
-export interface IStorageConfig {
-  type: 'sqlite' | 'memory';
-  path?: string;
-}
-
 export interface ILoggingConfig {
   level: 'debug' | 'info' | 'warn' | 'error';
   maxFiles: number;
@@ -57,8 +40,5 @@ export interface IConfig {
   feishu?: IFeishuConfig;
   telegram?: ITelegramConfig;
   executor: IExecutorConfig;
-  queue: IQueueConfig;
-  watchdog: IWatchdogConfig;
-  storage: IStorageConfig;
   logging: ILoggingConfig;
 }

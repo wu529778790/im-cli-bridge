@@ -18,7 +18,7 @@ export const defaultConfig: IConfig = {
     pollTimeout: 10
   },
   executor: {
-    timeout: 30000,
+    timeout: 60000,
     maxConcurrent: 3,
     aiCommand: process.env.AI_COMMAND || 'claude',
     allowedCommands: ['*'],
@@ -28,20 +28,6 @@ export const defaultConfig: IConfig = {
       'dd if=/dev/zero',
       'chmod 000'
     ]
-  },
-  queue: {
-    concurrency: 5,
-    maxRetries: 3,
-    retryDelay: 1000
-  },
-  watchdog: {
-    enabled: true,
-    timeout: 60000,
-    checkInterval: 10000
-  },
-  storage: {
-    type: 'sqlite',
-    path: './data/storage.db'
   },
   logging: {
     level: (process.env.LOG_LEVEL || 'info') as 'debug' | 'info' | 'warn' | 'error',

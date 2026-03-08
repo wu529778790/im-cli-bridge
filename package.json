@@ -1,7 +1,7 @@
 {
   "name": "im-cli-bridge",
   "version": "1.0.0",
-  "description": "Bridge between IM platforms (Feishu, Telegram) and CLI tools",
+  "description": "Bridge between IM platforms (Telegram) and Claude CLI",
   "main": "dist/index.js",
   "bin": {
     "im-cli-bridge": "./dist/cli.js"
@@ -15,12 +15,12 @@
     "pkg:build": "npm run build && esbuild src/cli.ts --bundle --platform=node --target=node18 --outfile=dist/bundle.js && pkg dist/bundle.js --targets node18-win-x64,node18-linux-x64,node18-macos-x64 --output dist/im-cli-bridge"
   },
   "keywords": [
-    "feishu",
     "telegram",
     "cli",
     "bridge",
     "im",
-    "bot"
+    "bot",
+    "claude"
   ],
   "author": "",
   "license": "MIT",
@@ -36,26 +36,21 @@
   },
   "dependencies": {
     "axios": "^1.6.2",
-    "better-sqlite3": "^12.6.2",
     "commander": "^11.1.0",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "node-telegram-bot-api": "^0.64.0",
     "winston": "^3.11.0",
-    "winston-daily-rotate-file": "^4.7.1",
-    "ws": "^8.14.2"
+    "winston-daily-rotate-file": "^4.7.1"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^4.17.21",
     "@types/jest": "^29.5.8",
     "@types/node": "^20.10.0",
     "@types/node-telegram-bot-api": "^0.64.3",
-    "@types/uuid": "^10.0.0",
     "@types/ws": "^8.5.10",
     "esbuild": "^0.27.3",
     "jest": "^29.7.0",
-    "nexe": "^5.0.0-beta.4",
     "pkg": "^5.8.1",
     "ts-node": "^10.9.1",
     "typescript": "^5.3.2"

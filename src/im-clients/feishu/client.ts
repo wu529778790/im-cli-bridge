@@ -20,7 +20,6 @@ import { CardBuilder } from './card-builder';
 import { EventEmitter } from '../../core/event-emitter';
 import { Logger } from '../../utils/logger';
 import { WebSocket, WebSocketServer } from 'ws';
-import { RateLimiter } from '../../utils/rate-limit';
 
 /**
  * 飞书客户端配置
@@ -61,24 +60,12 @@ export class FeishuClient implements IMClient {
   private reconnectTimer?: NodeJS.Timeout;
   private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number = 5;
-  private rateLimiter: RateLimiter;
 
   constructor() {
     this.logger = new Logger('FeishuClient');
     this.eventEmitter = new EventEmitter();
     this.config = {} as FeishuClientConfig;
     this.api = {} as FeishuApi;
-    this.rateLimiter = new RateLimiter({
-      enabled: true,
-      platforms: {
-        feishu: { rate: 20, capacity: 50 } // Feishu: 20 msg/sec
-      },
-      retryPolicy: {
-        maxRetries: 3,
-        initialDelay: 1000,
-        backoffStrategy: 'exponential_with_jitter'
-      }
-    });
   }
 
   /**
@@ -227,10 +214,8 @@ export class FeishuClient implements IMClient {
     this.logger.debug(`Sending text message to ${userId}`);
 
     try {
-      // 使用限流器控制发送速率
-      const messageId = await this.rateLimiter.execute('feishu', async () => {
-        return await this.api.sendText(userId, text);
-      });
+      // 发送消息
+      const messageId = await this.api.sendText(userId, text);
 
       const message: IMMessage = {
         id: messageId,

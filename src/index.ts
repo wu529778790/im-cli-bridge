@@ -1,285 +1,137 @@
-import express from 'express';
-import { defaultConfig } from './config/default.config';
-import { validateConfig } from './config/schema';
-import { IConfig } from './interfaces/config';
-import { logger } from './utils/logger';
-import { AsyncQueue } from './utils/async-queue';
-import { Watchdog } from './utils/watchdog';
-import { EnhancedWatchdog } from './utils/watchdog-v2';
-import { ShellExecutor } from './executors/shell-executor';
-import { FileStorage } from './storage/file-storage';
-import { FeishuClient } from './im-clients/feishu';
-import { TelegramClient } from './im-clients/telegram';
-import { Router } from './core/router';
-import { SessionManager } from './core/session-manager';
-import { EventEmitter } from './core/event-emitter';
-import { immessageToMessage } from './utils/message-adapter';
-import type { Platform } from './interfaces/types';
-import type { IMMessage } from './interfaces/im-client.interface';
-import * as fs from 'fs';
-import * as path from 'path';
+/**
+ * IM CLI Bridge - 简化版主入口
+ *
+ * 功能：通过 IM（Telegram/Feishu）控制 claudecode 命令行工具
+ */
 
-export class IMCLIBridge {
-  private config: IConfig;
-  private app: express.Application;
-  private server: any;
-  private commandExecutor!: ShellExecutor;
-  private storage!: FileStorage;
-  private feishuClient?: FeishuClient;
+import dotenv from 'dotenv';
+import { EventEmitter } from './core/event-emitter';
+import { SimpleRouter } from './core/router';
+import { TelegramClient } from './im-clients/telegram';
+import { Logger } from './utils/logger';
+import { immessageToMessage } from './utils/message-adapter';
+import { IConfig } from './interfaces/config';
+import { defaultConfig } from './config/default.config';
+
+// 加载环境变量
+dotenv.config();
+
+/**
+ * 主 Bridge 类
+ */
+class IMCLIBridge {
+  private eventEmitter: EventEmitter;
+  private router: SimpleRouter;
   private telegramClient?: TelegramClient;
-  private router?: Router;
-  private sessionManager?: SessionManager;
-  private eventEmitter?: EventEmitter;
-  private queue!: AsyncQueue;
-  private watchdog?: EnhancedWatchdog;
+  private config: IConfig;
+  private logger: Logger;
 
   constructor(config: Partial<IConfig> = {}) {
-    // Merge with default config
     this.config = { ...defaultConfig, ...config };
-
-    // Validate config
-    const validation = validateConfig(this.config);
-    if (!validation.valid) {
-      throw new Error(`Invalid configuration: ${validation.errors?.join(', ')}`);
-    }
-
-    this.app = express();
-    this.initializeComponents();
-  }
-
-  private initializeComponents(): void {
-    logger.info('Initializing components...');
-
-    // Create logs directory if it doesn't exist
-    const logsDir = path.join(process.cwd(), 'logs');
-    if (!fs.existsSync(logsDir)) {
-      fs.mkdirSync(logsDir, { recursive: true });
-    }
-
-    // Create data directory if it doesn't exist
-    const dataDir = path.join(process.cwd(), 'data');
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
-
-    // Initialize storage
-    this.storage = new FileStorage(this.config.storage.path || './data/storage.json');
-
-    // Initialize queue
-    this.queue = new AsyncQueue(this.config.queue.concurrency);
-
-    // Initialize event emitter
+    this.logger = new Logger('IMCLIBridge');
     this.eventEmitter = new EventEmitter();
 
-    // Initialize command executor
-    this.commandExecutor = new ShellExecutor();
-
-    // Initialize session manager
-    this.sessionManager = new SessionManager(this.storage);
-
-    // Initialize enhanced watchdog if enabled
-    if (this.config.watchdog.enabled) {
-      this.watchdog = new EnhancedWatchdog({
-        name: 'IMCLIBridge-Watchdog',
-        timeout: this.config.watchdog.timeout,
-        checkInterval: this.config.watchdog.checkInterval || 30000, // 30秒检查一次
-        onTimeout: async () => {
-          logger.warn('Watchdog timeout triggered, restarting...');
-          await this.restart();
-        },
-        healthChecks: [
-          // 存储健康检查
-          {
-            name: 'storage',
-            interval: 60000,
-            timeout: 5000,
-            check: async () => {
-              try {
-                await this.storage.get('health_check');
-                return true;
-              } catch {
-                return false;
-              }
-            }
-          },
-          // 会话管理器健康检查
-          {
-            name: 'session_manager',
-            interval: 60000,
-            timeout: 5000,
-            check: async () => {
-              return this.sessionManager !== undefined;
-            }
-          }
-        ]
-      });
-
-      // 注册恢复动作
-      this.watchdog.registerRecoveryAction('telegram', {
-        name: 'restart_telegram',
-        action: async () => {
-          if (this.telegramClient?.isRunning()) {
-            await this.telegramClient.stop();
-          }
-          if (this.telegramClient && this.config.telegram) {
-            await this.telegramClient.initialize({
-              appId: this.config.telegram.botToken,
-              appSecret: '',
-              polling: {
-                autoStart: true,
-                params: {
-                  timeout: this.config.telegram.pollTimeout || 10
-                }
-              }
-            } as any);
-            await this.telegramClient.start();
-          }
-        }
-      });
-    }
-
-    // Initialize IM clients
-    if (this.config.feishu && this.config.feishu.appId) {
-      this.feishuClient = new FeishuClient();
-      logger.info('Feishu client created');
-    }
-
-    if (this.config.telegram && this.config.telegram.botToken) {
-      this.telegramClient = new TelegramClient();
-      logger.info('Telegram client created');
-    }
-
-    // Initialize router with watchdog and config
-    if (this.eventEmitter && this.sessionManager) {
-      this.router = new Router(
-        this.eventEmitter,
-        this.sessionManager,
-        this.commandExecutor,
-        this.watchdog,
-        this.config.executor.aiCommand
-      );
-    }
-
-    logger.info('All components initialized');
+    // 创建路由器
+    const aiCommand = this.config.executor?.aiCommand || process.env.AI_COMMAND || 'claude';
+    this.router = new SimpleRouter(this.eventEmitter, aiCommand);
   }
 
   /**
-   * 连接 IM 客户端到中央 EventEmitter，将消息转发到 Router
-   * 并注册 IM 客户端到 Router 以便发送回复
+   * 初始化所有组件
    */
-  private connectIMClients(): void {
-    if (!this.eventEmitter || !this.router) return;
+  async initialize(): Promise<void> {
+    this.logger.info('Initializing IM CLI Bridge...');
 
-    if (this.feishuClient) {
-      this.feishuClient.on('message:received', (imMessage: IMMessage) => {
-        const message = immessageToMessage(imMessage, 'feishu');
-        this.eventEmitter!.emit('message:received', message);
+    // 初始化路由器
+    await this.router.initialize();
+
+    // 初始化 Telegram 客户端
+    const telegramToken = this.config.telegram?.botToken || process.env.TELEGRAM_BOT_TOKEN;
+    if (telegramToken) {
+      this.telegramClient = new TelegramClient();
+      await this.telegramClient.initialize({
+        appId: telegramToken,
+        polling: { params: { timeout: 30 } }
+      } as any);
+
+      // 连接到路由器
+      this.telegramClient.on('message:received', (imMessage) => {
+        const message = immessageToMessage(imMessage, 'telegram');
+        this.eventEmitter.emit('message:received', message);
       });
-      this.router.registerClient('feishu', this.feishuClient);
-      logger.info('Feishu client connected to router');
+
+      this.router.registerClient('telegram', this.telegramClient);
+      this.logger.info('Telegram client connected to router');
     }
+
+    this.logger.info('All components initialized');
+  }
+
+  /**
+   * 启动服务
+   */
+  async start(): Promise<void> {
+    this.logger.info('Starting IM CLI Bridge...');
+
+    // 启动 Telegram 客户端
+    if (this.telegramClient) {
+      await this.telegramClient.start();
+      this.logger.info('Telegram client started');
+    }
+
+    this.logger.info('IM CLI Bridge started successfully');
+    this.logger.info('Ready to receive messages...');
+  }
+
+  /**
+   * 停止服务
+   */
+  async stop(): Promise<void> {
+    this.logger.info('Stopping IM CLI Bridge...');
 
     if (this.telegramClient) {
-      this.telegramClient.on('message:received', (imMessage: IMMessage) => {
-        const message = immessageToMessage(imMessage, 'telegram');
-        this.eventEmitter!.emit('message:received', message);
-      });
-      this.router.registerClient('telegram', this.telegramClient);
-      logger.info('Telegram client connected to router');
+      await this.telegramClient.stop();
     }
-  }
 
-  async start(): Promise<void> {
-    try {
-      logger.info('Starting IM CLI Bridge...');
+    await this.router.cleanup();
 
-      // Initialize storage
-      await this.storage.initialize();
-      logger.info('Storage initialized');
-
-      // Initialize session manager
-      await this.sessionManager?.initialize();
-      logger.info('Session manager initialized');
-
-      // Initialize router
-      if (this.router) {
-        await this.router.initialize();
-        logger.info('Router initialized');
-      }
-
-      // 连接 IM 客户端到中央 EventEmitter，并注册到 Router
-      this.connectIMClients();
-
-      // Start IM clients
-      if (this.feishuClient) {
-        await this.feishuClient.initialize(this.config.feishu!);
-        await this.feishuClient.start();
-        logger.info('Feishu client started');
-      }
-
-      if (this.telegramClient && this.config.telegram) {
-        await this.telegramClient.initialize({
-          appId: this.config.telegram.botToken,
-          appSecret: '', // Telegram doesn't use appSecret
-          polling: {
-            autoStart: true,
-            params: {
-              timeout: this.config.telegram.pollTimeout || 10
-            }
-          }
-        } as any);
-        await this.telegramClient.start();
-        logger.info('Telegram client started');
-      }
-
-      // Start watchdog
-      if (this.watchdog) {
-        this.watchdog.start();
-      }
-
-      logger.info('IM CLI Bridge started successfully');
-    } catch (error) {
-      logger.error('Failed to start IM CLI Bridge', error);
-      throw error;
-    }
-  }
-
-  async stop(): Promise<void> {
-    try {
-      logger.info('Stopping IM CLI Bridge...');
-
-      // Stop watchdog
-      if (this.watchdog) {
-        this.watchdog.stop();
-      }
-
-      // Stop IM clients
-      if (this.feishuClient) {
-        await this.feishuClient.stop();
-        logger.info('Feishu client stopped');
-      }
-
-      if (this.telegramClient) {
-        await this.telegramClient.stop();
-        logger.info('Telegram client stopped');
-      }
-
-      logger.info('IM CLI Bridge stopped successfully');
-    } catch (error) {
-      logger.error('Error during shutdown', error);
-      throw error;
-    }
-  }
-
-  async restart(): Promise<void> {
-    logger.info('Restarting IM CLI Bridge...');
-    await this.stop();
-    await this.start();
-  }
-
-  getConfig(): IConfig {
-    return this.config;
+    this.logger.info('IM CLI Bridge stopped');
   }
 }
 
-export default IMCLIBridge;
+/**
+ * 主函数
+ */
+async function main(): Promise<void> {
+  const bridge = new IMCLIBridge();
+
+  try {
+    await bridge.initialize();
+    await bridge.start();
+
+    // 处理优雅退出
+    process.on('SIGINT', async () => {
+      console.log('\nReceived SIGINT, shutting down gracefully...');
+      await bridge.stop();
+      process.exit(0);
+    });
+
+    process.on('SIGTERM', async () => {
+      console.log('\nReceived SIGTERM, shutting down gracefully...');
+      await bridge.stop();
+      process.exit(0);
+    });
+
+  } catch (error) {
+    console.error('Failed to start bridge:', error);
+    process.exit(1);
+  }
+}
+
+// 运行主函数
+main().catch((error) => {
+  console.error('Unhandled error:', error);
+  process.exit(1);
+});
+
+export { IMCLIBridge, main };

@@ -207,7 +207,8 @@ async function main(): Promise<void> {
       bridge.stop().then(() => process.exit(1));
     });
 
-    // Start the bridge
+    // Initialize and start the bridge
+    await bridge.initialize();
     await bridge.start();
 
     logger.info('Bridge is running. Press Ctrl+C to stop.');
