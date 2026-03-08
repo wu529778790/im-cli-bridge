@@ -83,9 +83,10 @@ export function setupTelegramHandlers(
     const sessionId = convId ? sessionManager.getSessionIdForConv(userId, convId) : undefined;
     log.info(`Running ${config.aiCommand} for user ${userId}, sessionId=${sessionId ?? 'new'}`);
 
+    const toolId = config.aiCommand;
     let msgId: string;
     try {
-      msgId = await sendThinkingMessage(chatId, replyToMessageId);
+      msgId = await sendThinkingMessage(chatId, replyToMessageId, toolId);
     } catch (err) {
       log.error('Failed to send thinking message:', err);
       return;
@@ -103,13 +104,13 @@ export function setupTelegramHandlers(
         throttleMs: THROTTLE_MS,
         streamUpdate: (content, toolNote) => {
           const note = toolNote ? '输出中...\n' + toolNote : '输出中...';
-          updateMessage(chatId, msgId, content, 'streaming', note).catch(() => {});
+          updateMessage(chatId, msgId, content, 'streaming', note, toolId).catch(() => {});
         },
         sendComplete: async (content, note) => {
-          await sendFinalMessages(chatId, msgId, content, note);
+          await sendFinalMessages(chatId, msgId, content, note, toolId);
         },
         sendError: async (error) => {
-          await updateMessage(chatId, msgId, `错误：${error}`, 'error', '执行失败');
+          await updateMessage(chatId, msgId, `错误：${error}`, 'error', '执行失败', toolId);
         },
         extraCleanup: () => {
           stopTyping();
@@ -138,7 +139,7 @@ export function setupTelegramHandlers(
         taskInfo.settle();
         taskInfo.handle.abort();
         const chatId = String(ctx.chat?.id ?? '');
-        await updateMessage(chatId, messageId, taskInfo.latestContent || '已停止', 'error', '⏹️ 已停止');
+        await updateMessage(chatId, messageId, taskInfo.latestContent || '已停止', 'error', '⏹️ 已停止', config.aiCommand);
         await ctx.answerCbQuery('已停止执行');
       } else {
         await ctx.answerCbQuery('任务已完成或不存在');

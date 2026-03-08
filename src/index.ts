@@ -86,7 +86,8 @@ export async function main() {
   process.on('SIGTERM', () => shutdown().catch(() => process.exit(1)));
 }
 
-if (process.argv[1]?.endsWith('/index.js') || process.argv[1]?.endsWith('/index.ts')) {
+const isEntry = process.argv[1]?.replace(/\\/g, '/').endsWith('/index.js') || process.argv[1]?.replace(/\\/g, '/').endsWith('/index.ts');
+if (isEntry) {
   main().catch((err) => {
     console.error('Fatal error:', err);
     closeLogger();

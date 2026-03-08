@@ -15,16 +15,22 @@ const STATUS_ICONS: Record<MessageStatus, string> = {
   error: '🔴',
 };
 
-const STATUS_TITLES: Record<MessageStatus, string> = {
-  thinking: 'AI - 思考中...',
-  streaming: 'AI',
-  done: 'AI',
-  error: 'AI - 错误',
+const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  claude: 'claude-code',
+  codex: 'codex',
+  cursor: 'cursor',
 };
 
-function formatMessage(content: string, status: MessageStatus, note?: string): string {
+function getToolTitle(toolId: string, status: MessageStatus): string {
+  const name = TOOL_DISPLAY_NAMES[toolId] ?? toolId;
+  if (status === 'thinking') return `${name} - 思考中...`;
+  if (status === 'error') return `${name} - 错误`;
+  return name;
+}
+
+function formatMessage(content: string, status: MessageStatus, note?: string, toolId = 'claude'): string {
   const icon = STATUS_ICONS[status];
-  const title = STATUS_TITLES[status];
+  const title = getToolTitle(toolId, status);
   const text = truncateText(content, MAX_TELEGRAM_MESSAGE_LENGTH);
   let out = `${icon} ${title}\n\n${text}`;
   if (note) out += `\n\n─────────\n${note}`;
@@ -37,7 +43,11 @@ function buildStopKeyboard(messageId: number) {
   };
 }
 
-export async function sendThinkingMessage(chatId: string, replyToMessageId?: string): Promise<string> {
+export async function sendThinkingMessage(
+  chatId: string,
+  replyToMessageId?: string,
+  toolId = 'claude'
+): Promise<string> {
   const bot = getBot();
   const extra: Record<string, unknown> = {};
   if (replyToMessageId) {
@@ -47,14 +57,14 @@ export async function sendThinkingMessage(chatId: string, replyToMessageId?: str
   }
   const msg = await bot.telegram.sendMessage(
     Number(chatId),
-    formatMessage('正在思考...', 'thinking', '请稍候'),
+    formatMessage('正在思考...', 'thinking', '请稍候', toolId),
     extra
   );
   await bot.telegram.editMessageText(
     Number(chatId),
     msg.message_id,
     undefined,
-    formatMessage('正在思考...', 'thinking', '请稍候'),
+    formatMessage('正在思考...', 'thinking', '请稍候', toolId),
     { reply_markup: buildStopKeyboard(msg.message_id) }
   );
   return String(msg.message_id);
@@ -65,7 +75,8 @@ export async function updateMessage(
   messageId: string,
   content: string,
   status: MessageStatus,
-  note?: string
+  note?: string,
+  toolId = 'claude'
 ): Promise<void> {
   const bot = getBot();
   const opts: Record<string, unknown> = {};
@@ -77,7 +88,7 @@ export async function updateMessage(
       Number(chatId),
       Number(messageId),
       undefined,
-      formatMessage(content, status, note),
+      formatMessage(content, status, note, toolId),
       opts
     );
   } catch (err) {
@@ -93,16 +104,17 @@ export async function sendFinalMessages(
   chatId: string,
   messageId: string,
   fullContent: string,
-  note: string
+  note: string,
+  toolId = 'claude'
 ): Promise<void> {
   const parts = splitLongContent(fullContent, MAX_TELEGRAM_MESSAGE_LENGTH);
-  await updateMessage(chatId, messageId, parts[0], 'done', note);
+  await updateMessage(chatId, messageId, parts[0], 'done', note, toolId);
   const bot = getBot();
   for (let i = 1; i < parts.length; i++) {
     try {
       await bot.telegram.sendMessage(
         Number(chatId),
-        formatMessage(parts[i], 'done', `(续 ${i + 1}/${parts.length}) ${note}`)
+        formatMessage(parts[i], 'done', `(续 ${i + 1}/${parts.length}) ${note}`, toolId)
       );
     } catch (err) {
       log.error('Failed to send continuation:', err);
