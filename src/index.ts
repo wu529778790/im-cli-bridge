@@ -192,28 +192,4 @@ export class IMCLIBridge {
   }
 }
 
-// Create and start bridge if this is the main module
-if (require.main === module) {
-  const bridge = new IMCLIBridge();
-
-  // Graceful shutdown
-  process.on('SIGINT', async () => {
-    logger.info('Received SIGINT, shutting down gracefully...');
-    await bridge.stop();
-    process.exit(0);
-  });
-
-  process.on('SIGTERM', async () => {
-    logger.info('Received SIGTERM, shutting down gracefully...');
-    await bridge.stop();
-    process.exit(0);
-  });
-
-  // Start the bridge
-  bridge.start().catch((error) => {
-    logger.error('Failed to start bridge', error);
-    process.exit(1);
-  });
-}
-
 export default IMCLIBridge;

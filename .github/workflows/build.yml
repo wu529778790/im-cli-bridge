@@ -44,9 +44,12 @@ jobs:
       - name: Build TypeScript
         run: npm run build
 
+      - name: Bundle with esbuild
+        run: npx esbuild src/cli.ts --bundle --platform=node --target=node18 --outfile=dist/bundle.js
+
       - name: Package with pkg
         run: |
-          npx pkg . --targets node18-${{ matrix.platform }}-${{ matrix.arch }} --output ${{ matrix.output }}
+          npx pkg dist/bundle.js --targets node18-${{ matrix.platform }}-${{ matrix.arch }} --output ${{ matrix.output }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
