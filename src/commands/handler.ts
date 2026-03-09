@@ -4,12 +4,15 @@ import type { RequestQueue } from '../queue/request-queue.js';
 import { resolveLatestPermission, getPendingCount } from '../hook/permission-server.js';
 import { TERMINAL_ONLY_COMMANDS } from '../constants.js';
 import { execFile } from 'node:child_process';
+import { readdirSync, statSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import type { ThreadContext } from '../shared/types.js';
 
 export type { ThreadContext };
 
 export interface MessageSender {
   sendTextReply(chatId: string, text: string, threadCtx?: ThreadContext): Promise<void>;
+  sendDirectorySelection?(chatId: string, currentDir: string, userId: string): Promise<void>;
 }
 
 export interface CommandHandlerDeps {
@@ -121,8 +124,17 @@ export class CommandHandler {
   }
 
   private async handleCd(chatId: string, userId: string, dir: string): Promise<boolean> {
+    // 如果 dir 为空，显示目录选择界面
     if (!dir) {
-      await this.deps.sender.sendTextReply(chatId, `当前目录: ${this.deps.sessionManager.getWorkDir(userId)}\n使用 /cd <路径> 切换`);
+      const currentDir = this.deps.sessionManager.getWorkDir(userId);
+      if (this.deps.sender.sendDirectorySelection) {
+        await this.deps.sender.sendDirectorySelection(chatId, currentDir, userId);
+      } else {
+        await this.deps.sender.sendTextReply(
+          chatId,
+          `当前目录: ${currentDir}\n使用 /cd <路径> 切换`
+        );
+      }
       return true;
     }
     try {
@@ -167,4 +179,67 @@ export class CommandHandler {
       });
     });
   }
+}
+
+/**
+ * 列出目录并返回目录信息
+ */
+export function listDirectories(basePath: string): { name: string; fullPath: string; isParent: boolean }[] {
+  const dirs: { name: string; fullPath: string; isParent: boolean }[] = [];
+
+  try {
+    // 添加返回上级目录选项（如果不是根目录）
+    const parent = dirname(basePath);
+    if (parent !== basePath) {
+      dirs.push({ name: '🔙 返回上级', fullPath: parent, isParent: true });
+    }
+
+    // 读取子目录
+    const entries = readdirSync(basePath, { withFileTypes: true });
+    const subDirs = entries
+      .filter((entry) => entry.isDirectory())
+      .filter((entry) => !entry.name.startsWith('.')) // 过滤隐藏目录
+      .map((entry) => ({
+        name: entry.name,
+        fullPath: join(basePath, entry.name),
+        isParent: false,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name)); // 按名称排序
+
+    dirs.push(...subDirs);
+  } catch {
+    // 忽略错误
+  }
+
+  return dirs;
+}
+
+/**
+ * 生成目录选择的按钮布局
+ */
+export function buildDirectoryKeyboard(
+  directories: { name: string; fullPath: string; isParent: boolean }[],
+  userId: string
+): { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } {
+  const buttons: Array<Array<{ text: string; callback_data: string }>> = [];
+
+  // 每行 2 个按钮
+  for (let i = 0; i < directories.length; i += 2) {
+    const row: Array<{ text: string; callback_data: string }> = [];
+    row.push({
+      text: directories[i].name,
+      callback_data: `cd:${userId}:${encodeURIComponent(directories[i].fullPath)}`,
+    });
+
+    if (i + 1 < directories.length) {
+      row.push({
+        text: directories[i + 1].name,
+        callback_data: `cd:${userId}:${encodeURIComponent(directories[i + 1].fullPath)}`,
+      });
+    }
+
+    buttons.push(row);
+  }
+
+  return { inline_keyboard: buttons };
 }

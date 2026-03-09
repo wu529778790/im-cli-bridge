@@ -1,8 +1,10 @@
 import { getBot } from './client.js';
-import { createReadStream } from 'node:fs';
+import { createReadStream, existsSync } from 'node:fs';
+import { basename } from 'node:path';
 import { createLogger } from '../logger.js';
 import { splitLongContent, truncateText } from '../shared/utils.js';
 import { MAX_TELEGRAM_MESSAGE_LENGTH } from '../constants.js';
+import { listDirectories, buildDirectoryKeyboard } from '../commands/handler.js';
 
 const log = createLogger('TgSender');
 
@@ -28,12 +30,35 @@ function getToolTitle(toolId: string, status: MessageStatus): string {
   return name;
 }
 
+// Telegram 实际消息长度限制（4096 字符）
+const TG_MAX_LENGTH = 4096;
+// 预留给 header 和 note 的空间
+const RESERVED_LENGTH = 150;
+
 function formatMessage(content: string, status: MessageStatus, note?: string, toolId = 'claude'): string {
   const icon = STATUS_ICONS[status];
   const title = getToolTitle(toolId, status);
-  const text = truncateText(content, MAX_TELEGRAM_MESSAGE_LENGTH);
+
+  // 计算可用内容长度（预留 header 和 note 空间）
+  const headerLength = `${icon} ${title}\n\n`.length;
+  const noteLength = note ? `\n\n─────────\n${note}`.length : 0;
+  const maxContentLength = TG_MAX_LENGTH - headerLength - noteLength - RESERVED_LENGTH;
+
+  // 确保内容长度不超过限制
+  const text = truncateText(content, Math.max(100, maxContentLength));
   let out = `${icon} ${title}\n\n${text}`;
   if (note) out += `\n\n─────────\n${note}`;
+
+  // 最终安全检查：如果还是太长，强制截断
+  if (out.length > TG_MAX_LENGTH) {
+    const keepLen = TG_MAX_LENGTH - 50;
+    const tail = text.slice(text.length - keepLen);
+    const lineBreak = tail.indexOf('\n');
+    const clean = lineBreak > 0 && lineBreak < 200 ? tail.slice(lineBreak + 1) : tail;
+    out = `${icon} ${title}\n\n...(前文已省略)...\n${clean}`;
+    if (note) out += `\n\n─────────\n${note}`;
+  }
+
   return out;
 }
 
@@ -71,6 +96,35 @@ export async function sendThinkingMessage(
   return String(msg.message_id);
 }
 
+// 检查错误是否可忽略
+function isIgnorableError(err: unknown): boolean {
+  if (err && typeof err === 'object' && 'message' in err) {
+    const msg = String((err as { message: string }).message);
+    return (
+      msg.includes('not modified') ||
+      msg.includes('MESSAGE_TOO_LONG') ||
+      msg.includes('can\'t parse entities') ||
+      msg.includes('message to edit not found') ||
+      msg.includes('message is not modified')
+    );
+  }
+  return false;
+}
+
+// 提取重试延迟时间（秒）
+function extractRetryAfter(err: unknown): number | null {
+  if (err && typeof err === 'object' && 'message' in err) {
+    const msg = String((err as { message: string }).message);
+    const match = msg.match(/retry after (\d+)/);
+    if (match) return parseInt(match[1], 10);
+  }
+  if (err && typeof err === 'object' && 'parameters' in err) {
+    const params = (err as { parameters: { retry_after?: number } }).parameters;
+    if (params?.retry_after) return params.retry_after;
+  }
+  return null;
+}
+
 export async function updateMessage(
   chatId: string,
   messageId: string,
@@ -89,19 +143,41 @@ export async function updateMessage(
   // 只在完成时应用 Markdown 格式
   const shouldParseMarkdown = status === 'done' || status === 'error';
 
-  try {
-    await bot.telegram.editMessageText(
-      Number(chatId),
-      Number(messageId),
-      undefined,
-      formatMessage(content, status, note, toolId),
-      { ...opts, parse_mode: shouldParseMarkdown ? 'Markdown' : undefined }
-    );
-  } catch (err) {
-    if (err && typeof err === 'object' && 'message' in err && String((err as { message: string }).message).includes('not modified')) {
-      /* ignore */
-    } else {
-      log.error('Failed to update message:', err);
+  let retries = 0;
+  const maxRetries = 3;
+
+  while (retries <= maxRetries) {
+    try {
+      await bot.telegram.editMessageText(
+        Number(chatId),
+        Number(messageId),
+        undefined,
+        formatMessage(content, status, note, toolId),
+        { ...opts, parse_mode: shouldParseMarkdown ? 'Markdown' : undefined }
+      );
+      return;
+    } catch (err) {
+      if (isIgnorableError(err)) {
+        // 忽略这些错误，不需要重试
+        return;
+      }
+
+      const retryAfter = extractRetryAfter(err);
+      if (retryAfter !== null && retries < maxRetries) {
+        // 429 错误，使用退避策略
+        const delayMs = Math.min(retryAfter * 1000, 10000); // 最多等待 10 秒
+        log.warn(`Rate limited, waiting ${delayMs}ms before retry (${retries + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        retries++;
+        continue;
+      }
+
+      if (retries >= maxRetries) {
+        log.error('Failed to update message after retries:', err);
+      } else {
+        log.error('Failed to update message:', err);
+      }
+      return;
     }
   }
 }
@@ -141,6 +217,39 @@ export async function sendTextReply(chatId: string, text: string): Promise<void>
 export async function sendImageReply(chatId: string, imagePath: string): Promise<void> {
   const bot = getBot();
   await bot.telegram.sendPhoto(Number(chatId), { source: createReadStream(imagePath) });
+}
+
+/**
+ * 发送目录选择界面
+ */
+export async function sendDirectorySelection(
+  chatId: string,
+  currentDir: string,
+  userId: string
+): Promise<void> {
+  const bot = getBot();
+  const directories = listDirectories(currentDir);
+
+  if (directories.length === 0) {
+    await bot.telegram.sendMessage(
+      Number(chatId),
+      `📁 当前目录: \`${currentDir}\`\n\n没有可访问的子目录`,
+      { parse_mode: 'Markdown' }
+    );
+    return;
+  }
+
+  const keyboard = buildDirectoryKeyboard(directories, userId);
+  const dirName = basename(currentDir) || currentDir;
+
+  await bot.telegram.sendMessage(
+    Number(chatId),
+    `📁 当前目录: \`${dirName}\`\n\n选择要切换到的目录：`,
+    {
+      parse_mode: 'Markdown',
+      reply_markup: keyboard,
+    }
+  );
 }
 
 export function startTypingLoop(chatId: string): () => void {

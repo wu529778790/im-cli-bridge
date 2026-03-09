@@ -26,6 +26,54 @@ import { createLogger } from '../logger.js';
 
 const log = createLogger('TgHandler');
 
+// 动态节流器类 - 根据内容长度和更新频率调整间隔
+class DynamicThrottle {
+  private lastUpdate = 0;
+  private lastContentLength = 0;
+  private consecutiveErrors = 0;
+  private baseInterval = THROTTLE_MS;
+
+  getNextDelay(contentLength: number): number {
+    const now = Date.now();
+    const timeSinceLastUpdate = now - this.lastUpdate;
+
+    // 如果最近有错误，增加延迟
+    if (this.consecutiveErrors > 0) {
+      const errorDelay = this.baseInterval * (1 + this.consecutiveErrors * 2);
+      this.lastUpdate = now;
+      return errorDelay;
+    }
+
+    // 内容增长较小时，增加延迟
+    const contentGrowth = contentLength - this.lastContentLength;
+    if (contentGrowth < 100 && timeSinceLastUpdate < 1000) {
+      this.lastUpdate = now;
+      return 1000; // 内容增长缓慢，每秒更新一次
+    }
+
+    // 内容增长较快，使用基础间隔
+    this.lastUpdate = now;
+    this.lastContentLength = contentLength;
+    return this.baseInterval;
+  }
+
+  recordError(): void {
+    this.consecutiveErrors++;
+    // 重置时间，确保下次使用延迟
+    this.lastUpdate = Date.now();
+  }
+
+  recordSuccess(): void {
+    this.consecutiveErrors = 0;
+  }
+
+  reset(): void {
+    this.lastUpdate = 0;
+    this.lastContentLength = 0;
+    this.consecutiveErrors = 0;
+  }
+}
+
 async function downloadTelegramPhoto(bot: Telegraf, fileId: string): Promise<string> {
   await mkdir(IMAGE_DIR, { recursive: true });
   const fileLink = await bot.telegram.getFileLink(fileId);
@@ -93,6 +141,49 @@ export function setupTelegramHandlers(
     const stopTyping = startTypingLoop(chatId);
     const taskKey = `${userId}:${msgId}`;
 
+    // 创建动态节流器
+    const throttle = new DynamicThrottle();
+
+    // 创建包装的流式更新函数
+    const createStreamUpdateWrapper = () => {
+      let lastUpdateTime = 0;
+      let pendingUpdate: ReturnType<typeof setTimeout> | null = null;
+
+      return (content: string, toolNote?: string) => {
+        const now = Date.now();
+        const elapsed = now - lastUpdateTime;
+
+        // 使用动态节流器计算延迟
+        const delay = throttle.getNextDelay(content.length);
+
+        const performUpdate = () => {
+          const note = toolNote ? '输出中...\n' + toolNote : '输出中...';
+          updateMessage(chatId, msgId, content, 'streaming', note, toolId)
+            .then(() => throttle.recordSuccess())
+            .catch((err) => {
+              throttle.recordError();
+            });
+          lastUpdateTime = Date.now();
+          pendingUpdate = null;
+        };
+
+        // 清除之前的待处理更新
+        if (pendingUpdate) {
+          clearTimeout(pendingUpdate);
+        }
+
+        // 如果已经过了足够的时间，立即更新
+        if (elapsed >= delay) {
+          performUpdate();
+        } else {
+          // 否则等待剩余时间
+          pendingUpdate = setTimeout(performUpdate, delay - elapsed);
+        }
+      };
+    };
+
+    const streamUpdateWrapper = createStreamUpdateWrapper();
+
     await runAITask(
       { config, sessionManager },
       { userId, chatId, workDir, sessionId, convId, platform: 'telegram', taskKey },
@@ -100,17 +191,17 @@ export function setupTelegramHandlers(
       toolAdapter,
       {
         throttleMs: THROTTLE_MS,
-        streamUpdate: (content, toolNote) => {
-          const note = toolNote ? '输出中...\n' + toolNote : '输出中...';
-          updateMessage(chatId, msgId, content, 'streaming', note, toolId).catch(() => {});
-        },
+        streamUpdate: streamUpdateWrapper,
         sendComplete: async (content, note) => {
+          throttle.reset();
           await sendFinalMessages(chatId, msgId, content, note, toolId);
         },
         sendError: async (error) => {
+          throttle.reset();
           await updateMessage(chatId, msgId, `错误：${error}`, 'error', '执行失败', toolId);
         },
         extraCleanup: () => {
+          throttle.reset();
           stopTyping();
           runningTasks.delete(taskKey);
         },
