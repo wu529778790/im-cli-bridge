@@ -58,12 +58,12 @@ export async function sendThinkingMessage(
 
   try {
     log.info(`Sending thinking message to chat ${chatId}, replyTo: ${replyToMessageId}`);
+    // 注意：飞书 create 接口不支持 uuid 参数，传 uuid 会导致请求失败
     const resp = await client.im.message.create({
       data: {
         receive_id: chatId,
         msg_type: 'interactive',
         content: cardContent,
-        uuid: replyToMessageId,
       },
       params: { receive_id_type: 'chat_id' },
     });
