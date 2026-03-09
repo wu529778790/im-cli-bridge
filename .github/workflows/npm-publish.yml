@@ -31,6 +31,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -38,10 +40,8 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Remove deprecated npm config
-        run: npm config delete always-auth 2>/dev/null || true
-
-      - run: npm ci
+      - name: Install dependencies
+        run: pnpm install
 
       - name: Bump version (manual trigger only)
         if: github.event_name == 'workflow_dispatch'
