@@ -176,20 +176,25 @@ export class SessionManager {
     const drivePathMatch = targetDir.match(/^([a-zA-Z]):(.*)$/);
     if (drivePathMatch) {
       const [, drive, rest] = drivePathMatch;
-      // 如果 rest 为空或以 \ 或 / 开头，则是驱动器根目录的绝对路径
-      // 如果 rest 不为空且不以 \ 或 / 开头，则是驱动器当前目录的相对路径
-      if (rest === '' || rest.startsWith('/') || rest.startsWith('\\')) {
-        resolved = `${drive}:${rest}`;
+      // 使用 resolve 确保路径格式正确
+      // 如果 rest 为空，则是驱动器根目录
+      // 如果 rest 不为空，resolve 会正确处理斜杠
+      const driveRoot = `${drive}:`;
+      if (rest === '') {
+        resolved = driveRoot;
+      } else if (rest.startsWith('/') || rest.startsWith('\\')) {
+        // 已是绝对路径，直接使用
+        resolved = `${drive}${rest}`;
       } else {
-        // 需要获取该驱动器的当前目录，这里简化处理，当作绝对路径
-        resolved = `${drive}:${rest}`;
+        // 相对于驱动器根目录的路径，使用 resolve 处理
+        resolved = resolve(driveRoot, rest);
       }
     } else if (targetDir === '~' || targetDir.startsWith('~/')) {
       // 处理家目录
       const home = process.env.USERPROFILE || process.env.HOME || '';
       resolved = join(home, targetDir.slice(1));
     } else if (targetDir.startsWith('/') || (targetDir.length >= 3 && targetDir[1] === ':' && (targetDir[2] === '\\' || targetDir[2] === '/'))) {
-      // 绝对路径
+      // 绝对路径（包括 Windows 绝对路径）
       resolved = targetDir;
     } else {
       // 相对路径
