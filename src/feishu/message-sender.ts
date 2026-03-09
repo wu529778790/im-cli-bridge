@@ -96,7 +96,36 @@ export async function updateMessage(
     fullContent = `${content}\n\n─────────\n${note}`;
   }
 
-  // Delete old message and send new one (Feishu update API has strict validation)
+  const icon = STATUS_ICONS[status];
+  const title = getToolTitle(toolId, status);
+  const cardContent = messageCard.defaultCard({
+    title: `${icon} ${title}`,
+    content: fullContent,
+  });
+
+  // Try to use patch API for in-place update (streaming)
+  try {
+    const resp = await client.im.message.patch({
+      path: { message_id: messageId },
+      data: {
+        content: cardContent,
+      },
+    });
+
+    if (resp.code === 0) {
+      log.info(`Message updated in-place: ${messageId}`);
+      return;
+    }
+
+    // If patch failed with validation error, fall back to delete+create
+    log.warn(`Patch API failed (code: ${resp.code}, msg: ${resp.msg}), falling back to delete+create`);
+  } catch (err: unknown) {
+    // Log but don't throw - we'll fall back to delete+create
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    log.debug(`Patch API error: ${errorMsg}, falling back to delete+create`);
+  }
+
+  // Fallback: Delete old message and send new one
   try {
     log.info(`Deleting old message ${messageId}`);
     await client.im.message.delete({
@@ -108,13 +137,6 @@ export async function updateMessage(
   }
 
   // Send new message
-  const icon = STATUS_ICONS[status];
-  const title = getToolTitle(toolId, status);
-  const cardContent = messageCard.defaultCard({
-    title: `${icon} ${title}`,
-    content: fullContent,
-  });
-
   try {
     const resp = await client.im.message.create({
       data: {
@@ -141,7 +163,35 @@ export async function sendFinalMessages(
   const client = getClient();
   const parts = splitLongContent(fullContent, MAX_FEISHU_MESSAGE_LENGTH);
 
-  // Delete old message first
+  // If content fits in one message, try patch for smooth transition
+  if (parts.length === 1) {
+    const cardContent = messageCard.defaultCard({
+      title: `${STATUS_ICONS.done} ${getToolTitle(toolId, 'done')}`,
+      content: fullContent,
+    });
+
+    // Try to use patch API for in-place update
+    try {
+      const resp = await client.im.message.patch({
+        path: { message_id: messageId },
+        data: {
+          content: cardContent,
+        },
+      });
+
+      if (resp.code === 0) {
+        log.info(`Final message updated in-place: ${messageId}`);
+        return;
+      }
+
+      log.warn(`Patch API failed (code: ${resp.code}), falling back to delete+create`);
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      log.debug(`Patch API error: ${errorMsg}, falling back to delete+create`);
+    }
+  }
+
+  // Fallback: Delete old message first (for multi-part or failed patch)
   try {
     log.info(`Deleting old message ${messageId}`);
     await client.im.message.delete({
