@@ -8,38 +8,43 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Build TypeScript to JavaScript (outputs to dist/)
 npm run build
 
-# Development mode - run directly from source
+# Development mode - run directly from source with tsx
 npm run dev
 
 # Run the compiled version
-npm run run
+npm start
+
+# Setup/initialization
+npm run setup            # Run setup-only mode (after building)
 
 # CLI commands (after building)
-npm start                 # Alias for: node dist/cli.js start
 open-im start            # Start service in background
 open-im stop             # Stop background service
 open-im restart          # Restart service
 open-im run              # Run in foreground (default)
 open-im init             # Interactive configuration wizard
-
-# Test (currently just runs build)
-npm test
 ```
 
 ## Project Architecture
 
-This is an IM bridge that connects Telegram (and potentially other platforms) to AI CLI tools like Claude Code, enabling mobile/remote access to AI coding assistance.
+This is a multi-platform IM bridge that connects Telegram and Feishu (Lark) to AI CLI tools like Claude Code, enabling mobile/remote access to AI coding assistance.
 
 ### Core Architecture
 
 - **Entry Points**:
   - `src/index.ts` - Main service entry, handles lifecycle and platform initialization
   - `src/cli.ts` - CLI interface for start/stop/restart/init commands, manages background daemon
+  - `src/setup.ts` - Interactive configuration wizard using `prompts` library
 
-- **Platform Layer** (`src/telegram/`):
-  - `client.ts` - Telegraf bot initialization with platform-specific proxy support
-  - `event-handler.ts` - Message/command routing from Telegram to AI adapters
-  - `message-sender.ts` - Sending responses back to Telegram
+- **Platform Layer**:
+  - `src/telegram/` - Telegram bot via Telegraf
+    - `client.ts` - Telegraf bot initialization with platform-specific proxy support
+    - `event-handler.ts` - Message/command routing from Telegram to AI adapters
+    - `message-sender.ts` - Sending responses back to Telegram
+  - `src/feishu/` - Feishu/Lark via @larksuiteoapi/node-sdk
+    - `client.ts` - Feishu client and WebSocket event handling
+    - `event-handler.ts` - Message/command routing from Feishu
+    - `message-sender.ts` - Sending responses back to Feishu
 
 - **AI Adapter Layer** (`src/adapters/`):
   - `tool-adapter.interface.ts` - Common interface for all AI tools
@@ -56,19 +61,40 @@ This is an IM bridge that connects Telegram (and potentially other platforms) to
   - `stream-parser.ts` - Parses Claude's output format for tool calls and content
   - `types.ts` - TypeScript types for Claude's protocol
 
+- **Shared Utilities** (`src/shared/`):
+  - `ai-task.ts` - AI task execution and cleanup
+  - `active-chats.ts` - Active chat tracking
+  - `message-dedup.ts` - Message deduplication
+  - `task-cleanup.ts` - Task cleanup utilities
+
 ### Configuration
 
 Config file: `~/.open-im/config.json`
 
-Key config aspects:
-- `platforms.{platform}.proxy` - Platform-specific proxy (http/https/socks5), only affects that platform's API calls
+Config loading order (environment variables take precedence):
+1. Environment variables (TELEGRAM_BOT_TOKEN, FEISHU_APP_ID, etc.)
+2. File config (`~/.open-im/config.json`)
+3. Default values
+
+Key config options:
+- `enabledPlatforms` - Array of enabled platforms ('telegram' | 'feishu')
+- `allowedUserIds` - Whitelist of user IDs (empty = all users)
 - `allowedBaseDirs` - Security: restrict which directories users can access
 - `aiCommand` - Which AI tool to use (claude/codex/cursor)
+- `claudeCliPath` - Path to Claude CLI executable
+- `claudeWorkDir` - Default working directory
+- `claudeSkipPermissions` - Auto-approve tool permissions (default: true)
+- `claudeTimeoutMs` - Claude CLI timeout (default: 600000)
+- `logDir` - Log directory (default: `~/.open-im/logs`)
+- `logLevel` - Log level (INFO/DEBUG/WARN/ERROR)
 
 ### Important Design Decisions
 
 - **npm, not pnpm** - Use npm for all package operations (see commit history for reasoning)
 - **ES Module + Node16** - TypeScript target ES2022, module Node16
+- **Node >= 20** - Minimum Node version requirement
+- **First-run setup** - `src/setup.ts` provides interactive configuration wizard; if stdin is not a TTY, prints manual setup instructions
+- **Multi-platform** - Both Telegram and Feishu can be enabled simultaneously; `enabledPlatforms` is dynamically determined based on available tokens
 - **Permission Server** - `src/hook/permission-server.ts` handles auto-approving tool permissions when `claudeSkipPermissions` is enabled
 - **Request Queue** - `src/queue/request-queue.ts` handles concurrent message processing per user
 - **Access Control** - `src/access/access-control.ts` validates user IDs against whitelist
