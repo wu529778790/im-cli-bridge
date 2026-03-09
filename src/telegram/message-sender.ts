@@ -96,17 +96,12 @@ export async function sendThinkingMessage(
   return String(msg.message_id);
 }
 
-// 检查错误是否可忽略
+// 检查错误是否可忽略（只忽略真正无害的错误）
 function isIgnorableError(err: unknown): boolean {
   if (err && typeof err === 'object' && 'message' in err) {
     const msg = String((err as { message: string }).message);
-    return (
-      msg.includes('not modified') ||
-      msg.includes('MESSAGE_TOO_LONG') ||
-      msg.includes('can\'t parse entities') ||
-      msg.includes('message to edit not found') ||
-      msg.includes('message is not modified')
-    );
+    // 只忽略 "not modified" 类错误（内容没有变化）
+    return msg.includes('not modified') || msg.includes('message is not modified');
   }
   return false;
 }
