@@ -22,8 +22,8 @@ on:
         type: boolean
 
 permissions:
-  id-token: write
   contents: read
+  id-token: write
 
 jobs:
   publish:
@@ -35,6 +35,8 @@ jobs:
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Remove deprecated npm config
         run: npm config delete always-auth 2>/dev/null || true
