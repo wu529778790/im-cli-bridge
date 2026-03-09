@@ -1,6 +1,6 @@
 {
   "name": "@wu529778790/open-im",
-  "version": "0.3.11",
+  "version": "0.3.12",
   "description": "Multi-platform IM bridge for AI CLI tools (Claude, Codex, Cursor)",
   "type": "module",
   "main": "dist/index.js",
@@ -41,6 +41,7 @@
     "url": "https://github.com/wu529778790/open-im/issues"
   },
   "dependencies": {
+    "https-proxy-agent": "^7.0.6",
     "prompts": "^2.4.2",
     "telegraf": "^4.16.3"
   },

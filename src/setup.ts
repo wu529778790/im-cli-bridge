@@ -61,6 +61,12 @@ export async function runInteractiveSetup(): Promise<boolean> {
         initial: '',
       },
       {
+        type: 'text',
+        name: 'proxy',
+        message: '代理地址（可选，用于访问 Telegram，如: http://127.0.0.1:7890 或 socks5://127.0.0.1:1080）',
+        initial: '',
+      },
+      {
         type: 'select',
         name: 'aiCommand',
         message: 'AI 工具（↑↓ 选择）',
@@ -94,6 +100,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
           .map((s: string) => s.trim())
           .filter(Boolean)
       : [],
+    proxy: response.proxy ? response.proxy.trim() : undefined,
     claudeWorkDir: (response.workDir || process.cwd()).trim(),
     claudeSkipPermissions: true,
     aiCommand: response.aiCommand ?? 'claude',

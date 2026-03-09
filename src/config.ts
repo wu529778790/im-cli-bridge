@@ -27,6 +27,7 @@ export interface Config {
   claudeModel?: string;
   logDir: string;
   logLevel: LogLevel;
+  proxy?: string; // HTTP/HTTPS/SOCKS 代理地址，例如: http://127.0.0.1:7890 或 socks5://127.0.0.1:1080
 }
 
 interface FileConfig {
@@ -41,6 +42,7 @@ interface FileConfig {
   claudeModel?: string;
   logDir?: string;
   logLevel?: LogLevel;
+  proxy?: string; // HTTP/HTTPS/SOCKS 代理地址
 }
 
 const CONFIG_PATH = join(APP_HOME, 'config.json');
@@ -136,6 +138,7 @@ export function loadConfig(): Config {
 
   const logDir = process.env.LOG_DIR ?? file.logDir ?? join(APP_HOME, 'logs');
   const logLevel = (process.env.LOG_LEVEL?.toUpperCase() ?? file.logLevel ?? 'INFO') as LogLevel;
+  const proxy = process.env.HTTP_PROXY ?? process.env.HTTPS_PROXY ?? process.env.ALL_PROXY ?? file.proxy;
 
   return {
     enabledPlatforms,
@@ -150,5 +153,6 @@ export function loadConfig(): Config {
     claudeModel: process.env.CLAUDE_MODEL ?? file.claudeModel,
     logDir,
     logLevel,
+    proxy,
   };
 }
