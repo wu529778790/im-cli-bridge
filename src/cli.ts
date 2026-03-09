@@ -212,8 +212,29 @@ if (args[0] === 'init') {
   await stopService().catch((err) => {
     console.error('停止服务时出错:', err);
   });
-  // 等待进程完全退出
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  // 等待进程完全退出 AND Telegram API 释放连接（至少 3 秒）
+  // Telegram 需要时间释放 bot 实例，否则会出现 409 Conflict 错误
+  const pid = await readPid();
+  if (pid) {
+    // 持续检查直到进程真正退出（最多 15 秒）
+    const maxWait = 15000;
+    const checkInterval = 500;
+    let waited = 0;
+    while (waited < maxWait) {
+      if (!(await isProcessRunning(pid))) {
+        // 进程已退出，再等待 3 秒让 Telegram API 完全释放
+        const remainingWait = 3000;
+        console.log(`进程已退出，等待 ${remainingWait / 1000} 秒让 Telegram API 释放连接...`);
+        await new Promise(resolve => setTimeout(resolve, remainingWait));
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, checkInterval));
+      waited += checkInterval;
+    }
+    if (waited >= maxWait) {
+      console.log('警告: 进程退出超时，继续启动...');
+    }
+  }
   console.log('\n正在重新启动服务...\n');
   await startService();
 } else if (args[0] === 'start') {
