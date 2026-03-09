@@ -2,7 +2,7 @@ import { getBot } from './client.js';
 import { createReadStream, existsSync } from 'node:fs';
 import { basename } from 'node:path';
 import { createLogger } from '../logger.js';
-import { splitLongContent, truncateText } from '../shared/utils.js';
+import { splitLongContent, truncateText, preprocessMarkdownForTelegram } from '../shared/utils.js';
 import { MAX_TELEGRAM_MESSAGE_LENGTH } from '../constants.js';
 import { listDirectories, buildDirectoryKeyboard } from '../commands/handler.js';
 
@@ -39,13 +39,19 @@ function formatMessage(content: string, status: MessageStatus, note?: string, to
   const icon = STATUS_ICONS[status];
   const title = getToolTitle(toolId, status);
 
+  // 在应用 Markdown 格式时，预处理内容以兼容 Telegram
+  let processedContent = content;
+  if (status === 'done' || status === 'error') {
+    processedContent = preprocessMarkdownForTelegram(content);
+  }
+
   // 计算可用内容长度（预留 header 和 note 空间）
   const headerLength = `${icon} ${title}\n\n`.length;
   const noteLength = note ? `\n\n─────────\n${note}`.length : 0;
   const maxContentLength = TG_MAX_LENGTH - headerLength - noteLength - RESERVED_LENGTH;
 
   // 确保内容长度不超过限制
-  const text = truncateText(content, Math.max(100, maxContentLength));
+  const text = truncateText(processedContent, Math.max(100, maxContentLength));
   let out = `${icon} ${title}\n\n${text}`;
   if (note) out += `\n\n─────────\n${note}`;
 

@@ -79,3 +79,19 @@ export function getContextWarning(totalTurns: number): string | null {
   const tipIndex = (totalTurns - 2) % regularTips.length;
   return regularTips[tipIndex];
 }
+
+/**
+ * 预处理 Markdown 内容，将其转换为 Telegram 友好的格式
+ * Telegram Markdown 不支持标题（#），需要转换为粗体
+ */
+export function preprocessMarkdownForTelegram(content: string): string {
+  return content
+    // 转换 Markdown 标题为粗体（支持 1-6 级标题）
+    .replace(/^#{1,6}\s+(.+)$/gm, '**$1**')
+    // 转换加粗（如果使用 __ 形式）
+    .replace(/__(.+?)__/g, '**$1**')
+    // 转换斜体（如果使用 _ 形式且不是 __）
+    .replace(/(?<!_)_(?!_)(.+?)(?!_)_(?!_)/g, '*$1*')
+    // 确保 ``` 代码块正确
+    .replace(/```(\w*)\n([\s\S]+?)```/g, '```$1\n$2```');
+}
