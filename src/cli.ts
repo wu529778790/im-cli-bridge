@@ -165,12 +165,9 @@ async function startService(): Promise<void> {
     process.exit(1);
   }
 
-  // 获取当前工作目录
-  const currentDir = process.cwd();
-
-  // 更新配置中的工作目录
-  await updateWorkDir(currentDir);
-  console.log(`工作目录已设置为: ${currentDir}`);
+  // 显示配置的工作目录（不自动更新，避免在不同目录重启时导致配置混乱）
+  const config = loadConfig();
+  console.log(`使用配置的工作目录: ${config.claudeWorkDir}`);
 
   // 后台启动 - 跨平台方案
   const distPath = join(__dirname, '..', 'dist', 'index.js');
