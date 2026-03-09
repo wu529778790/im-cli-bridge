@@ -4,7 +4,8 @@ import { spawn } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { main } from "./index.js";
+import { main, needsSetup, runInteractiveSetup } from "./index.js";
+import { loadConfig } from "./config.js";
 import { APP_HOME, SHUTDOWN_PORT } from "./constants.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -54,6 +55,30 @@ async function cmdStart(): Promise<void> {
     return;
   }
   removePid();
+
+  // 在前台先完成配置校验与配置向导（与 dev 行为保持一致）
+  if (needsSetup()) {
+    console.log("\n━━━ open-im 首次配置 ━━━\n");
+    console.log("检测到尚未配置，将先进入配置向导...\n");
+    const saved = await runInteractiveSetup();
+    if (!saved) {
+      console.log("配置未完成，已取消启动。");
+      process.exit(1);
+    }
+    console.log("");
+  }
+
+  // 校验配置是否有效（避免后台静默失败）
+  try {
+    loadConfig();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("配置无效或缺少必要字段:", msg);
+    console.log(
+      "\n请运行以下命令重新配置:\n  npx @wu529778790/open-im dev\n或:\n  npx @wu529778790/open-im init\n",
+    );
+    process.exit(1);
+  }
 
   const child = spawn(process.execPath, [INDEX_JS], {
     detached: true,
