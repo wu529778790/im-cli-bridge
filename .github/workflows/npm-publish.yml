@@ -31,8 +31,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -40,8 +38,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Install dependencies
-        run: pnpm install
+      - run: npm ci
 
       - name: Bump version (manual trigger only)
         if: github.event_name == 'workflow_dispatch'
