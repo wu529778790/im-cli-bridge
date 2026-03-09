@@ -109,7 +109,25 @@ export function loadConfig(): Config {
       try {
         execFileSync('which', [claudeCliPath], { stdio: 'pipe' });
       } catch {
-        throw new Error(`Claude CLI 在 PATH 中未找到: ${claudeCliPath}`);
+        const installGuide = [
+          '',
+          '━━━ Claude CLI 未安装 ━━━',
+          '',
+          'open-im 需要 Claude Code CLI 才能运行。',
+          '',
+          '安装方法：',
+          '',
+          '  npm install -g @anthropic-ai/claude-code',
+          '',
+          '或者：',
+          '  1. 访问 https://claude.ai/download',
+          '  2. 下载并安装 Claude Code',
+          '',
+          '安装后重新运行：',
+          '  open-im run',
+          '',
+        ].join('\n');
+        throw new Error(installGuide);
       }
     }
   }
