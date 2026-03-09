@@ -204,8 +204,18 @@ if (args[0] === 'init') {
   child.unref();
 
   console.log(`服务已在后台启动 (PID: ${child.pid})`);
+} else if (args[0] === 'run' || args.length === 0) {
+  // 前台运行（默认命令）
+  console.log('\n🚀 正在前台启动 open-im 服务...\n');
+  console.log('💡 提示：按 Ctrl+C 可随时停止服务\n');
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
 } else {
-  // 默认启动（兼容直接运行 open-im）
+  // 兼容旧版本，无参数时也运行
+  console.log('\n🚀 正在前台启动 open-im 服务...\n');
+  console.log('💡 提示：按 Ctrl+C 可随时停止服务\n');
   main().catch((err) => {
     console.error(err);
     process.exit(1);
