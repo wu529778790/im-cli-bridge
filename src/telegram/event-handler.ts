@@ -44,11 +44,11 @@ class DynamicThrottle {
       return errorDelay;
     }
 
-    // 内容增长较小时，增加延迟
+    // 内容增长较小时，适当增加延迟
     const contentGrowth = contentLength - this.lastContentLength;
-    if (contentGrowth < 100 && timeSinceLastUpdate < 1000) {
+    if (contentGrowth < 50 && timeSinceLastUpdate < 500) {
       this.lastUpdate = now;
-      return 1000; // 内容增长缓慢，每秒更新一次
+      return 500; // 内容增长缓慢时，每 500ms 更新一次
     }
 
     // 内容增长较快，使用基础间隔
@@ -144,6 +144,10 @@ export function setupTelegramHandlers(
     // 创建动态节流器
     const throttle = new DynamicThrottle();
 
+    // 保存思考内容和状态
+    let savedThinkingText = '';
+    let hasThinkingContent = false; // 是否包含思考内容
+
     // 创建包装的流式更新函数（带串行化、智能跳过和防抖）
     const createStreamUpdateWrapper = () => {
       let lastUpdateTime = 0;
@@ -154,8 +158,8 @@ export function setupTelegramHandlers(
       let scheduledContent: string | null = null; // 待更新内容
       let scheduledToolNote: string | undefined;
 
-      // 流式输出时只显示最后 N 个字符，避免消息过大
-      const STREAM_PREVIEW_LENGTH = 500;
+      // 流式输出时显示最后 N 个字符（增加到 1500 以提高流畅度）
+      const STREAM_PREVIEW_LENGTH = 1500;
 
       // 执行更新（串行化）
       const performUpdate = async (content: string, toolNote?: string) => {
@@ -169,10 +173,42 @@ export function setupTelegramHandlers(
         updateInProgress = true;
 
         try {
-          // 流式输出时只显示最后部分内容，避免触发速率限制
-          const displayContent = content.length > STREAM_PREVIEW_LENGTH
-            ? `...(已输出 ${content.length} 字符，显示最后 ${STREAM_PREVIEW_LENGTH} 字符)...\n\n${content.slice(-STREAM_PREVIEW_LENGTH)}`
-            : content;
+          let displayContent = content;
+
+          // 如果有思考内容，将其格式化后添加到前面
+          if (hasThinkingContent && savedThinkingText) {
+            // 思考内容使用引用格式，用分隔线区分
+            const thinkingFormatted = `💭 思考过程：\n${savedThinkingText}`;
+            const separator = '\n\n─────────\n\n';
+
+            // 组合内容
+            const combined = thinkingFormatted + separator + content;
+
+            // 如果组合后超过预览长度，截取最后部分（但保留思考内容）
+            if (combined.length > STREAM_PREVIEW_LENGTH) {
+              // 如果思考内容本身就很长，截取思考内容
+              const maxThinkingLength = 800;
+              const truncatedThinking = savedThinkingText.length > maxThinkingLength
+                ? `...(已省略 ${savedThinkingText.length - maxThinkingLength} 字符)...\n\n${savedThinkingText.slice(-maxThinkingLength)}`
+                : savedThinkingText;
+
+              displayContent = `💭 思考过程：\n${truncatedThinking}\n\n─────────\n\n`;
+
+              // 添加输出内容的最后部分
+              if (content.length > 800) {
+                displayContent += `...\n\n${content.slice(-800)}`;
+              } else {
+                displayContent += content;
+              }
+            } else {
+              displayContent = combined;
+            }
+          } else {
+            // 没有思考内容，直接显示（如果超过预览长度则截取）
+            displayContent = content.length > STREAM_PREVIEW_LENGTH
+              ? `...\n\n${content.slice(-STREAM_PREVIEW_LENGTH)}`
+              : content;
+          }
 
           const note = toolNote ? '输出中...\n' + toolNote : '输出中...';
           await updateMessage(chatId, msgId, displayContent, 'streaming', note, toolId);
@@ -194,17 +230,24 @@ export function setupTelegramHandlers(
         }
       };
 
-      // 防抖延迟（毫秒）
-      const DEBOUNCE_MS = 200;
+      // 防抖延迟（毫秒）- 降低到 150ms 提高响应速度
+      const DEBOUNCE_MS = 150;
       let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
       return (content: string, toolNote?: string) => {
+        // 检测是否是思考内容
+        if (content.startsWith('💭 **思考中...**')) {
+          // 保存思考内容（去掉前缀）
+          savedThinkingText = content.replace('💭 **思考中...**\n\n', '');
+          hasThinkingContent = true;
+        }
+
         const now = Date.now();
         const elapsed = now - lastUpdateTime;
 
-        // 智能跳过：内容增长小于 50 字符且距离上次更新不足 1 秒
+        // 智能跳过：内容增长小于 30 字符且距离上次更新不足 500ms（降低阈值，提高流畅度）
         const contentGrowth = content.length - lastContentLength;
-        if (contentGrowth < 50 && elapsed < 1000 && lastContentLength > 0) {
+        if (contentGrowth < 30 && elapsed < 500 && lastContentLength > 0) {
           // 跳过此次更新，但更新长度记录
           lastContentLength = content.length;
           lastContent = content;
@@ -241,9 +284,20 @@ export function setupTelegramHandlers(
       {
         throttleMs: THROTTLE_MS,
         streamUpdate: streamUpdateWrapper,
+        onThinkingToText: (content) => {
+          // 从思考转到文本输出时，标记有思考内容
+          // 注意：此时不保存文本内容，因为后续会通过 streamUpdate 持续更新
+        },
         sendComplete: async (content, note) => {
           throttle.reset();
-          await sendFinalMessages(chatId, msgId, content, note, toolId);
+          // 完成时，如果有思考内容，将其包含在最终消息中
+          if (savedThinkingText && hasThinkingContent) {
+            const thinkingFormatted = `💭 思考过程：\n${savedThinkingText}\n\n─────────\n\n`;
+            const combined = thinkingFormatted + content;
+            await sendFinalMessages(chatId, msgId, combined, note, toolId);
+          } else {
+            await sendFinalMessages(chatId, msgId, content, note, toolId);
+          }
         },
         sendError: async (error) => {
           throttle.reset();
@@ -251,6 +305,9 @@ export function setupTelegramHandlers(
         },
         extraCleanup: () => {
           throttle.reset();
+          // 清理思考内容
+          savedThinkingText = '';
+          hasThinkingContent = false;
           stopTyping();
           runningTasks.delete(taskKey);
         },
