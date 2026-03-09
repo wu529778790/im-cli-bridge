@@ -53,14 +53,36 @@ export function runClaude(
 
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) {
+    // Skip CLAUDECODE to prevent nested session detection
+    if (k === 'CLAUDECODE') continue;
     if (v !== undefined) env[k] = v;
   }
   if (options?.chatId) env.CC_IM_CHAT_ID = options.chatId;
   if (options?.hookPort) env.CC_IM_HOOK_PORT = String(options.hookPort);
 
-  const child = spawn(cliPath, args, { cwd: workDir, stdio: ['ignore', 'pipe', 'pipe'], env });
+  // Try different spawn strategies based on platform
+  log.info(`Spawning CLI: path=${cliPath}, platform=${process.platform}`);
 
-  log.debug(`Claude CLI spawned: pid=${child.pid}, cwd=${workDir}, session=${sessionId ?? 'new'}`);
+  let child;
+  if (process.platform === 'win32') {
+    // Check if running in Git Bash (MINGW) or MSYS
+    const isGitBash = process.env.MSYSTEM || process.env.MINGW_PREFIX || process.env.SHELL?.includes('bash');
+    log.info(`Detected environment: Git Bash=${isGitBash ? 'yes' : 'no'}`);
+
+    if (isGitBash) {
+      // In Git Bash, use shell for proper path resolution
+      log.info(`Using shell spawn for Git Bash environment`);
+      child = spawn(cliPath, args, { cwd: workDir, stdio: ['ignore', 'pipe', 'pipe'], env, shell: true });
+    } else {
+      // In pure cmd/PowerShell, direct spawn works best
+      log.info(`Using direct spawn for Windows cmd/PowerShell`);
+      child = spawn(cliPath, args, { cwd: workDir, stdio: ['ignore', 'pipe', 'pipe'], env, windowsHide: true });
+    }
+  } else {
+    child = spawn(cliPath, args, { cwd: workDir, stdio: ['ignore', 'pipe', 'pipe'], env });
+  }
+
+  log.info(`Claude CLI: pid=${child.pid}, cwd=${workDir}, session=${sessionId ?? 'new'}`);
 
   let accumulated = '';
   let accumulatedThinking = '';
@@ -177,6 +199,7 @@ export function runClaude(
   };
 
   child.on('close', (code) => {
+    log.info(`Claude CLI closed: exitCode=${code}, pid=${child.pid}`);
     exitCode = code;
     childClosed = true;
     finalize();
@@ -188,7 +211,8 @@ export function runClaude(
   });
 
   child.on('error', (err) => {
-    log.error(`Claude CLI error: ${err.message}`);
+    const errorCode = (err as NodeJS.ErrnoException).code;
+    log.error(`Claude CLI spawn error: ${err.message}, code=${errorCode}, path=${cliPath}`);
     if (timeoutHandle) clearTimeout(timeoutHandle);
     if (!completed) {
       completed = true;

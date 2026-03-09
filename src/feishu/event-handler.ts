@@ -119,14 +119,17 @@ export function setupFeishuHandlers(
     _threadCtx?: { rootMessageId: string; threadId: string },
     replyToMessageId?: string
   ) {
+    log.info(`[handleAIRequest] START: userId=${userId}, chatId=${chatId}, prompt="${prompt.slice(0, 50)}..."`);
     const toolAdapter = getAdapter(config.aiCommand);
     if (!toolAdapter) {
+      log.error(`[handleAIRequest] No adapter found for: ${config.aiCommand}`);
       await sendTextReply(chatId, `未配置 AI 工具: ${config.aiCommand}`);
       return;
     }
 
+    log.info(`[handleAIRequest] Adapter found, getting session...`);
     const sessionId = convId ? sessionManager.getSessionIdForConv(userId, convId) : undefined;
-    log.info(`Running ${config.aiCommand} for user ${userId}, sessionId=${sessionId ?? 'new'}`);
+    log.info(`[handleAIRequest] Running ${config.aiCommand} for user ${userId}, sessionId=${sessionId ?? 'new'}`);
 
     const toolId = config.aiCommand;
     let msgId: string;
@@ -210,6 +213,7 @@ export function setupFeishuHandlers(
 
     // Handle message received events
     if (eventType === 'im.message.receive_v1') {
+      log.info('[handleEvent] Processing im.message.receive_v1 event');
       const message = event?.message;
       if (!message) {
         log.warn('No message data in event');
@@ -220,6 +224,7 @@ export function setupFeishuHandlers(
       const messageId = message.message_id ?? '';
       const msgType = message.message_type;
       const contentStr = message.content ?? '{}';
+      log.info(`[handleEvent] Parsed: chatId=${chatId}, msgType=${msgType}`);
 
       log.info(`Message: chatId=${chatId}, messageId=${messageId}, msgType=${msgType}`);
 

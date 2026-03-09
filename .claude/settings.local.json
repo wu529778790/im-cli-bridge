@@ -10,7 +10,11 @@
       "Bash(npm list:*)",
       "Bash(npx tsx:*)",
       "Bash(git checkout:*)",
-      "Bash(claude:*)"
+      "Bash(claude:*)",
+      "Bash(\"C:\\\\Users\\\\52977\\\\.local\\\\bin\\\\claude.exe\":*)",
+      "Bash(cmd.exe:*)",
+      "Bash(where claude:*)",
+      "Bash(env:*)"
     ]
   }
 }
