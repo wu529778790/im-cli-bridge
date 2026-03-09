@@ -99,54 +99,6 @@ open-im start
 | `/allow` `/y` | 允许权限请求 |
 | `/deny` `/n` | 拒绝权限请求 |
 
-## 项目结构
-
-```
-src/
-├── index.ts              # 主入口
-├── cli.ts                # CLI 入口（open-im 命令）
-├── config.ts             # 配置加载
-├── setup.ts              # 交互式配置向导
-├── adapters/             # AI 工具适配器
-│   ├── tool-adapter.interface.ts
-│   ├── claude-adapter.ts
-│   └── registry.ts
-├── claude/               # Claude CLI 运行与解析
-├── telegram/             # Telegram 事件与消息
-├── feishu/               # 飞书事件与消息
-├── session/              # 会话管理
-├── commands/             # 命令分发
-├── queue/                # 请求队列
-├── access/               # 访问控制
-├── hook/                 # 权限 Hook
-└── shared/               # 共享工具
-```
-
-## 开发
-
-```bash
-# 构建
-npm run build
-
-# 开发模式（tsx 直接运行）
-npm run dev
-
-# 启动服务（首次运行会进入配置向导，需先 build）
-npm run setup
-```
-
-## 发布到 npm
-
-```bash
-# 更新版本
-npm version patch   # 或 minor / major
-
-# 发布
-npm publish
-```
-
-`prepublishOnly` 会自动执行 `npm run build`，确保发布前完成构建。
-
 ## License
 
 MIT
