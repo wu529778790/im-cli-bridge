@@ -31,10 +31,46 @@ open-im start
 
 首次运行会引导你完成配置，30 秒即可搞定。
 
+如果配置引导未出现，可以手动运行：
+
+```bash
+npx @wu529778790/open-im init
+```
+
+## ⚙️ 配置说明
+
+配置文件位置：`~/.open-im/config.json`
+
+配置文件示例：
+
+```json
+{
+  "telegramBotToken": "你的Bot Token（从 @BotFather 获取）",
+  "allowedUserIds": ["你的Telegram用户ID"],
+  "claudeWorkDir": "/path/to/your/work/dir",
+  "claudeSkipPermissions": true,
+  "aiCommand": "claude"
+}
+```
+
+获取 Telegram 用户 ID：
+1. 在 Telegram 中搜索 @userinfobot
+2. 发送任意消息
+3. 机器人会返回你的用户 ID
+
+**或者通过环境变量配置：**
+
+```bash
+export TELEGRAM_BOT_TOKEN="你的Bot Token"
+export ALLOWED_USER_IDS="用户ID1,用户ID2"
+open-im start
+```
+
 ## 📖 常用命令
 
 | 命令 | 说明 |
 |------|------|
+| `open-im init` | 初始化配置（首次使用或重新配置） |
 | `open-im start` | 启动服务（后台运行） |
 | `open-im stop` | 停止服务 |
 
@@ -74,3 +110,59 @@ pnpm i @wu529778790/open-im -g
 ## 📝 License
 
 [MIT](LICENSE)
+
+## 🔧 故障排除
+
+### Q: 首次运行没有配置引导？
+
+如果配置引导没有出现，尝试以下方法：
+
+1. **手动运行配置命令：**
+   ```bash
+   npx @wu529778790/open-im init
+   ```
+
+2. **检查是否已有配置文件：**
+   ```bash
+   cat ~/.open-im/config.json
+   ```
+
+3. **手动创建配置文件：**
+   ```bash
+   mkdir -p ~/.open-im
+   cat > ~/.open-im/config.json << 'EOF'
+   {
+     "telegramBotToken": "你的Bot Token",
+     "allowedUserIds": ["你的Telegram用户ID"],
+     "claudeWorkDir": "$(pwd)",
+     "claudeSkipPermissions": true,
+     "aiCommand": "claude"
+   }
+   EOF
+   ```
+
+### Q: 启动后服务立即退出？
+
+可能是配置文件无效，检查配置：
+
+```bash
+# 查看日志
+tail -f ~/.open-im/logs/*.log
+
+# 重新配置
+rm ~/.open-im/config.json
+npx @wu529778790/open-im init
+```
+
+### Q: 如何获取 Telegram Bot Token？
+
+1. 在 Telegram 中搜索 @BotFather
+2. 发送 `/newbot` 创建新机器人
+3. 按提示设置机器人名称
+4. BotFather 会返回 Token，格式如：`123456789:ABCdefGHIjklMNOpqrsTUVwxyz`
+
+### Q: 如何获取 Telegram 用户 ID？
+
+1. 在 Telegram 中搜索 @userinfobot
+2. 点击"START"或发送任意消息
+3. 机器人会返回你的用户 ID（数字）

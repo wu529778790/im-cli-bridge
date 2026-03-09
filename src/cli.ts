@@ -143,7 +143,16 @@ async function stopService(): Promise<void> {
 
 const args = process.argv.slice(2);
 
-if (args[0] === 'stop') {
+if (args[0] === 'init') {
+  // 手动触发配置
+  console.log('\n━━━ open-im 配置向导 ━━━\n');
+  const saved = await runInteractiveSetup();
+  if (!saved) {
+    console.log('配置未完成。');
+    process.exit(1);
+  }
+  console.log('\n✅ 配置完成！现在可以运行以下命令启动服务:\n  open-im start\n');
+} else if (args[0] === 'stop') {
   stopService().catch((err) => {
     console.error('停止服务时出错:', err);
     process.exit(1);
