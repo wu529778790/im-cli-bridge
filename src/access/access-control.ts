@@ -1,12 +1,22 @@
+import { createLogger } from '../logger.js';
+
+const log = createLogger('AccessControl');
+
 export class AccessControl {
   private allowedUserIds: Set<string>;
 
   constructor(allowedUserIds: string[]) {
     this.allowedUserIds = new Set(allowedUserIds);
+    log.info(`AccessControl initialized with ${allowedUserIds.length} allowed users:`, allowedUserIds);
   }
 
   isAllowed(userId: string): boolean {
-    if (this.allowedUserIds.size === 0) return true;
-    return this.allowedUserIds.has(userId);
+    if (this.allowedUserIds.size === 0) {
+      log.debug(`Allowing user ${userId} (no whitelist configured)`);
+      return true;
+    }
+    const allowed = this.allowedUserIds.has(userId);
+    log.info(`Checking user ${userId}: ${allowed ? 'ALLOWED' : 'DENIED'}`);
+    return allowed;
   }
 }

@@ -1,29 +1,41 @@
-import { loadConfig, needsSetup } from './config.js';
-import { runInteractiveSetup } from './setup.js';
+import { createServer } from "node:http";
+import { writeFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { loadConfig, needsSetup } from "./config.js";
+import { runInteractiveSetup } from "./setup.js";
 
 // 导出供 cli.ts 使用
 export { needsSetup, runInteractiveSetup };
-import { initTelegram, stopTelegram } from './telegram/client.js';
-import { setupTelegramHandlers } from './telegram/event-handler.js';
-import { sendTextReply } from './telegram/message-sender.js';
-import { initAdapters } from './adapters/registry.js';
-import { SessionManager } from './session/session-manager.js';
-import { loadActiveChats, getActiveChatId, flushActiveChats } from './shared/active-chats.js';
-import { initLogger, createLogger, closeLogger } from './logger.js';
-import { execFileSync } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { join } from 'node:path';
-import { homedir } from 'node:os';
-import { rm } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { initTelegram, stopTelegram } from "./telegram/client.js";
+import { setupTelegramHandlers } from "./telegram/event-handler.js";
+import { sendTextReply as sendTelegramTextReply } from "./telegram/message-sender.js";
+import { initFeishu, stopFeishu } from "./feishu/client.js";
+import { setupFeishuHandlers } from "./feishu/event-handler.js";
+import { sendTextReply as sendFeishuTextReply } from "./feishu/message-sender.js";
+import { initAdapters } from "./adapters/registry.js";
+import { SessionManager } from "./session/session-manager.js";
+import {
+  loadActiveChats,
+  getActiveChatId,
+  flushActiveChats,
+} from "./shared/active-chats.js";
+import { initLogger, createLogger, closeLogger } from "./logger.js";
+import { APP_HOME, SHUTDOWN_PORT } from "./constants.js";
+import { createRequire } from "node:module";
+import { join } from "node:path";
+import { homedir } from "node:os";
+import { rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
 
 const require = createRequire(import.meta.url);
-const { version: APP_VERSION } = require('../package.json') as { version: string };
+const { version: APP_VERSION } = require("../package.json") as {
+  version: string;
+};
 
-const log = createLogger('Main');
+const log = createLogger("Main");
 
 // 停止标记文件路径
-const STOP_FILE = join(homedir(), '.open-im', 'stop.flag');
+const STOP_FILE = join(homedir(), ".open-im", "stop.flag");
 
 // 检查是否收到停止信号
 function checkStopSignal(): boolean {
@@ -42,13 +54,28 @@ async function clearStopSignal(): Promise<void> {
 }
 
 async function sendLifecycleNotification(platform: string, message: string) {
-  const chatId = getActiveChatId('telegram');
-  if (!chatId) return;
-  try {
-    await sendTextReply(chatId, message);
-  } catch (err) {
-    log.debug('Failed to send lifecycle notification:', err);
+  const telegramChatId = getActiveChatId("telegram");
+  const feishuChatId = getActiveChatId("feishu");
+
+  const sendPromises: Promise<void>[] = [];
+
+  if (platform === "telegram" && telegramChatId) {
+    sendPromises.push(
+      sendTelegramTextReply(telegramChatId, message).catch((err) => {
+        log.debug("Failed to send Telegram notification:", err);
+      }),
+    );
   }
+
+  if (platform === "feishu" && feishuChatId) {
+    sendPromises.push(
+      sendFeishuTextReply(feishuChatId, message).catch((err) => {
+        log.debug("Failed to send Feishu notification:", err);
+      }),
+    );
+  }
+
+  await Promise.all(sendPromises);
 }
 
 export async function main() {
@@ -63,28 +90,43 @@ export async function main() {
 
   initAdapters(config);
 
-  log.info('Starting open-im bridge...');
+  log.info("Starting open-im bridge...");
   log.info(`AI 工具: ${config.aiCommand}`);
   log.info(`工作目录: ${config.claudeWorkDir}`);
+  log.info(`启用平台: ${config.enabledPlatforms.join(", ")}`);
 
-  const sessionManager = new SessionManager(config.claudeWorkDir, config.allowedBaseDirs);
+  const sessionManager = new SessionManager(
+    config.claudeWorkDir,
+    config.allowedBaseDirs,
+  );
   let telegramHandle: ReturnType<typeof setupTelegramHandlers> | null = null;
+  let feishuHandle: ReturnType<typeof setupFeishuHandlers> | null = null;
 
-  if (config.enabledPlatforms.includes('telegram')) {
+  if (config.enabledPlatforms.includes("telegram")) {
     await initTelegram(config, (bot) => {
       telegramHandle = setupTelegramHandlers(bot, config, sessionManager);
     });
   }
 
-  log.info('Service is running. Press Ctrl+C to stop.');
+  if (config.enabledPlatforms.includes("feishu")) {
+    feishuHandle = setupFeishuHandlers(config, sessionManager);
+    await initFeishu(config, feishuHandle.handleEvent);
+  }
+
+  log.info("Service is running. Press Ctrl+C to stop.");
 
   const startupMsg = [
     `🟢 open-im v${APP_VERSION} 服务已启动`,
-    '',
+    "",
     `AI 工具: ${config.aiCommand}`,
     `工作目录: ${config.claudeWorkDir}`,
-  ].join('\n');
-  await sendLifecycleNotification('telegram', startupMsg).catch(() => {});
+    `启用平台: ${config.enabledPlatforms.join(", ")}`,
+  ].join("\n");
+
+  // Send notification to all enabled platforms
+  for (const platform of config.enabledPlatforms) {
+    await sendLifecycleNotification(platform, startupMsg).catch(() => {});
+  }
 
   const startedAt = Date.now();
 
@@ -92,52 +134,61 @@ export async function main() {
   let shutdownNotificationSent = false;
 
   const shutdown = async () => {
-    log.info('Shutting down...');
+    log.info("Shutting down...");
     const uptimeSec = Math.floor((Date.now() - startedAt) / 1000);
     const m = Math.floor(uptimeSec / 60);
+    const shutdownMsg = `🔴 open-im 服务正在关闭...\n运行时长: ${m}分钟`;
 
-    // 只发送一次通知
-    if (!shutdownNotificationSent) {
-      shutdownNotificationSent = true;
-      try {
-        await sendLifecycleNotification(
-          'telegram',
-          `🔴 open-im 服务正在关闭...\n运行时长: ${m}分钟`
-        );
-        // 等待消息发送完成
-        await new Promise(resolve => setTimeout(resolve, 500));
-      } catch (err) {
-        log.debug('Failed to send shutdown notification:', err);
-      }
+    // Send notification to all enabled platforms
+    for (const platform of config.enabledPlatforms) {
+      await sendLifecycleNotification(platform, shutdownMsg).catch(() => {});
     }
 
-    // 清理停止标记文件
-    await clearStopSignal();
-
+    shutdownServer?.close();
+    const portFile = join(APP_HOME, "open-im.port");
+    try {
+      if (existsSync(portFile)) unlinkSync(portFile);
+    } catch {
+      /* ignore */
+    }
     telegramHandle?.stop();
     stopTelegram();
+    feishuHandle?.stop();
+    stopFeishu();
     sessionManager.destroy();
     flushActiveChats();
     closeLogger();
     process.exit(0);
   };
 
-  process.on('SIGINT', () => shutdown().catch(() => process.exit(1)));
-  process.on('SIGTERM', () => shutdown().catch(() => process.exit(1)));
+  process.on("SIGINT", () => shutdown().catch(() => process.exit(1)));
+  process.on("SIGTERM", () => shutdown().catch(() => process.exit(1)));
 
-  // 定期检查停止标记文件（用于 Windows 等无法发送信号的场景）
-  const stopCheckInterval = setInterval(() => {
-    if (checkStopSignal()) {
-      clearInterval(stopCheckInterval);
+  // 优雅关闭 HTTP 服务：stop 命令通过此端口触发 shutdown（Windows 下 SIGTERM 不可靠）
+  const shutdownServer = createServer((req, res) => {
+    if (req.url === "/shutdown" || req.url === "/") {
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("ok");
       shutdown().catch(() => process.exit(1));
+    } else {
+      res.writeHead(404);
+      res.end();
     }
-  }, 1000);
+  });
+  shutdownServer.listen(SHUTDOWN_PORT, "127.0.0.1", () => {
+    const portFile = join(APP_HOME, "open-im.port");
+    const dir = dirname(portFile);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(portFile, String(SHUTDOWN_PORT), "utf-8");
+  });
 }
 
-const isEntry = process.argv[1]?.replace(/\\/g, '/').endsWith('/index.js') || process.argv[1]?.replace(/\\/g, '/').endsWith('/index.ts');
+const isEntry =
+  process.argv[1]?.replace(/\\/g, "/").endsWith("/index.js") ||
+  process.argv[1]?.replace(/\\/g, "/").endsWith("/index.ts");
 if (isEntry) {
   main().catch((err) => {
-    console.error('Fatal error:', err);
+    console.error("Fatal error:", err);
     closeLogger();
     process.exit(1);
   });

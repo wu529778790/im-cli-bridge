@@ -1,144 +1,114 @@
 # open-im
 
-> 🚀 把你的 AI 助手装进口袋里 - 在 Telegram 随时随地使用 Claude Code
+多平台 IM 桥接，将 Telegram 和飞书 (Feishu/Lark) 连接到 AI CLI 工具（Claude Code、Codex、Cursor），实现移动端/远程访问 AI 编程助手。
 
-还在受限于终端吗？用手机也能 Coding 了！
+## 功能特性
 
-open-im 是一个轻量级的 IM 桥接工具，让你通过 Telegram 就能使用 Claude Code、Codex、Cursor 等 AI CLI 工具。无论是在咖啡厅、地铁上，还是躺在床上，你的 AI 助手随时在线。
+- **多平台**：支持 Telegram 和飞书，可同时启用
+- **多 AI 工具**：通过配置切换 Claude Code / Codex / Cursor
+- **流式输出**：节流更新，实时展示 AI 回复
+- **会话管理**：每用户独立 session，`/new` 重置会话
+- **命令支持**：`/help` `/new` `/cd` `/pwd` `/status` `/allow` `/deny`
+
+## 环境要求
+
+- **Node.js** >= 20
+- **AI CLI**：已安装 Claude Code CLI（或 Codex/Cursor）并加入 PATH
+
+## 安装
+
+```bash
+npm install @wu529778790/open-im -g
+```
 
 ## ✨ 为什么选择 open-im
 
-- **📱 移动友好** - 告别终端，用手机照样写代码
-- **⚡ 实时流式输出** - AI 思考过程实时可见，像在终端一样流畅
-- **🔒 安全可控** - 支持白名单，只有你能用
-- **🔄 独立会话** - 每个人独立 session，互不干扰
-- **🛠️ 多 AI 支持** - Claude / Codex / Cursor 随意切换
-
-## 🚀 快速开始
-
-### 方式一：npx（无需安装）
-
 ```bash
-npx @wu529778790/open-im run
+# 使用 npx 快速体验（无需全局安装）
+npx @wu529778790/open-im start    # 后台运行
+npx @wu529778790/open-im stop     # 停止后台进程
+npx @wu529778790/open-im dev     # 前台运行（调试），Ctrl+C 停止
 ```
 
-### 方式二：全局安装（推荐常用用户）
+或全局安装后直接使用：
+
+```bash
+npm install @wu529778790/open-im -g
+open-im start
+```
+
+首次运行会进入交互式配置向导，按提示输入 Token 后自动启动。配置保存到 `~/.open-im/config.json`。
+
+## 运行方式
+
+| 命令 | 说明 |
+|------|------|
+| `open-im start` | 后台运行，适合长期使用 |
+| `open-im stop` | 停止后台进程 |
+| `open-im dev` 或 `open-im` | 前台运行（调试），Ctrl+C 停止 |
+
+## 会话说明
+
+**会话上下文存储在本地**（`~/.open-im/data/sessions.json`），与 IM 聊天记录无关。每用户在本地维护独立的 session 和 Claude 会话 ID，`/new` 可重置当前会话。
 
 ```bash
 npm i @wu529778790/open-im -g
 open-im run
 ```
 
-首次运行会引导你完成配置，30 秒即可搞定。
+### 环境变量
 
-如果配置引导未出现，可以手动运行：
+| 变量 | 说明 |
+|------|------|
+| `TELEGRAM_BOT_TOKEN` | Telegram Bot Token（从 @BotFather 获取） |
+| `FEISHU_APP_ID` | 飞书应用 App ID |
+| `FEISHU_APP_SECRET` | 飞书应用 App Secret |
+| `ALLOWED_USER_IDS` | 白名单用户 ID（逗号分隔，空=所有人） |
+| `AI_COMMAND` | `claude` \| `codex` \| `cursor`，默认 `claude` |
+| `CLAUDE_CLI_PATH` | Claude CLI 路径，默认 `claude` |
+| `CLAUDE_WORK_DIR` | 工作目录 |
+| `CLAUDE_SKIP_PERMISSIONS` | 跳过权限确认，默认 `true` |
+| `CLAUDE_TIMEOUT_MS` | Claude 超时（毫秒），默认 600000 |
+| `CLAUDE_MODEL` | Claude 模型（可选） |
+| `ALLOWED_BASE_DIRS` | 允许访问的目录（逗号分隔） |
+| `LOG_DIR` | 日志目录，默认 `~/.open-im/logs` |
+| `LOG_LEVEL` | 日志级别：INFO/DEBUG/WARN/ERROR |
+
+### 配置文件
+
+配置优先级：环境变量 > `~/.open-im/config.json` > 默认值。
+
+至少需配置 **Telegram** 或 **飞书** 其一：
+
+- **Telegram**：`TELEGRAM_BOT_TOKEN` 或 `telegramBotToken`
+- **飞书**：`FEISHU_APP_ID` + `FEISHU_APP_SECRET` 或 `feishuAppId` + `feishuAppSecret`
+
+### 飞书配置说明
+
+1. 在 [飞书开放平台](https://open.feishu.cn/) 创建企业自建应用
+2. 开启「机器人」能力
+3. 配置事件订阅：启用 `im.message.receive_v1`，使用 **长连接** 模式（WebSocket）
+4. 将机器人添加到目标群聊或发起私聊
+
+## 开发
 
 ```bash
-npx @wu529778790/open-im init
+npm run build      # 构建
+npm run dev        # 直接运行源码（tsx，无需 build）
+npm run foreground # 前台运行已构建版本
 ```
 
-## ⚙️ 配置说明
-
-配置文件位置：`~/.open-im/config.json`
-
-配置文件示例：
-
-```json
-{
-  "telegramBotToken": "你的Bot Token（从 @BotFather 获取）",
-  "allowedUserIds": ["你的Telegram用户ID"],
-  "claudeWorkDir": "/path/to/your/work/dir",
-  "claudeSkipPermissions": true,
-  "aiCommand": "claude",
-  "platforms": {
-    "telegram": {
-      "proxy": "http://127.0.0.1:7890"
-    }
-  }
-}
-```
-
-### 🌐 代理配置
-
-如果你的网络环境无法直接访问 Telegram，需要配置代理。代理配置按平台独立设置，互不影响。
-
-**配置方式：**
-
-在 JSON 配置文件中添加：
-```json
-{
-  "platforms": {
-    "telegram": {
-      "proxy": "http://127.0.0.1:7890"
-    }
-  }
-}
-```
-
-**支持的代理类型：**
-- HTTP 代理：`http://127.0.0.1:7890`
-- HTTPS 代理：`https://127.0.0.1:7890`
-- SOCKS5 代理：`socks5://127.0.0.1:1080`
-
-**注意：**
-- 代理仅用于访问 Telegram API，不会影响 AI 工具（Claude/Codex/Cursor）的网络请求
-- 飞书等其他国内 IM 平台无需配置代理
-- 如果你的网络能直接访问 Telegram，则无需配置代理
-
-### 获取 Telegram Bot Token
-1. 在 Telegram 中搜索 @BotFather
-2. 发送 `/newbot` 创建新机器人
-3. 按提示设置机器人名称
-4. BotFather 会返回 Token，格式如：`123456789:ABCdefGHIjklMNOpqrsTUVwxyz`
-
-获取 Telegram 用户 ID（可选）：
-1. 在 Telegram 中搜索 @userinfobot
-2. 发送任意消息
-3. 机器人会返回你的用户 ID
-4. 如不设置，则所有人都可以使用你的机器人
-
-## 📖 常用命令
+## IM 内命令
 
 | 命令 | 说明 |
 |------|------|
-| `open-im` / `open-im run` | 前台运行（首次使用会引导配置） |
-| `open-im init` | 初始化配置（首次使用或重新配置） |
-| `open-im start` | 后台启动服务 |
-| `open-im stop` | 停止服务 |
-| `open-im restart` | 重启服务 |
-
-### Telegram 机器人命令
-
-| 命令 | 功能 |
-|------|------|
-| `/help` | 查看帮助 |
-| `/new` | 开启新会话 |
+| `/help` | 显示帮助 |
+| `/new` | 开始新会话 |
+| `/status` | 显示状态（AI 工具、工作目录、费用等） |
 | `/cd <路径>` | 切换工作目录 |
-| `/pwd` | 查看当前目录 |
-| `/status` | 查看运行状态 |
-
-## 💡 使用场景
-
-- 🚇 **通勤路上** - 用手机处理简单的代码问题
-- ☕ **咖啡厅** - 没带电脑也能快速调试
-- 🛋️ **沙发模式** - 躺着看 AI 帮你写代码
-- 🌙 **紧急修复** - 半夜收到报警，手机直接处理
-
-## 📦 安装方式
-
-```bash
-# npx（无需安装）
-npx @wu529778790/open-im run
-
-# npm 全局安装
-npm i @wu529778790/open-im -g
-
-# yarn 全局安装
-yarn global add @wu529778790/open-im
-
-# pnpm 全局安装
-pnpm i @wu529778790/open-im -g
-```
+| `/pwd` | 显示当前工作目录 |
+| `/allow` `/y` | 允许权限请求 |
+| `/deny` `/n` | 拒绝权限请求 |
 
 ## 📝 License
 
@@ -151,16 +121,19 @@ pnpm i @wu529778790/open-im -g
 如果配置引导没有出现，尝试以下方法：
 
 1. **手动运行配置命令：**
+
    ```bash
    npx @wu529778790/open-im init
    ```
 
 2. **检查是否已有配置文件：**
+
    ```bash
    cat ~/.open-im/config.json
    ```
 
 3. **手动创建配置文件：**
+
    ```bash
    mkdir -p ~/.open-im
    cat > ~/.open-im/config.json << 'EOF'
@@ -220,6 +193,7 @@ npx @wu529778790/open-im run
 ```
 
 支持的代理格式：
+
 - HTTP：`http://127.0.0.1:7890`
 - HTTPS：`https://127.0.0.1:7890`
 - SOCKS5：`socks5://127.0.0.1:1080`

@@ -1,10 +1,20 @@
-import { spawn } from 'node:child_process';
-import { createInterface } from 'node:readline';
-import { parseStreamLine, extractTextDelta, extractThinkingDelta, extractResult } from './stream-parser.js';
-import { isStreamInit, isContentBlockStart, isContentBlockDelta, isContentBlockStop } from './types.js';
-import { createLogger } from '../logger.js';
+import { spawn } from "node:child_process";
+import { createInterface } from "node:readline";
+import {
+  parseStreamLine,
+  extractTextDelta,
+  extractThinkingDelta,
+  extractResult,
+} from "./stream-parser.js";
+import {
+  isStreamInit,
+  isContentBlockStart,
+  isContentBlockDelta,
+  isContentBlockStop,
+} from "./types.js";
+import { createLogger } from "../logger.js";
 
-const log = createLogger('CliRunner');
+const log = createLogger("CliRunner");
 
 export interface ClaudeRunCallbacks {
   onText: (accumulated: string) => void;
@@ -42,42 +52,94 @@ export function runClaude(
   sessionId: string | undefined,
   workDir: string,
   callbacks: ClaudeRunCallbacks,
-  options?: ClaudeRunOptions
+  options?: ClaudeRunOptions,
 ): ClaudeRunHandle {
-  const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages'];
+  const args = [
+    "-p",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--include-partial-messages",
+  ];
 
-  if (options?.skipPermissions) args.push('--dangerously-skip-permissions');
-  if (options?.model) args.push('--model', options.model);
-  if (sessionId) args.push('--resume', sessionId);
-  args.push('--', prompt);
+  if (options?.skipPermissions) args.push("--dangerously-skip-permissions");
+  if (options?.model) args.push("--model", options.model);
+  if (sessionId) args.push("--resume", sessionId);
+  args.push("--", prompt);
 
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) {
+    // Skip CLAUDECODE to prevent nested session detection
+    if (k === "CLAUDECODE") continue;
     if (v !== undefined) env[k] = v;
   }
   if (options?.chatId) env.CC_IM_CHAT_ID = options.chatId;
   if (options?.hookPort) env.CC_IM_HOOK_PORT = String(options.hookPort);
 
-  const child = spawn(cliPath, args, { cwd: workDir, stdio: ['ignore', 'pipe', 'pipe'], env, windowsHide: true });
+  // Try different spawn strategies based on platform
+  log.info(`Spawning CLI: path=${cliPath}, platform=${process.platform}`);
 
-  log.debug(`Claude CLI spawned: pid=${child.pid}, cwd=${workDir}, session=${sessionId ?? 'new'}`);
+  let child;
+  if (process.platform === "win32") {
+    // Check if running in Git Bash (MINGW) or MSYS
+    const isGitBash =
+      process.env.MSYSTEM ||
+      process.env.MINGW_PREFIX ||
+      process.env.SHELL?.includes("bash");
+    log.info(`Detected environment: Git Bash=${isGitBash ? "yes" : "no"}`);
 
-  let accumulated = '';
-  let accumulatedThinking = '';
+    if (isGitBash) {
+      // In Git Bash, use shell for proper path resolution
+      log.info(`Using shell spawn for Git Bash environment`);
+      child = spawn(cliPath, args, {
+        cwd: workDir,
+        stdio: ["ignore", "pipe", "pipe"],
+        env,
+        shell: true,
+      });
+    } else {
+      // In pure cmd/PowerShell, direct spawn works best
+      log.info(`Using direct spawn for Windows cmd/PowerShell`);
+      child = spawn(cliPath, args, {
+        cwd: workDir,
+        stdio: ["ignore", "pipe", "pipe"],
+        env,
+        windowsHide: true,
+      });
+    }
+  } else {
+    child = spawn(cliPath, args, {
+      cwd: workDir,
+      stdio: ["ignore", "pipe", "pipe"],
+      env,
+    });
+  }
+
+  log.info(
+    `Claude CLI: pid=${child.pid}, cwd=${workDir}, session=${sessionId ?? "new"}`,
+  );
+
+  let accumulated = "";
+  let accumulatedThinking = "";
   let completed = false;
-  let model = '';
+  let model = "";
   const toolStats: Record<string, number> = {};
   const pendingToolInputs = new Map<number, { name: string; json: string }>();
   const MAX_TIMEOUT = 2_147_483_647;
-  const timeoutMs = options?.timeoutMs && options.timeoutMs > 0 ? Math.min(options.timeoutMs, MAX_TIMEOUT) : 0;
+  const timeoutMs =
+    options?.timeoutMs && options.timeoutMs > 0
+      ? Math.min(options.timeoutMs, MAX_TIMEOUT)
+      : 0;
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
   if (timeoutMs > 0) {
     timeoutHandle = setTimeout(() => {
       if (!completed && !child.killed) {
         completed = true;
-        log.warn(`Claude CLI timeout after ${timeoutMs}ms, killing pid=${child.pid}`);
-        child.kill('SIGTERM');
+        log.warn(
+          `Claude CLI timeout after ${timeoutMs}ms, killing pid=${child.pid}`,
+        );
+        child.kill("SIGTERM");
         callbacks.onError(`执行超时（${timeoutMs}ms），已终止进程`);
       }
     }, timeoutMs);
@@ -85,7 +147,7 @@ export function runClaude(
 
   const rl = createInterface({ input: child.stdout! });
 
-  rl.on('line', (line) => {
+  rl.on("line", (line) => {
     const event = parseStreamLine(line);
     if (!event) return;
 
@@ -108,15 +170,21 @@ export function runClaude(
       return;
     }
 
-    if (isContentBlockStart(event) && event.event.content_block?.type === 'tool_use') {
+    if (
+      isContentBlockStart(event) &&
+      event.event.content_block?.type === "tool_use"
+    ) {
       const name = event.event.content_block.name;
-      if (name) pendingToolInputs.set(event.event.index, { name, json: '' });
+      if (name) pendingToolInputs.set(event.event.index, { name, json: "" });
       return;
     }
 
-    if (isContentBlockDelta(event) && event.event.delta?.type === 'input_json_delta') {
+    if (
+      isContentBlockDelta(event) &&
+      event.event.delta?.type === "input_json_delta"
+    ) {
       const pending = pendingToolInputs.get(event.event.index);
-      if (pending) pending.json += event.event.delta.partial_json ?? '';
+      if (pending) pending.json += event.event.delta.partial_json ?? "";
       return;
     }
 
@@ -176,19 +244,23 @@ export function runClaude(
     }
   };
 
-  child.on('close', (code) => {
+  child.on("close", (code) => {
+    log.info(`Claude CLI closed: exitCode=${code}, pid=${child.pid}`);
     exitCode = code;
     childClosed = true;
     finalize();
   });
 
-  rl.on('close', () => {
+  rl.on("close", () => {
     rlClosed = true;
     finalize();
   });
 
-  child.on('error', (err) => {
-    log.error(`Claude CLI error: ${err.message}`);
+  child.on("error", (err) => {
+    const errorCode = (err as NodeJS.ErrnoException).code;
+    log.error(
+      `Claude CLI spawn error: ${err.message}, code=${errorCode}, path=${cliPath}`,
+    );
     if (timeoutHandle) clearTimeout(timeoutHandle);
     if (!completed) {
       completed = true;
@@ -202,7 +274,7 @@ export function runClaude(
     abort: () => {
       if (timeoutHandle) clearTimeout(timeoutHandle);
       rl.close();
-      if (!child.killed) child.kill('SIGTERM');
+      if (!child.killed) child.kill("SIGTERM");
     },
   };
 }

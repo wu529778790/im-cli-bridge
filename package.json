@@ -1,6 +1,6 @@
 {
   "name": "@wu529778790/open-im",
-  "version": "0.4.0",
+  "version": "0.1.0",
   "description": "Multi-platform IM bridge for AI CLI tools (Claude, Codex, Cursor)",
   "type": "module",
   "main": "dist/index.js",
@@ -16,9 +16,9 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
-    "run": "node dist/index.js",
     "start": "node dist/cli.js start",
     "stop": "node dist/cli.js stop",
+    "foreground": "node dist/cli.js dev",
     "setup": "node dist/index.js --setup-only",
     "test": "npm run build",
     "prepublishOnly": "npm run build"
@@ -41,7 +41,7 @@
     "url": "https://github.com/wu529778790/open-im/issues"
   },
   "dependencies": {
-    "https-proxy-agent": "^7.0.6",
+    "@larksuiteoapi/node-sdk": "^1.59.0",
     "prompts": "^2.4.2",
     "telegraf": "^4.16.3"
   },

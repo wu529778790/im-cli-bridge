@@ -2,6 +2,8 @@ import { join } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
 
 export const APP_HOME = join(homedir(), '.open-im');
+/** 优雅关闭 HTTP 端口（stop 命令通过此端口触发 shutdown） */
+export const SHUTDOWN_PORT = 39281;
 export const IMAGE_DIR = join(tmpdir(), 'open-im-images');
 
 export const READ_ONLY_TOOLS = [
@@ -16,4 +18,7 @@ export const TERMINAL_ONLY_COMMANDS = new Set([
 
 export const DEDUP_TTL_MS = 5 * 60 * 1000;
 export const THROTTLE_MS = 200;
+/** Telegram 编辑消息节流：600ms，避免 API 限速且更流畅 */
+export const TELEGRAM_THROTTLE_MS = 600;
 export const MAX_TELEGRAM_MESSAGE_LENGTH = 4000;
+export const MAX_FEISHU_MESSAGE_LENGTH = 4000;

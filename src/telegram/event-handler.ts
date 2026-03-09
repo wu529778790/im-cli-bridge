@@ -1,11 +1,11 @@
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import type { Telegraf } from 'telegraf';
-import { message } from 'telegraf/filters';
-import type { Config } from '../config.js';
-import { AccessControl } from '../access/access-control.js';
-import type { SessionManager } from '../session/session-manager.js';
-import { RequestQueue } from '../queue/request-queue.js';
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import type { Telegraf } from "telegraf";
+import { message } from "telegraf/filters";
+import type { Config } from "../config.js";
+import { AccessControl } from "../access/access-control.js";
+import type { SessionManager } from "../session/session-manager.js";
+import { RequestQueue } from "../queue/request-queue.js";
 import {
   sendThinkingMessage,
   updateMessage,
@@ -13,18 +13,21 @@ import {
   sendTextReply,
   startTypingLoop,
   sendImageReply,
-} from './message-sender.js';
-import { registerPermissionSender, resolvePermissionById } from '../hook/permission-server.js';
-import { CommandHandler } from '../commands/handler.js';
-import { getAdapter } from '../adapters/registry.js';
-import { runAITask, type TaskRunState } from '../shared/ai-task.js';
-import { startTaskCleanup } from '../shared/task-cleanup.js';
-import { MessageDedup } from '../shared/message-dedup.js';
-import { THROTTLE_MS, IMAGE_DIR } from '../constants.js';
-import { setActiveChatId } from '../shared/active-chats.js';
-import { createLogger } from '../logger.js';
+} from "./message-sender.js";
+import {
+  registerPermissionSender,
+  resolvePermissionById,
+} from "../hook/permission-server.js";
+import { CommandHandler } from "../commands/handler.js";
+import { getAdapter } from "../adapters/registry.js";
+import { runAITask, type TaskRunState } from "../shared/ai-task.js";
+import { startTaskCleanup } from "../shared/task-cleanup.js";
+import { MessageDedup } from "../shared/message-dedup.js";
+import { TELEGRAM_THROTTLE_MS, IMAGE_DIR } from "../constants.js";
+import { setActiveChatId } from "../shared/active-chats.js";
+import { createLogger } from "../logger.js";
 
-const log = createLogger('TgHandler');
+const log = createLogger("TgHandler");
 
 // 动态节流器类 - 根据内容长度和更新频率调整间隔
 class DynamicThrottle {
@@ -74,12 +77,17 @@ class DynamicThrottle {
   }
 }
 
-async function downloadTelegramPhoto(bot: Telegraf, fileId: string): Promise<string> {
+async function downloadTelegramPhoto(
+  bot: Telegraf,
+  fileId: string,
+): Promise<string> {
   await mkdir(IMAGE_DIR, { recursive: true });
   const fileLink = await bot.telegram.getFileLink(fileId);
-  const res = await fetch(fileLink.href, { signal: AbortSignal.timeout(30000) });
+  const res = await fetch(fileLink.href, {
+    signal: AbortSignal.timeout(30000),
+  });
   const buffer = Buffer.from(await res.arrayBuffer());
-  const safeId = fileId.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const safeId = fileId.replace(/[^a-zA-Z0-9_-]/g, "_");
   const imagePath = join(IMAGE_DIR, `${Date.now()}-${safeId.slice(-8)}.jpg`);
   await writeFile(imagePath, buffer);
   return imagePath;
@@ -93,7 +101,7 @@ export interface TelegramEventHandlerHandle {
 export function setupTelegramHandlers(
   bot: Telegraf,
   config: Config,
-  sessionManager: SessionManager
+  sessionManager: SessionManager,
 ): TelegramEventHandlerHandle {
   const accessControl = new AccessControl(config.allowedUserIds);
   const requestQueue = new RequestQueue();
@@ -109,7 +117,7 @@ export function setupTelegramHandlers(
     getRunningTasksSize: () => runningTasks.size,
   });
 
-  registerPermissionSender('telegram', {});
+  registerPermissionSender("telegram", {});
 
   async function handleAIRequest(
     userId: string,
@@ -118,7 +126,7 @@ export function setupTelegramHandlers(
     workDir: string,
     convId?: string,
     _threadCtx?: { rootMessageId: string; threadId: string },
-    replyToMessageId?: string
+    replyToMessageId?: string,
   ) {
     // 在用户每次发送消息时就累加计数，确保提示能轮换显示
     const currentTurns = sessionManager.addTurns(userId, 1);
@@ -130,15 +138,19 @@ export function setupTelegramHandlers(
       return;
     }
 
-    const sessionId = convId ? sessionManager.getSessionIdForConv(userId, convId) : undefined;
-    log.info(`Running ${config.aiCommand} for user ${userId}, sessionId=${sessionId ?? 'new'}`);
+    const sessionId = convId
+      ? sessionManager.getSessionIdForConv(userId, convId)
+      : undefined;
+    log.info(
+      `Running ${config.aiCommand} for user ${userId}, sessionId=${sessionId ?? "new"}`,
+    );
 
     const toolId = config.aiCommand;
     let msgId: string;
     try {
       msgId = await sendThinkingMessage(chatId, replyToMessageId, toolId);
     } catch (err) {
-      log.error('Failed to send thinking message:', err);
+      log.error("Failed to send thinking message:", err);
       return;
     }
 
@@ -149,14 +161,14 @@ export function setupTelegramHandlers(
     const throttle = new DynamicThrottle();
 
     // 不保存思考内容，只显示最终结果
-    let savedThinkingText = '';
+    let savedThinkingText = "";
     let hasThinkingContent = false; // 始终为 false，不显示思考内容
 
     // 创建包装的流式更新函数（带串行化、智能跳过和防抖）
     const createStreamUpdateWrapper = () => {
       let lastUpdateTime = 0;
       let lastContentLength = 0;
-      let lastContent = '';
+      let lastContent = "";
       let pendingUpdate: ReturnType<typeof setTimeout> | null = null;
       let updateInProgress = false; // 串行化锁
       let scheduledContent: string | null = null; // 待更新内容
@@ -166,7 +178,11 @@ export function setupTelegramHandlers(
       const STREAM_PREVIEW_LENGTH = 1500;
 
       // 执行更新（串行化）
-      const performUpdate = async (content: string, toolNote?: string, isComplete = false) => {
+      const performUpdate = async (
+        content: string,
+        toolNote?: string,
+        isComplete = false,
+      ) => {
         // 如果是完成更新，需要优先处理，取消待处理的更新
         if (isComplete) {
           // 清除防抖定时器
@@ -177,7 +193,7 @@ export function setupTelegramHandlers(
 
           // 如果有更新正在进行，等待它完成
           while (updateInProgress) {
-            await new Promise(resolve => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 50));
           }
 
           // 重置状态，确保完成更新能立即执行
@@ -202,7 +218,7 @@ export function setupTelegramHandlers(
           if (hasThinkingContent && savedThinkingText) {
             // 思考内容使用引用格式，用分隔线区分
             const thinkingFormatted = `💭 思考过程：\n${savedThinkingText}`;
-            const separator = '\n\n─────────\n\n';
+            const separator = "\n\n─────────\n\n";
 
             // 组合内容
             const combined = thinkingFormatted + separator + content;
@@ -211,9 +227,10 @@ export function setupTelegramHandlers(
             if (combined.length > STREAM_PREVIEW_LENGTH) {
               // 如果思考内容本身就很长，截取思考内容
               const maxThinkingLength = 800;
-              const truncatedThinking = savedThinkingText.length > maxThinkingLength
-                ? `...(已省略 ${savedThinkingText.length - maxThinkingLength} 字符)...\n\n${savedThinkingText.slice(-maxThinkingLength)}`
-                : savedThinkingText;
+              const truncatedThinking =
+                savedThinkingText.length > maxThinkingLength
+                  ? `...(已省略 ${savedThinkingText.length - maxThinkingLength} 字符)...\n\n${savedThinkingText.slice(-maxThinkingLength)}`
+                  : savedThinkingText;
 
               displayContent = `💭 思考过程：\n${truncatedThinking}\n\n─────────\n\n`;
 
@@ -228,13 +245,21 @@ export function setupTelegramHandlers(
             }
           } else {
             // 没有思考内容，直接显示（如果超过预览长度则截取）
-            displayContent = content.length > STREAM_PREVIEW_LENGTH
-              ? `...\n\n${content.slice(-STREAM_PREVIEW_LENGTH)}`
-              : content;
+            displayContent =
+              content.length > STREAM_PREVIEW_LENGTH
+                ? `...\n\n${content.slice(-STREAM_PREVIEW_LENGTH)}`
+                : content;
           }
 
-          const note = toolNote ? '输出中...\n' + toolNote : '输出中...';
-          await updateMessage(chatId, msgId, displayContent, 'streaming', note, toolId);
+          const note = toolNote ? "输出中...\n" + toolNote : "输出中...";
+          await updateMessage(
+            chatId,
+            msgId,
+            displayContent,
+            "streaming",
+            note,
+            toolId,
+          );
           throttle.recordSuccess();
           lastUpdateTime = Date.now();
         } catch (err) {
@@ -259,7 +284,7 @@ export function setupTelegramHandlers(
 
       return (content: string, toolNote?: string) => {
         // 检测是否是思考内容，如果则跳过不显示
-        if (content.startsWith('💭 **思考中...**')) {
+        if (content.startsWith("💭 **思考中...**")) {
           // 不保存思考内容，直接返回，不触发更新
           return;
         }
@@ -289,10 +314,13 @@ export function setupTelegramHandlers(
         }
 
         // 设置防抖定时器
-        debounceTimer = setTimeout(() => {
-          debounceTimer = null;
-          performUpdate(content, toolNote);
-        }, Math.max(DEBOUNCE_MS, baseDelay));
+        debounceTimer = setTimeout(
+          () => {
+            debounceTimer = null;
+            performUpdate(content, toolNote);
+          },
+          Math.max(DEBOUNCE_MS, baseDelay),
+        );
       };
     };
 
@@ -300,15 +328,29 @@ export function setupTelegramHandlers(
 
     await runAITask(
       { config, sessionManager },
-      { userId, chatId, workDir, sessionId, convId, platform: 'telegram', taskKey },
+      {
+        userId,
+        chatId,
+        workDir,
+        sessionId,
+        convId,
+        platform: "telegram",
+        taskKey,
+      },
       prompt,
       toolAdapter,
       {
-        throttleMs: THROTTLE_MS,
-        streamUpdate: streamUpdateWrapper,
-        onThinkingToText: (content) => {
-          // 从思考转到文本输出时，标记有思考内容
-          // 注意：此时不保存文本内容，因为后续会通过 streamUpdate 持续更新
+        throttleMs: TELEGRAM_THROTTLE_MS,
+        streamUpdate: (content, toolNote) => {
+          const note = toolNote ? "输出中...\n" + toolNote : "输出中...";
+          updateMessage(
+            chatId,
+            msgId,
+            content,
+            "streaming",
+            note,
+            toolId,
+          ).catch(() => {});
         },
         sendComplete: async (content, note) => {
           throttle.reset();
@@ -317,19 +359,26 @@ export function setupTelegramHandlers(
           try {
             await sendFinalMessages(chatId, msgId, content, note, toolId);
           } catch (err) {
-            log.error('Failed to send complete message:', err);
+            log.error("Failed to send complete message:", err);
             // 如果发送失败，至少尝试更新状态
-            await updateMessage(chatId, msgId, content, 'done', note, toolId);
+            await updateMessage(chatId, msgId, content, "done", note, toolId);
           }
         },
         sendError: async (error) => {
           throttle.reset();
-          await updateMessage(chatId, msgId, `错误：${error}`, 'error', '执行失败', toolId);
+          await updateMessage(
+            chatId,
+            msgId,
+            `错误：${error}`,
+            "error",
+            "执行失败",
+            toolId,
+          );
         },
         extraCleanup: () => {
           throttle.reset();
           // 清理思考内容
-          savedThinkingText = '';
+          savedThinkingText = "";
           hasThinkingContent = false;
           stopTyping();
           runningTasks.delete(taskKey);
@@ -338,40 +387,50 @@ export function setupTelegramHandlers(
           runningTasks.set(taskKey, state);
         },
         sendImage: (path) => sendImageReply(chatId, path),
-      }
+      },
     );
   }
 
-  bot.on('callback_query', async (ctx) => {
+  bot.on("callback_query", async (ctx) => {
     const query = ctx.callbackQuery;
-    if (!('data' in query)) return;
-    const userId = String(ctx.from?.id ?? '');
+    if (!("data" in query)) return;
+    const userId = String(ctx.from?.id ?? "");
     const data = query.data as string;
 
-    if (data.startsWith('stop_')) {
-      const messageId = data.replace('stop_', '');
+    if (data.startsWith("stop_")) {
+      const messageId = data.replace("stop_", "");
       const taskKey = `${userId}:${messageId}`;
       const taskInfo = runningTasks.get(taskKey);
       if (taskInfo) {
         runningTasks.delete(taskKey);
         taskInfo.settle();
         taskInfo.handle.abort();
-        const chatId = String(ctx.chat?.id ?? '');
-        await updateMessage(chatId, messageId, taskInfo.latestContent || '已停止', 'error', '⏹️ 已停止', config.aiCommand);
-        await ctx.answerCbQuery('已停止执行');
+        const chatId = String(ctx.chat?.id ?? "");
+        await updateMessage(
+          chatId,
+          messageId,
+          taskInfo.latestContent || "已停止",
+          "error",
+          "⏹️ 已停止",
+          config.aiCommand,
+        );
+        await ctx.answerCbQuery("已停止执行");
       } else {
-        await ctx.answerCbQuery('任务已完成或不存在');
+        await ctx.answerCbQuery("任务已完成或不存在");
       }
-    } else if (data.startsWith('perm_allow_') || data.startsWith('perm_deny_')) {
-      const isAllow = data.startsWith('perm_allow_');
-      const requestId = data.replace(/^perm_(allow|deny)_/, '');
-      const decision = isAllow ? 'allow' : 'deny';
+    } else if (
+      data.startsWith("perm_allow_") ||
+      data.startsWith("perm_deny_")
+    ) {
+      const isAllow = data.startsWith("perm_allow_");
+      const requestId = data.replace(/^perm_(allow|deny)_/, "");
+      const decision = isAllow ? "allow" : "deny";
       resolvePermissionById(requestId, decision);
-      await ctx.answerCbQuery(isAllow ? '✅ 已允许' : '❌ 已拒绝');
+      await ctx.answerCbQuery(isAllow ? "✅ 已允许" : "❌ 已拒绝");
     }
   });
 
-  bot.on(message('text'), async (ctx) => {
+  bot.on(message("text"), async (ctx) => {
     const chatId = String(ctx.chat.id);
     const userId = String(ctx.from!.id);
     const messageId = String(ctx.message.message_id);
@@ -380,38 +439,59 @@ export function setupTelegramHandlers(
     if (dedup.isDuplicate(`${chatId}:${messageId}`)) return;
 
     if (!accessControl.isAllowed(userId)) {
-      await sendTextReply(chatId, '抱歉，您没有访问权限。\n您的 ID: ' + userId);
+      await sendTextReply(chatId, "抱歉，您没有访问权限。\n您的 ID: " + userId);
       return;
     }
 
-    setActiveChatId('telegram', chatId);
+    setActiveChatId("telegram", chatId);
 
-    if (await commandHandler.dispatch(text, chatId, userId, 'telegram', handleAIRequest)) {
+    if (
+      await commandHandler.dispatch(
+        text,
+        chatId,
+        userId,
+        "telegram",
+        handleAIRequest,
+      )
+    ) {
       return;
     }
 
     const workDir = sessionManager.getWorkDir(userId);
     const convId = sessionManager.getConvId(userId);
-    const enqueueResult = requestQueue.enqueue(userId, convId, text, async (prompt) => {
-      await handleAIRequest(userId, chatId, prompt, workDir, convId, undefined, messageId);
-    });
+    const enqueueResult = requestQueue.enqueue(
+      userId,
+      convId,
+      text,
+      async (prompt) => {
+        await handleAIRequest(
+          userId,
+          chatId,
+          prompt,
+          workDir,
+          convId,
+          undefined,
+          messageId,
+        );
+      },
+    );
 
-    if (enqueueResult === 'rejected') {
-      await sendTextReply(chatId, '请求队列已满，请稍后再试。');
-    } else if (enqueueResult === 'queued') {
-      await sendTextReply(chatId, '您的请求已排队等待。');
+    if (enqueueResult === "rejected") {
+      await sendTextReply(chatId, "请求队列已满，请稍后再试。");
+    } else if (enqueueResult === "queued") {
+      await sendTextReply(chatId, "您的请求已排队等待。");
     }
   });
 
-  bot.on(message('photo'), async (ctx) => {
+  bot.on(message("photo"), async (ctx) => {
     const chatId = String(ctx.chat.id);
     const userId = String(ctx.from!.id);
-    const caption = ctx.message.caption?.trim() || '';
+    const caption = ctx.message.caption?.trim() || "";
 
     if (dedup.isDuplicate(`${chatId}:${ctx.message.message_id}`)) return;
     if (!accessControl.isAllowed(userId)) return;
 
-    setActiveChatId('telegram', chatId);
+    setActiveChatId("telegram", chatId);
 
     const photos = ctx.message.photo;
     const largest = photos[photos.length - 1];
@@ -419,8 +499,8 @@ export function setupTelegramHandlers(
     try {
       imagePath = await downloadTelegramPhoto(bot, largest.file_id);
     } catch (err) {
-      log.error('Failed to download photo:', err);
-      await sendTextReply(chatId, '图片下载失败。');
+      log.error("Failed to download photo:", err);
+      await sendTextReply(chatId, "图片下载失败。");
       return;
     }
 

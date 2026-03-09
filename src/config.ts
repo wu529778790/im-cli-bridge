@@ -16,7 +16,9 @@ export type AiCommand = 'claude' | 'codex' | 'cursor';
 
 export interface Config {
   enabledPlatforms: Platform[];
-  telegramBotToken: string;
+  telegramBotToken?: string;
+  feishuAppId?: string;
+  feishuAppSecret?: string;
   allowedUserIds: string[];
   aiCommand: AiCommand;
   claudeCliPath: string;
@@ -36,6 +38,8 @@ export interface Config {
 
 interface FileConfig {
   telegramBotToken?: string;
+  feishuAppId?: string;
+  feishuAppSecret?: string;
   allowedUserIds?: string[];
   aiCommand?: string;
   claudeCliPath?: string;
@@ -66,8 +70,9 @@ function loadFileConfig(): FileConfig {
 /** 检测是否需要交互式配置（无 token 且无环境变量） */
 export function needsSetup(): boolean {
   if (process.env.TELEGRAM_BOT_TOKEN) return false;
+  if (process.env.FEISHU_APP_ID && process.env.FEISHU_APP_SECRET) return false;
   const file = loadFileConfig();
-  return !file.telegramBotToken;
+  return !file.telegramBotToken && !(file.feishuAppId && file.feishuAppSecret);
 }
 
 function parseCommaSeparated(value: string): string[] {
@@ -76,11 +81,16 @@ function parseCommaSeparated(value: string): string[] {
 
 export function loadConfig(): Config {
   const file = loadFileConfig();
-  const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN ?? file.telegramBotToken ?? '';
-  const enabledPlatforms: Platform[] = telegramBotToken ? ['telegram'] : [];
+  const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN ?? file.telegramBotToken;
+  const feishuAppId = process.env.FEISHU_APP_ID ?? file.feishuAppId;
+  const feishuAppSecret = process.env.FEISHU_APP_SECRET ?? file.feishuAppSecret;
+
+  const enabledPlatforms: Platform[] = [];
+  if (telegramBotToken) enabledPlatforms.push('telegram');
+  if (feishuAppId && feishuAppSecret) enabledPlatforms.push('feishu');
 
   if (enabledPlatforms.length === 0) {
-    throw new Error('至少需要配置 TELEGRAM_BOT_TOKEN');
+    throw new Error('至少需要配置 TELEGRAM_BOT_TOKEN 或 FEISHU_APP_ID/FEISHU_APP_SECRET');
   }
 
   const allowedUserIds =
@@ -156,7 +166,9 @@ export function loadConfig(): Config {
 
   return {
     enabledPlatforms,
-    telegramBotToken,
+    telegramBotToken: telegramBotToken ?? '',
+    feishuAppId: feishuAppId ?? '',
+    feishuAppSecret: feishuAppSecret ?? '',
     allowedUserIds,
     aiCommand,
     claudeCliPath,
