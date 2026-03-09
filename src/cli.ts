@@ -141,23 +141,8 @@ async function stopService(): Promise<void> {
   }
 }
 
-const args = process.argv.slice(2);
-
-if (args[0] === 'init') {
-  // 手动触发配置
-  console.log('\n━━━ open-im 配置向导 ━━━\n');
-  const saved = await runInteractiveSetup();
-  if (!saved) {
-    console.log('配置未完成。');
-    process.exit(1);
-  }
-  console.log('\n✅ 配置完成！现在可以运行以下命令启动服务:\n  open-im start\n');
-} else if (args[0] === 'stop') {
-  stopService().catch((err) => {
-    console.error('停止服务时出错:', err);
-    process.exit(1);
-  });
-} else if (args[0] === 'start') {
+// 启动服务（后台）
+async function startService(): Promise<void> {
   // 首先检查是否需要配置
   if (needsSetup()) {
     console.log('\n━━━ open-im 首次配置 ━━━\n');
@@ -204,6 +189,35 @@ if (args[0] === 'init') {
   child.unref();
 
   console.log(`服务已在后台启动 (PID: ${child.pid})`);
+}
+
+const args = process.argv.slice(2);
+
+if (args[0] === 'init') {
+  // 手动触发配置
+  console.log('\n━━━ open-im 配置向导 ━━━\n');
+  const saved = await runInteractiveSetup();
+  if (!saved) {
+    console.log('配置未完成。');
+    process.exit(1);
+  }
+  console.log('\n✅ 配置完成！现在可以运行以下命令启动服务:\n  open-im start\n');
+} else if (args[0] === 'stop') {
+  stopService().catch((err) => {
+    console.error('停止服务时出错:', err);
+    process.exit(1);
+  });
+} else if (args[0] === 'restart') {
+  console.log('正在重启服务...\n');
+  await stopService().catch((err) => {
+    console.error('停止服务时出错:', err);
+  });
+  // 等待进程完全退出
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  console.log('\n正在重新启动服务...\n');
+  await startService();
+} else if (args[0] === 'start') {
+  await startService();
 } else if (args[0] === 'run' || args.length === 0) {
   // 前台运行（默认命令）
   console.log('\n🚀 正在前台启动 open-im 服务...\n');

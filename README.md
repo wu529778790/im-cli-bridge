@@ -81,6 +81,7 @@ open-im run
 | `open-im init` | 初始化配置（首次使用或重新配置） |
 | `open-im start` | 后台启动服务 |
 | `open-im stop` | 停止服务 |
+| `open-im restart` | 重启服务 |
 
 ### Telegram 机器人命令
 
