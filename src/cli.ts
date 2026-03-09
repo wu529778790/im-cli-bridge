@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { main, needsSetup, runInteractiveSetup } from './index.js';
+import { loadConfig } from './config.js';
 import { spawn, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -159,6 +160,15 @@ if (args[0] === 'stop') {
       process.exit(1);
     }
     console.log('');
+  }
+
+  // 验证配置是否有效（避免有配置文件但缺少必要字段的情况）
+  try {
+    loadConfig();
+  } catch (err) {
+    console.error('配置无效或缺少必要字段:', err instanceof Error ? err.message : err);
+    console.log('\n请运行以下命令重新配置:\n  npx @wu529778790/open-im\n');
+    process.exit(1);
   }
 
   // 获取当前工作目录
