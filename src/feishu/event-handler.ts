@@ -19,8 +19,9 @@ import { getAdapter } from '../adapters/registry.js';
 import { runAITask, type TaskRunState } from '../shared/ai-task.js';
 import { startTaskCleanup } from '../shared/task-cleanup.js';
 import { MessageDedup } from '../shared/message-dedup.js';
-import { THROTTLE_MS, IMAGE_DIR } from '../constants.js';
+import { THROTTLE_MS, IMAGE_DIR, MAX_FEISHU_MESSAGE_LENGTH } from '../constants.js';
 import { setActiveChatId } from '../shared/active-chats.js';
+import { splitLongContent } from '../shared/utils.js';
 import { createLogger } from '../logger.js';
 
 const log = createLogger('FeishuHandler');
@@ -40,9 +41,9 @@ async function downloadFeishuImage(client: Client, imageKey: string): Promise<st
   }
   const token = (tokenResp.data as { tenant_access_token: string }).tenant_access_token;
 
-  // Get the image download URL
+  // Get the image download URL using the correct API endpoint
   const resourceResp = await fetch(
-    `https://open.feishu.cn/open-apis/im/v1/messages/${imageKey}/resources`,
+    `https://open.feishu.cn/open-apis/im/v1/images/${imageKey}`,
     {
       method: 'GET',
       headers: {
@@ -84,7 +85,7 @@ async function downloadFeishuImage(client: Client, imageKey: string): Promise<st
 export interface FeishuEventHandlerHandle {
   stop: () => void;
   getRunningTaskCount: () => number;
-  handleEvent: (data: unknown) => void;
+  handleEvent: (data: unknown) => Promise<void>;
 }
 
 export function setupFeishuHandlers(
@@ -146,20 +147,20 @@ export function setupFeishuHandlers(
       toolAdapter,
       {
         throttleMs: THROTTLE_MS,
-        streamUpdate: (content, toolNote) => {
-          // TODO: Message update is currently broken for Feishu
-          // Skipping streaming updates for now - final result will be sent as new message
+        streamUpdate: async (content, toolNote) => {
           const note = toolNote ? '输出中...\n' + toolNote : '输出中...';
-          log.debug('Skipping stream update for Feishu:', note);
-          // updateMessage(chatId, msgId, content, 'streaming', note, toolId).catch(() => {});
+          try {
+            await updateMessage(chatId, msgId, content, 'streaming', note, toolId);
+          } catch (err) {
+            log.debug('Stream update failed (will retry on next update):', err);
+          }
         },
         sendComplete: async (content, note) => {
-          // For Feishu, send the final result as a new message instead of updating
-          // This is because message.update API has strict validation requirements
-          await sendTextReply(chatId, content);
+          // Use sendFinalMessages to handle the final result
+          await sendFinalMessages(chatId, msgId, content, note ?? '', toolId);
         },
         sendError: async (error) => {
-          await sendTextReply(chatId, `错误：${error}`);
+          await updateMessage(chatId, msgId, `错误：${error}`, 'error', '执行失败', toolId);
         },
         extraCleanup: () => {
           stopTyping();
@@ -173,10 +174,12 @@ export function setupFeishuHandlers(
     );
   }
 
-  function handleEvent(data: unknown): void {
-    log.info('Feishu handleEvent called, data:', JSON.stringify(data).slice(0, 500));
+  async function handleEvent(data: unknown): Promise<void> {
+    log.info('[handleEvent] Called with data:', JSON.stringify(data).slice(0, 500));
 
-    // Parse the event data
+    try {
+      log.info('[handleEvent] Starting processing');
+      // Parse the event data
     // Feishu event structure (long connection mode):
     // {
     //   "event_type": "im.message.receive_v1",
@@ -191,7 +194,7 @@ export function setupFeishuHandlers(
       message?: {
         chat_id?: string;
         message_id?: string;
-        msg_type?: string;
+        message_type?: string;
         content?: string;
         chat_type?: string;
       };
@@ -208,33 +211,52 @@ export function setupFeishuHandlers(
     // Handle message received events
     if (eventType === 'im.message.receive_v1') {
       const message = event?.message;
-      if (!message) return;
+      if (!message) {
+        log.warn('No message data in event');
+        return;
+      }
 
       const chatId = message.chat_id ?? '';
       const messageId = message.message_id ?? '';
       const msgType = message.message_type;
       const contentStr = message.content ?? '{}';
 
+      log.info(`Message: chatId=${chatId}, messageId=${messageId}, msgType=${msgType}`);
+
       // Parse message content
       let content: Record<string, unknown>;
       try {
         content = JSON.parse(contentStr);
-      } catch {
+        log.info(`Parsed content:`, JSON.stringify(content).slice(0, 200));
+      } catch (err) {
+        log.error('Failed to parse message content:', err);
         return;
       }
 
       // Get user ID
       const senderId = event?.sender?.sender_id?.open_id ?? '';
-      if (!senderId) return;
+      if (!senderId) {
+        log.warn('No sender ID in event');
+        return;
+      }
+
+      log.info(`Sender ID: ${senderId}`);
 
       // Dedup check
-      if (dedup.isDuplicate(`${chatId}:${messageId}`)) return;
+      const dedupKey = `${chatId}:${messageId}`;
+      if (dedup.isDuplicate(dedupKey)) {
+        log.info(`Duplicate message detected: ${dedupKey}`);
+        return;
+      }
 
       // Access control check
       if (!accessControl.isAllowed(senderId)) {
+        log.warn(`Access denied for sender: ${senderId}`);
         sendTextReply(chatId, '抱歉，您没有访问权限。\n您的 ID: ' + senderId).catch(() => {});
         return;
       }
+
+      log.info(`Access granted for sender: ${senderId}`);
 
       setActiveChatId('feishu', chatId);
 
@@ -242,30 +264,43 @@ export function setupFeishuHandlers(
       if (msgType === 'text') {
         const text = (content.text as string)?.trim() ?? '';
 
+        log.info(`Processing text message from ${senderId}: ${text}`);
+
         // Handle commands
-        commandHandler.dispatch(text, chatId, senderId, 'feishu', handleAIRequest).then((handled) => {
-          if (handled) return;
-
-          // Handle AI request
-          const workDir = sessionManager.getWorkDir(senderId);
-          const convId = sessionManager.getConvId(senderId);
-          const enqueueResult = requestQueue.enqueue(senderId, convId, text, async (prompt) => {
-            await handleAIRequest(senderId, chatId, prompt, workDir, convId, undefined, messageId);
-          });
-
-          if (enqueueResult === 'rejected') {
-            sendTextReply(chatId, '请求队列已满，请稍后再试。').catch(() => {});
-          } else if (enqueueResult === 'queued') {
-            sendTextReply(chatId, '您的请求已排队等待。').catch(() => {});
+        try {
+          const handled = await commandHandler.dispatch(text, chatId, senderId, 'feishu', handleAIRequest);
+          if (handled) {
+            log.info(`Command handled for message: ${text}`);
+            return;
           }
+        } catch (err) {
+          log.error('Error in commandHandler.dispatch:', err);
+        }
+
+        // Handle AI request
+        log.info(`Enqueueing AI request for: ${text}`);
+        const workDir = sessionManager.getWorkDir(senderId);
+        const convId = sessionManager.getConvId(senderId);
+        const enqueueResult = requestQueue.enqueue(senderId, convId, text, async (prompt) => {
+          log.info(`Executing AI request for: ${prompt}`);
+          await handleAIRequest(senderId, chatId, prompt, workDir, convId, undefined, messageId);
         });
+
+        if (enqueueResult === 'rejected') {
+          sendTextReply(chatId, '请求队列已满，请稍后再试。').catch(() => {});
+        } else if (enqueueResult === 'queued') {
+          sendTextReply(chatId, '您的请求已排队等待。').catch(() => {});
+        }
       } else if (msgType === 'image') {
         const imageKey = content.image_key as string;
         if (!imageKey) return;
 
-        const client = (async () => (await import('./client.js')).getClient())();
+        log.info(`Processing image message from ${senderId}, image_key: ${imageKey}`);
 
-        client.then(async (c) => {
+        try {
+          const { getClient } = await import('./client.js');
+          const c = getClient();
+
           let imagePath: string;
           try {
             imagePath = await downloadFeishuImage(c, imageKey);
@@ -282,8 +317,13 @@ export function setupFeishuHandlers(
           requestQueue.enqueue(senderId, convId, prompt, async (p) => {
             await handleAIRequest(senderId, chatId, p, workDir, convId, undefined, messageId);
           });
-        });
+        } catch (err) {
+          log.error('Error processing image message:', err);
+        }
       }
+    }
+    } catch (err) {
+      log.error('[handleEvent] Error processing event:', err);
     }
   }
 

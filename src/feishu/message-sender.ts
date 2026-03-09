@@ -96,7 +96,18 @@ export async function updateMessage(
     fullContent = `${content}\n\n─────────\n${note}`;
   }
 
-  // Use SDK's built-in card builder
+  // Delete old message and send new one (Feishu update API has strict validation)
+  try {
+    log.info(`Deleting old message ${messageId}`);
+    await client.im.message.delete({
+      path: { message_id: messageId },
+    });
+    log.info(`Old message deleted successfully`);
+  } catch (err) {
+    log.warn('Failed to delete old message:', err);
+  }
+
+  // Send new message
   const icon = STATUS_ICONS[status];
   const title = getToolTitle(toolId, status);
   const cardContent = messageCard.defaultCard({
@@ -105,18 +116,18 @@ export async function updateMessage(
   });
 
   try {
-    log.info(`Updating message ${messageId} for chat ${chatId}, status: ${status}`);
-    log.info(`Card content: ${cardContent.slice(0, 500)}`);
-    const resp = await client.im.message.update({
-      path: { message_id: messageId },
+    const resp = await client.im.message.create({
       data: {
+        receive_id: chatId,
+        msg_type: 'interactive',
         content: cardContent,
       },
+      params: { receive_id_type: 'chat_id' },
     });
-    log.info(`Message update response: code=${resp.code}, msg=${resp.msg}`);
+    log.info(`New message created with ID: ${resp.data?.message_id}`);
   } catch (err) {
-    log.error('Failed to update message:', err);
-    log.error('Card that failed to update:', cardContent.slice(0, 500));
+    log.error('Failed to send new message:', err);
+    throw err;
   }
 }
 
@@ -130,43 +141,35 @@ export async function sendFinalMessages(
   const client = getClient();
   const parts = splitLongContent(fullContent, MAX_FEISHU_MESSAGE_LENGTH);
 
-  // Update the original message with the first part
-  const cardContent = messageCard.defaultCard({
-    title: `${STATUS_ICONS.done} ${getToolTitle(toolId, 'done')}`,
-    content: parts[0],
-  });
-
+  // Delete old message first
   try {
-    log.info(`Updating final message ${messageId}`);
-    await client.im.message.update({
+    log.info(`Deleting old message ${messageId}`);
+    await client.im.message.delete({
       path: { message_id: messageId },
-      data: {
-        content: cardContent,
-      },
     });
-    log.info(`Final message updated successfully`);
+    log.info(`Old message deleted successfully`);
   } catch (err) {
-    log.error('Failed to update final message:', err);
+    log.warn('Failed to delete old message:', err);
   }
 
-  // Send continuation messages if needed
-  for (let i = 1; i < parts.length; i++) {
+  // Send new messages
+  for (let i = 0; i < parts.length; i++) {
     try {
-      const continuationCardContent = messageCard.defaultCard({
+      const cardContent = messageCard.defaultCard({
         title: `${STATUS_ICONS.done} ${getToolTitle(toolId, 'done')}`,
-        content: parts[i] + `\n\n(续 ${i + 1}/${parts.length})`,
+        content: i === 0 ? parts[0] : parts[i] + `\n\n(续 ${i + 1}/${parts.length})`,
       });
 
       await client.im.message.create({
         data: {
           receive_id: chatId,
           msg_type: 'interactive',
-          content: continuationCardContent,
+          content: cardContent,
         },
         params: { receive_id_type: 'chat_id' },
       });
     } catch (err) {
-      log.error('Failed to send continuation:', err);
+      log.error(`Failed to send part ${i + 1}:`, err);
     }
   }
 }

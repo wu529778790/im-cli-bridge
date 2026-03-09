@@ -14,7 +14,7 @@ export function getClient(): Client {
 
 export async function initFeishu(
   config: Config,
-  eventHandler: (data: unknown) => void
+  eventHandler: (data: unknown) => Promise<void>
 ): Promise<void> {
   if (!config.feishuAppId || !config.feishuAppSecret) {
     throw new Error('Feishu app_id and app_secret are required');
@@ -33,9 +33,15 @@ export async function initFeishu(
   // Register event handler for message received
   // Note: register() takes an object with event type as key and handler as value
   eventDispatcher.register({
-    'im.message.receive_v1': (data: unknown) => {
-      log.debug('Received Feishu message event:', JSON.stringify(data).slice(0, 500));
-      eventHandler(data);
+    'im.message.receive_v1': async (data: unknown) => {
+      log.info('[EVENT] Received Feishu message event');
+      log.info('[EVENT] Event data:', JSON.stringify(data).slice(0, 500));
+      try {
+        await eventHandler(data);
+        log.info('[EVENT] Event handler called successfully');
+      } catch (err) {
+        log.error('[EVENT] Error calling event handler:', err);
+      }
     },
   });
 
