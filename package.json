@@ -14,7 +14,9 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
-    "start": "node dist/index.js",
+    "start": "node dist/cli.js start",
+    "stop": "node dist/cli.js stop",
+    "run": "node dist/cli.js run",
     "setup": "node dist/index.js --setup-only",
     "prepublishOnly": "npm run build"
   },
