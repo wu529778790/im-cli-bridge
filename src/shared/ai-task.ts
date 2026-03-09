@@ -6,11 +6,9 @@ import type { Config } from '../config.js';
 import type { SessionManager } from '../session/session-manager.js';
 import type { ToolAdapter } from '../adapters/tool-adapter.interface.js';
 import type { ParsedResult } from '../adapters/tool-adapter.interface.js';
-import type { CostRecord } from './types.js';
 import {
   formatToolStats,
   formatToolCallNotification,
-  trackCost,
   getContextWarning,
 } from './utils.js';
 import { createLogger } from '../logger.js';
@@ -20,7 +18,6 @@ const log = createLogger('AITask');
 export interface TaskDeps {
   config: Config;
   sessionManager: SessionManager;
-  userCosts: Map<string, CostRecord>;
 }
 
 export interface TaskContext {
@@ -60,12 +57,7 @@ function buildCompletionNote(
 ): string {
   const toolInfo = formatToolStats(result.toolStats, result.numTurns);
   const parts: string[] = [];
-  if (result.cost > 0) {
-    parts.push(`耗时 ${(result.durationMs / 1000).toFixed(1)}s`);
-    parts.push(`费用 $${result.cost.toFixed(4)}`);
-  } else {
-    parts.push('完成');
-  }
+  parts.push(`耗时 ${(result.durationMs / 1000).toFixed(1)}s`);
   if (toolInfo) parts.push(toolInfo);
   if (result.model) parts.push(result.model);
 
@@ -85,7 +77,7 @@ export function runAITask(
   toolAdapter: ToolAdapter,
   platformAdapter: TaskAdapter
 ): Promise<void> {
-  const { config, sessionManager, userCosts } = deps;
+  const { config, sessionManager } = deps;
   return new Promise((resolve) => {
     let lastUpdateTime = 0;
     let pendingUpdate: ReturnType<typeof setTimeout> | null = null;
@@ -187,8 +179,6 @@ export function runAITask(
             pendingUpdate = null;
           }
           const note = buildCompletionNote(result, sessionManager, ctx);
-          log.info(`Task completed for user ${ctx.userId}: cost=$${result.cost.toFixed(4)}`);
-          trackCost(userCosts, ctx.userId, result.cost, result.durationMs);
           const finalContent = result.accumulated || result.result || '(无输出)';
           try {
             await platformAdapter.sendComplete(finalContent, note, thinkingText || undefined);

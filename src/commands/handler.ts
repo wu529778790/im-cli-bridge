@@ -4,9 +4,9 @@ import type { RequestQueue } from '../queue/request-queue.js';
 import { resolveLatestPermission, getPendingCount } from '../hook/permission-server.js';
 import { TERMINAL_ONLY_COMMANDS } from '../constants.js';
 import { execFile } from 'node:child_process';
-import type { ThreadContext, CostRecord } from '../shared/types.js';
+import type { ThreadContext } from '../shared/types.js';
 
-export type { ThreadContext, CostRecord };
+export type { ThreadContext };
 
 export interface MessageSender {
   sendTextReply(chatId: string, text: string, threadCtx?: ThreadContext): Promise<void>;
@@ -17,7 +17,6 @@ export interface CommandHandlerDeps {
   sessionManager: SessionManager;
   requestQueue: RequestQueue;
   sender: MessageSender;
-  userCosts: Map<string, CostRecord>;
   getRunningTasksSize: () => number;
 }
 
@@ -109,7 +108,6 @@ export class CommandHandler {
     const workDir = this.deps.sessionManager.getWorkDir(userId);
     const convId = this.deps.sessionManager.getConvId(userId);
     const sessionId = this.deps.sessionManager.getSessionIdForConv(userId, convId);
-    const record = this.deps.userCosts.get(userId);
     const lines = [
       '📊 状态:',
       '',
@@ -117,7 +115,6 @@ export class CommandHandler {
       `版本: ${version}`,
       `工作目录: ${workDir}`,
       `会话: ${sessionId ?? '无'}`,
-      `费用: $${record?.totalCost.toFixed(4) ?? '0.0000'}`,
     ];
     await this.deps.sender.sendTextReply(chatId, lines.join('\n'));
     return true;

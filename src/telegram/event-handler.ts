@@ -49,7 +49,6 @@ export function setupTelegramHandlers(
 ): TelegramEventHandlerHandle {
   const accessControl = new AccessControl(config.allowedUserIds);
   const requestQueue = new RequestQueue();
-  const userCosts = new Map<string, { totalCost: number; totalDurationMs: number; requestCount: number }>();
   const runningTasks = new Map<string, TaskRunState>();
   const stopTaskCleanup = startTaskCleanup(runningTasks);
   const dedup = new MessageDedup();
@@ -59,7 +58,6 @@ export function setupTelegramHandlers(
     sessionManager,
     requestQueue,
     sender: { sendTextReply },
-    userCosts,
     getRunningTasksSize: () => runningTasks.size,
   });
 
@@ -96,7 +94,7 @@ export function setupTelegramHandlers(
     const taskKey = `${userId}:${msgId}`;
 
     await runAITask(
-      { config, sessionManager, userCosts },
+      { config, sessionManager },
       { userId, chatId, workDir, sessionId, convId, platform: 'telegram', taskKey },
       prompt,
       toolAdapter,

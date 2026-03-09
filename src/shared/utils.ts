@@ -1,5 +1,3 @@
-import type { CostRecord } from './types.js';
-
 const TOOL_EMOJIS: Record<string, string> = {
   Read: '📖', Write: '✏️', Edit: '📝', Bash: '💻', Glob: '🔍', Grep: '🔎',
   WebFetch: '🌐', WebSearch: '🔎', Task: '📋', TodoRead: '📌', TodoWrite: '✅',
@@ -54,14 +52,6 @@ export function formatToolCallNotification(toolName: string, toolInput?: Record<
   if (toolName === 'Read' && toolInput.file_path) detail = ` → ${toolInput.file_path}`;
   if (toolName === 'Write' && toolInput.file_path) detail = ` → ${toolInput.file_path}`;
   return `${emoji} ${toolName}${detail}`;
-}
-
-export function trackCost(userCosts: Map<string, CostRecord>, userId: string, cost: number, durationMs: number): void {
-  const r = userCosts.get(userId) ?? { totalCost: 0, totalDurationMs: 0, requestCount: 0 };
-  r.totalCost += cost;
-  r.totalDurationMs += durationMs;
-  r.requestCount += 1;
-  userCosts.set(userId, r);
 }
 
 export function getContextWarning(totalTurns: number): string | null {
