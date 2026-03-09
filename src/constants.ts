@@ -16,5 +16,7 @@ export const TERMINAL_ONLY_COMMANDS = new Set([
 
 export const DEDUP_TTL_MS = 5 * 60 * 1000;
 export const THROTTLE_MS = 200;
+/** Telegram 编辑消息节流：600ms，避免 API 限速且更流畅 */
+export const TELEGRAM_THROTTLE_MS = 600;
 export const MAX_TELEGRAM_MESSAGE_LENGTH = 4000;
 export const MAX_FEISHU_MESSAGE_LENGTH = 4000;

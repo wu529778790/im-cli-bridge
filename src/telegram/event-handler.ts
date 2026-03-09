@@ -20,7 +20,7 @@ import { getAdapter } from '../adapters/registry.js';
 import { runAITask, type TaskRunState } from '../shared/ai-task.js';
 import { startTaskCleanup } from '../shared/task-cleanup.js';
 import { MessageDedup } from '../shared/message-dedup.js';
-import { THROTTLE_MS, IMAGE_DIR } from '../constants.js';
+import { TELEGRAM_THROTTLE_MS, IMAGE_DIR } from '../constants.js';
 import { setActiveChatId } from '../shared/active-chats.js';
 import { createLogger } from '../logger.js';
 
@@ -101,7 +101,7 @@ export function setupTelegramHandlers(
       prompt,
       toolAdapter,
       {
-        throttleMs: THROTTLE_MS,
+        throttleMs: TELEGRAM_THROTTLE_MS,
         streamUpdate: (content, toolNote) => {
           const note = toolNote ? '输出中...\n' + toolNote : '输出中...';
           updateMessage(chatId, msgId, content, 'streaming', note, toolId).catch(() => {});

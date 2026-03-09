@@ -5,6 +5,7 @@ import { splitLongContent, truncateText } from '../shared/utils.js';
 import { MAX_TELEGRAM_MESSAGE_LENGTH } from '../constants.js';
 
 const log = createLogger('TgSender');
+const lastSentByMsg = new Map<string, string>();
 
 export type MessageStatus = 'thinking' | 'streaming' | 'done' | 'error';
 
@@ -55,18 +56,12 @@ export async function sendThinkingMessage(
       message_id: Number(replyToMessageId),
     };
   }
-  const msg = await bot.telegram.sendMessage(
-    Number(chatId),
-    formatMessage('正在思考...', 'thinking', '请稍候', toolId),
-    { ...extra, parse_mode: 'Markdown' }
-  );
-  await bot.telegram.editMessageText(
-    Number(chatId),
-    msg.message_id,
-    undefined,
-    formatMessage('正在思考...', 'thinking', '请稍候', toolId),
-    { reply_markup: buildStopKeyboard(msg.message_id), parse_mode: 'Markdown' }
-  );
+  const text = formatMessage('正在思考...', 'thinking', '请稍候', toolId);
+  const msg = await bot.telegram.sendMessage(Number(chatId), text, {
+    ...extra,
+    parse_mode: 'Markdown',
+  });
+  await bot.telegram.editMessageReplyMarkup(Number(chatId), msg.message_id, undefined, buildStopKeyboard(msg.message_id));
   return String(msg.message_id);
 }
 
@@ -78,6 +73,10 @@ export async function updateMessage(
   note?: string,
   toolId = 'claude'
 ): Promise<void> {
+  const formatted = formatMessage(content, status, note, toolId);
+  if (lastSentByMsg.get(messageId) === formatted) return;
+  lastSentByMsg.set(messageId, formatted);
+
   const bot = getBot();
   const opts: Record<string, unknown> = {};
   if (status === 'thinking' || status === 'streaming') {
@@ -88,7 +87,7 @@ export async function updateMessage(
       Number(chatId),
       Number(messageId),
       undefined,
-      formatMessage(content, status, note, toolId),
+      formatted,
       { ...opts, parse_mode: 'Markdown' }
     );
   } catch (err) {
@@ -97,6 +96,9 @@ export async function updateMessage(
     } else {
       log.error('Failed to update message:', err);
     }
+  }
+  if (status === 'done' || status === 'error') {
+    lastSentByMsg.delete(messageId);
   }
 }
 
