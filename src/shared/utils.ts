@@ -54,8 +54,27 @@ export function formatToolCallNotification(toolName: string, toolInput?: Record<
   return `${emoji} ${toolName}${detail}`;
 }
 
+// 使用提示池，每轮显示不同的技巧
+const USAGE_TIPS = [
+  '💡 提示：用 `/new` 开始全新会话',
+  '💡 可以用 `/cd <路径>` 切换工作目录',
+  '💡 用 `/pwd` 查看当前目录',
+  '💡 用 `/status` 查看运行状态',
+  '💡 支持发送图片让 AI 分析',
+  '💡 支持多行代码输入',
+  '⚠️ 上下文较长，建议 /new 开始新会话',
+];
+
 export function getContextWarning(totalTurns: number): string | null {
-  if (totalTurns >= 12) return '⚠️ 上下文较长，建议 /new 开始新会话';
-  if (totalTurns >= 8) return `💡 对话已 ${totalTurns} 轮，可用 /compact 压缩`;
-  return null;
+  // 第 6 轮开始显示提示
+  if (totalTurns < 6) return null;
+
+  // 第 13 轮后一直显示警告
+  if (totalTurns >= 13) {
+    return USAGE_TIPS[USAGE_TIPS.length - 1];
+  }
+
+  // 根据轮数循环显示提示
+  const tipIndex = (totalTurns - 6) % USAGE_TIPS.length;
+  return USAGE_TIPS[tipIndex];
 }
