@@ -2,7 +2,10 @@ import { loadConfig, needsSetup } from './config.js';
 import { runInteractiveSetup } from './setup.js';
 import { initTelegram, stopTelegram } from './telegram/client.js';
 import { setupTelegramHandlers } from './telegram/event-handler.js';
-import { sendTextReply } from './telegram/message-sender.js';
+import { sendTextReply as sendTelegramTextReply } from './telegram/message-sender.js';
+import { initFeishu, stopFeishu } from './feishu/client.js';
+import { setupFeishuHandlers } from './feishu/event-handler.js';
+import { sendTextReply as sendFeishuTextReply } from './feishu/message-sender.js';
 import { initAdapters } from './adapters/registry.js';
 import { SessionManager } from './session/session-manager.js';
 import { loadActiveChats, getActiveChatId, flushActiveChats } from './shared/active-chats.js';
@@ -16,13 +19,28 @@ const { version: APP_VERSION } = require('../package.json') as { version: string
 const log = createLogger('Main');
 
 async function sendLifecycleNotification(platform: string, message: string) {
-  const chatId = getActiveChatId('telegram');
-  if (!chatId) return;
-  try {
-    await sendTextReply(chatId, message);
-  } catch (err) {
-    log.debug('Failed to send lifecycle notification:', err);
+  const telegramChatId = getActiveChatId('telegram');
+  const feishuChatId = getActiveChatId('feishu');
+
+  const sendPromises: Promise<void>[] = [];
+
+  if (platform === 'telegram' && telegramChatId) {
+    sendPromises.push(
+      sendTelegramTextReply(telegramChatId, message).catch((err) => {
+        log.debug('Failed to send Telegram notification:', err);
+      })
+    );
   }
+
+  if (platform === 'feishu' && feishuChatId) {
+    sendPromises.push(
+      sendFeishuTextReply(feishuChatId, message).catch((err) => {
+        log.debug('Failed to send Feishu notification:', err);
+      })
+    );
+  }
+
+  await Promise.all(sendPromises);
 }
 
 export async function main() {
@@ -40,14 +58,21 @@ export async function main() {
   log.info('Starting open-im bridge...');
   log.info(`AI 工具: ${config.aiCommand}`);
   log.info(`工作目录: ${config.claudeWorkDir}`);
+  log.info(`启用平台: ${config.enabledPlatforms.join(', ')}`);
 
   const sessionManager = new SessionManager(config.claudeWorkDir, config.allowedBaseDirs);
   let telegramHandle: ReturnType<typeof setupTelegramHandlers> | null = null;
+  let feishuHandle: ReturnType<typeof setupFeishuHandlers> | null = null;
 
   if (config.enabledPlatforms.includes('telegram')) {
     await initTelegram(config, (bot) => {
       telegramHandle = setupTelegramHandlers(bot, config, sessionManager);
     });
+  }
+
+  if (config.enabledPlatforms.includes('feishu')) {
+    feishuHandle = setupFeishuHandlers(config, sessionManager);
+    await initFeishu(config, feishuHandle.handleEvent);
   }
 
   log.info('Service is running. Press Ctrl+C to stop.');
@@ -57,8 +82,13 @@ export async function main() {
     '',
     `AI 工具: ${config.aiCommand}`,
     `工作目录: ${config.claudeWorkDir}`,
+    `启用平台: ${config.enabledPlatforms.join(', ')}`,
   ].join('\n');
-  await sendLifecycleNotification('telegram', startupMsg).catch(() => {});
+
+  // Send notification to all enabled platforms
+  for (const platform of config.enabledPlatforms) {
+    await sendLifecycleNotification(platform, startupMsg).catch(() => {});
+  }
 
   const startedAt = Date.now();
 
@@ -66,13 +96,17 @@ export async function main() {
     log.info('Shutting down...');
     const uptimeSec = Math.floor((Date.now() - startedAt) / 1000);
     const m = Math.floor(uptimeSec / 60);
-    await sendLifecycleNotification(
-      'telegram',
-      `🔴 open-im 服务正在关闭...\n运行时长: ${m}分钟`
-    ).catch(() => {});
+    const shutdownMsg = `🔴 open-im 服务正在关闭...\n运行时长: ${m}分钟`;
+
+    // Send notification to all enabled platforms
+    for (const platform of config.enabledPlatforms) {
+      await sendLifecycleNotification(platform, shutdownMsg).catch(() => {});
+    }
 
     telegramHandle?.stop();
     stopTelegram();
+    feishuHandle?.stop();
+    stopFeishu();
     sessionManager.destroy();
     flushActiveChats();
     closeLogger();

@@ -17,7 +17,11 @@ export function getBotUsername(): string | undefined {
 }
 
 export async function initTelegram(config: Config, setupHandlers: (bot: Telegraf) => void): Promise<void> {
-  bot = new Telegraf(config.telegramBotToken);
+  const token = config.telegramBotToken ?? '';
+  if (!token) {
+    throw new Error('Telegram bot token is required');
+  }
+  bot = new Telegraf(token);
   setupHandlers(bot);
   const me = (await bot.telegram.getMe()) as { username?: string };
   botUsername = me.username;
