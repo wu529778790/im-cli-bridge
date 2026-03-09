@@ -103,7 +103,7 @@ export function setupTelegramHandlers(
   config: Config,
   sessionManager: SessionManager,
 ): TelegramEventHandlerHandle {
-  const accessControl = new AccessControl(config.allowedUserIds);
+  const accessControl = new AccessControl(config.telegramAllowedUserIds);
   const requestQueue = new RequestQueue();
   const runningTasks = new Map<string, TaskRunState>();
   const stopTaskCleanup = startTaskCleanup(runningTasks);

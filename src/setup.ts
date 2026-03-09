@@ -29,10 +29,19 @@ function printManualInstructions(configPath: string): void {
   console.log("  3. 填入以下内容（替换为你的 Token/App ID 和用户 ID）：");
   console.log("");
   console.log(`{
-  "telegramBotToken": "你的Bot Token（可选）",
-  "feishuAppId": "你的飞书 App ID（可选）",
-  "feishuAppSecret": "你的飞书 App Secret（可选）",
-  "allowedUserIds": ["你的用户ID"],
+  "platforms": {
+    "telegram": {
+      "enabled": true,
+      "botToken": "你的 Telegram Bot Token（可选）",
+      "allowedUserIds": ["允许访问的 Telegram 用户 ID（可选）"]
+    },
+    "feishu": {
+      "enabled": false,
+      "appId": "你的飞书 App ID（可选）",
+      "appSecret": "你的飞书 App Secret（可选）",
+      "allowedUserIds": ["允许访问的飞书用户 ID（可选）"]
+    }
+  },
   "claudeWorkDir": "${process.cwd().replace(/\\/g, "/")}",
   "claudeSkipPermissions": true,
   "aiCommand": "claude"
@@ -88,7 +97,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
   }
 
   const platform = platformResp.platform;
-  const config: Record<string, unknown> = {};
+  const config: Record<string, unknown> = { platforms: {} };
 
   // 收集平台配置（Telegram 用 readline 避免 Windows 下 prompts 重绘/重复行问题）
   if (platform === "telegram" || platform === "both") {
@@ -121,8 +130,12 @@ export async function runInteractiveSetup(): Promise<boolean> {
     );
 
     if (feishuResp.appId && feishuResp.appSecret) {
-      config.feishuAppId = feishuResp.appId.trim();
-      config.feishuAppSecret = feishuResp.appSecret.trim();
+      (config.platforms as any).feishu = {
+        ...(config.platforms as any).feishu,
+        enabled: true,
+        appId: feishuResp.appId.trim(),
+        appSecret: feishuResp.appSecret.trim(),
+      };
     } else if (platform === "feishu") {
       return false;
     }
@@ -133,8 +146,16 @@ export async function runInteractiveSetup(): Promise<boolean> {
     [
       {
         type: "text",
-        name: "allowedUserIds",
-        message: "白名单用户 ID（可选，逗号分隔，留空=所有人可访问）",
+        name: "telegramAllowedUserIds",
+        message:
+          "Telegram 白名单用户 ID（可选，逗号分隔，留空=所有人可访问）",
+        initial: "",
+      },
+      {
+        type: "text",
+        name: "feishuAllowedUserIds",
+        message:
+          "飞书白名单用户 ID（可选，逗号分隔，留空=所有人可访问）",
         initial: "",
       },
       {
@@ -158,13 +179,45 @@ export async function runInteractiveSetup(): Promise<boolean> {
     { onCancel },
   );
 
-  // 合并配置
-  config.allowedUserIds = commonResp.allowedUserIds
-    ? commonResp.allowedUserIds
-        .split(",")
-        .map((s: string) => s.trim())
-        .filter(Boolean)
-    : [];
+  const parseIds = (value: string | undefined): string[] =>
+    value
+      ? value
+          .split(",")
+          .map((s: string) => s.trim())
+          .filter(Boolean)
+      : [];
+
+  // 分平台白名单
+  const telegramIds = parseIds(commonResp.telegramAllowedUserIds);
+  const feishuIds = parseIds(commonResp.feishuAllowedUserIds);
+
+  if (platform === "telegram" || platform === "both") {
+    (config.platforms as any).telegram = {
+      ...(config.platforms as any).telegram,
+      enabled: true,
+      botToken: (config as any).telegramBotToken ?? undefined,
+      allowedUserIds: telegramIds,
+    };
+  } else {
+    (config.platforms as any).telegram = {
+      enabled: false,
+      allowedUserIds: telegramIds,
+    };
+  }
+
+  if (platform === "feishu" || platform === "both") {
+    (config.platforms as any).feishu = {
+      ...(config.platforms as any).feishu,
+      enabled: true,
+      allowedUserIds: feishuIds,
+    };
+  } else {
+    (config.platforms as any).feishu = {
+      enabled: false,
+      allowedUserIds: feishuIds,
+    };
+  }
+
   config.claudeWorkDir = (commonResp.workDir || process.cwd()).trim();
   config.claudeSkipPermissions = true;
   config.aiCommand = commonResp.aiCommand ?? "claude";

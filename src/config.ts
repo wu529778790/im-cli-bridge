@@ -16,10 +16,18 @@ export type AiCommand = 'claude' | 'codex' | 'cursor';
 
 export interface Config {
   enabledPlatforms: Platform[];
+
+  // 运行时使用的凭证（来源可以是 env 或 config.json）
   telegramBotToken?: string;
   feishuAppId?: string;
   feishuAppSecret?: string;
+
+  // 全局白名单（旧版兼容）
   allowedUserIds: string[];
+  // 分平台白名单（新配置推荐）
+  telegramAllowedUserIds: string[];
+  feishuAllowedUserIds: string[];
+
   aiCommand: AiCommand;
   claudeCliPath: string;
   claudeWorkDir: string;
@@ -29,18 +37,47 @@ export interface Config {
   claudeModel?: string;
   logDir: string;
   logLevel: LogLevel;
+
   platforms: {
     telegram?: {
+      enabled: boolean;
       proxy?: string; // HTTP/HTTPS/SOCKS 代理地址，例如: http://127.0.0.1:7890 或 socks5://127.0.0.1:1080
+      allowedUserIds: string[];
+    };
+    feishu?: {
+      enabled: boolean;
+      allowedUserIds: string[];
     };
   };
 }
 
+interface FilePlatformTelegram {
+  enabled?: boolean;
+  botToken?: string;
+  allowedUserIds?: string[];
+  proxy?: string;
+}
+
+interface FilePlatformFeishu {
+  enabled?: boolean;
+  appId?: string;
+  appSecret?: string;
+  allowedUserIds?: string[];
+}
+
 interface FileConfig {
+  // 旧版扁平字段（兼容）
   telegramBotToken?: string;
   feishuAppId?: string;
   feishuAppSecret?: string;
   allowedUserIds?: string[];
+
+  // 新版分块字段
+  platforms?: {
+    telegram?: FilePlatformTelegram;
+    feishu?: FilePlatformFeishu;
+  };
+
   aiCommand?: string;
   claudeCliPath?: string;
   claudeWorkDir?: string;
@@ -50,11 +87,6 @@ interface FileConfig {
   claudeModel?: string;
   logDir?: string;
   logLevel?: LogLevel;
-  platforms?: {
-    telegram?: {
-      proxy?: string;
-    };
-  };
 }
 
 const CONFIG_PATH = join(APP_HOME, 'config.json');
@@ -69,10 +101,18 @@ function loadFileConfig(): FileConfig {
 
 /** 检测是否需要交互式配置（无 token 且无环境变量） */
 export function needsSetup(): boolean {
+  // 环境变量已提供任一平台的凭证，则认为已配置
   if (process.env.TELEGRAM_BOT_TOKEN) return false;
   if (process.env.FEISHU_APP_ID && process.env.FEISHU_APP_SECRET) return false;
+
   const file = loadFileConfig();
-  return !file.telegramBotToken && !(file.feishuAppId && file.feishuAppSecret);
+  const tg = file.platforms?.telegram;
+  const fs = file.platforms?.feishu;
+
+  const hasTelegram = !!tg?.botToken;
+  const hasFeishu = !!(fs?.appId && fs?.appSecret);
+
+  return !hasTelegram && !hasFeishu;
 }
 
 function parseCommaSeparated(value: string): string[] {
@@ -81,23 +121,61 @@ function parseCommaSeparated(value: string): string[] {
 
 export function loadConfig(): Config {
   const file = loadFileConfig();
-  const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN ?? file.telegramBotToken;
-  const feishuAppId = process.env.FEISHU_APP_ID ?? file.feishuAppId;
-  const feishuAppSecret = process.env.FEISHU_APP_SECRET ?? file.feishuAppSecret;
 
+  const fileTelegram = file.platforms?.telegram;
+  const fileFeishu = file.platforms?.feishu;
+
+  // 1. 加载各平台凭证（env 优先，其次新结构，最后旧字段）
+  const telegramBotToken =
+    process.env.TELEGRAM_BOT_TOKEN ??
+    fileTelegram?.botToken ??
+    file.telegramBotToken;
+
+  const feishuAppId =
+    process.env.FEISHU_APP_ID ??
+    fileFeishu?.appId ??
+    file.feishuAppId;
+  const feishuAppSecret =
+    process.env.FEISHU_APP_SECRET ??
+    fileFeishu?.appSecret ??
+    file.feishuAppSecret;
+
+  // 2. 计算启用平台
   const enabledPlatforms: Platform[] = [];
-  if (telegramBotToken) enabledPlatforms.push('telegram');
-  if (feishuAppId && feishuAppSecret) enabledPlatforms.push('feishu');
+
+  const telegramEnabledFlag = fileTelegram?.enabled;
+  const feishuEnabledFlag = fileFeishu?.enabled;
+
+  const telegramEnabled =
+    !!telegramBotToken && (telegramEnabledFlag !== false);
+  const feishuEnabled =
+    !!(feishuAppId && feishuAppSecret) && (feishuEnabledFlag !== false);
+
+  if (telegramEnabled) enabledPlatforms.push('telegram');
+  if (feishuEnabled) enabledPlatforms.push('feishu');
 
   if (enabledPlatforms.length === 0) {
-    throw new Error('至少需要配置 TELEGRAM_BOT_TOKEN 或 FEISHU_APP_ID/FEISHU_APP_SECRET');
+    throw new Error('至少需要配置 Telegram 或 Feishu 其中一个平台（可以通过环境变量或 config.json）');
   }
 
-  const allowedUserIds =
+  // 3. 全局白名单（旧字段，向后兼容，主要用于作为 per-platform 的兜底）
+  const allowedUserIds: string[] =
     process.env.ALLOWED_USER_IDS !== undefined
       ? parseCommaSeparated(process.env.ALLOWED_USER_IDS)
       : file.allowedUserIds ?? [];
 
+  // 4. 分平台白名单（新字段）
+  const telegramAllowedUserIds =
+    process.env.TELEGRAM_ALLOWED_USER_IDS !== undefined
+      ? parseCommaSeparated(process.env.TELEGRAM_ALLOWED_USER_IDS)
+      : fileTelegram?.allowedUserIds ?? allowedUserIds;
+
+  const feishuAllowedUserIds =
+    process.env.FEISHU_ALLOWED_USER_IDS !== undefined
+      ? parseCommaSeparated(process.env.FEISHU_ALLOWED_USER_IDS)
+      : fileFeishu?.allowedUserIds ?? allowedUserIds;
+
+  // 5. AI / 工作目录 / 安全配置
   const aiCommand = (process.env.AI_COMMAND ?? file.aiCommand ?? 'claude') as AiCommand;
   const claudeCliPath = process.env.CLAUDE_CLI_PATH ?? file.claudeCliPath ?? 'claude';
   const claudeWorkDir = process.env.CLAUDE_WORK_DIR ?? file.claudeWorkDir ?? process.cwd();
@@ -118,6 +196,7 @@ export function loadConfig(): Config {
       ? parseInt(process.env.CLAUDE_TIMEOUT_MS, 10) || 600000
       : file.claudeTimeoutMs ?? 600000;
 
+  // 6. 校验 Claude CLI
   if (aiCommand === 'claude') {
     if (isAbsolute(claudeCliPath) || claudeCliPath.includes('/') || claudeCliPath.includes('\\')) {
       try {
@@ -154,14 +233,31 @@ export function loadConfig(): Config {
     }
   }
 
+  // 7. 日志与平台配置
   const logDir = process.env.LOG_DIR ?? file.logDir ?? join(APP_HOME, 'logs');
   const logLevel = (process.env.LOG_LEVEL?.toUpperCase() ?? file.logLevel ?? 'INFO') as LogLevel;
 
-  // Platform-specific proxy configuration
-  const platforms = {
-    telegram: {
-      proxy: process.env.TELEGRAM_PROXY ?? file?.platforms?.telegram?.proxy,
-    },
+  const platforms: Config['platforms'] = {
+    telegram: telegramEnabled
+      ? {
+          enabled: true,
+          proxy: process.env.TELEGRAM_PROXY ?? file.platforms?.telegram?.proxy,
+          allowedUserIds: telegramAllowedUserIds,
+        }
+      : {
+          enabled: false,
+          proxy: process.env.TELEGRAM_PROXY ?? file.platforms?.telegram?.proxy,
+          allowedUserIds: telegramAllowedUserIds,
+        },
+    feishu: feishuEnabled
+      ? {
+          enabled: true,
+          allowedUserIds: feishuAllowedUserIds,
+        }
+      : {
+          enabled: false,
+          allowedUserIds: feishuAllowedUserIds,
+        },
   };
 
   return {
@@ -170,6 +266,8 @@ export function loadConfig(): Config {
     feishuAppId: feishuAppId ?? '',
     feishuAppSecret: feishuAppSecret ?? '',
     allowedUserIds,
+    telegramAllowedUserIds,
+    feishuAllowedUserIds,
     aiCommand,
     claudeCliPath,
     claudeWorkDir,

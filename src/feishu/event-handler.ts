@@ -92,7 +92,7 @@ export function setupFeishuHandlers(
   config: Config,
   sessionManager: SessionManager
 ): FeishuEventHandlerHandle {
-  const accessControl = new AccessControl(config.allowedUserIds);
+  const accessControl = new AccessControl(config.feishuAllowedUserIds);
   const requestQueue = new RequestQueue();
   const runningTasks = new Map<string, TaskRunState>();
   const stopTaskCleanup = startTaskCleanup(runningTasks);
