@@ -61,10 +61,11 @@ function buildCompletionNote(
   if (toolInfo) parts.push(toolInfo);
   if (result.model) parts.push(result.model);
 
-  const totalTurns = ctx.threadId
-    ? sessionManager.addTurnsForThread(ctx.userId, ctx.threadId, result.numTurns)
-    : sessionManager.addTurns(ctx.userId, result.numTurns);
-  const ctxWarning = getContextWarning(totalTurns);
+  // 获取当前的总轮数（不再累加，因为已经在请求开始时累加了）
+  const currentTurns = ctx.threadId
+    ? sessionManager.addTurnsForThread(ctx.userId, ctx.threadId, 0)
+    : sessionManager.addTurns(ctx.userId, 0);
+  const ctxWarning = getContextWarning(currentTurns);
   if (ctxWarning) parts.push(ctxWarning);
 
   return parts.join(' | ');

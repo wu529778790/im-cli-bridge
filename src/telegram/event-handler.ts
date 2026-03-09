@@ -120,6 +120,10 @@ export function setupTelegramHandlers(
     _threadCtx?: { rootMessageId: string; threadId: string },
     replyToMessageId?: string
   ) {
+    // 在用户每次发送消息时就累加计数，确保提示能轮换显示
+    const currentTurns = sessionManager.addTurns(userId, 1);
+    log.info(`User request: total turns = ${currentTurns} for user ${userId}`);
+
     const toolAdapter = getAdapter(config.aiCommand);
     if (!toolAdapter) {
       await sendTextReply(chatId, `未配置 AI 工具: ${config.aiCommand}`);
