@@ -1,7 +1,6 @@
 import { Telegraf } from "telegraf";
 import type { Config } from "../config.js";
 import { createLogger } from "../logger.js";
-import { HttpsProxyAgent } from "https-proxy-agent";
 
 const log = createLogger("Telegram");
 

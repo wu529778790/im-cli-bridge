@@ -22,10 +22,6 @@ import {
 import { initLogger, createLogger, closeLogger } from "./logger.js";
 import { APP_HOME, SHUTDOWN_PORT } from "./constants.js";
 import { createRequire } from "node:module";
-import { join } from "node:path";
-import { homedir } from "node:os";
-import { rm } from "node:fs/promises";
-import { existsSync } from "node:fs";
 
 const require = createRequire(import.meta.url);
 const { version: APP_VERSION } = require("../package.json") as {
@@ -33,25 +29,6 @@ const { version: APP_VERSION } = require("../package.json") as {
 };
 
 const log = createLogger("Main");
-
-// 停止标记文件路径
-const STOP_FILE = join(homedir(), ".open-im", "stop.flag");
-
-// 检查是否收到停止信号
-function checkStopSignal(): boolean {
-  return existsSync(STOP_FILE);
-}
-
-// 清理停止标记文件
-async function clearStopSignal(): Promise<void> {
-  try {
-    if (existsSync(STOP_FILE)) {
-      await rm(STOP_FILE);
-    }
-  } catch {
-    // 忽略错误
-  }
-}
 
 async function sendLifecycleNotification(platform: string, message: string) {
   const telegramChatId = getActiveChatId("telegram");

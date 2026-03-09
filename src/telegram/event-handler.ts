@@ -34,7 +34,7 @@ class DynamicThrottle {
   private lastUpdate = 0;
   private lastContentLength = 0;
   private consecutiveErrors = 0;
-  private baseInterval = THROTTLE_MS;
+  private baseInterval = TELEGRAM_THROTTLE_MS;
 
   getNextDelay(contentLength: number): number {
     const now = Date.now();
