@@ -118,15 +118,15 @@ if (cmd === 'start') {
     console.error(err);
     process.exit(1);
   });
-} else if (cmd === 'run' || cmd === undefined) {
+} else if (cmd === 'dev' || cmd === 'run' || cmd === undefined) {
   main().catch((err) => {
     console.error(err);
     process.exit(1);
   });
 } else {
-  console.log(`用法: open-im [start|stop|run]
+  console.log(`用法: open-im [start|stop|dev]
   start  - 后台运行
   stop   - 停止后台进程
-  run    - 前台运行（默认），Ctrl+C 停止`);
+  dev    - 前台运行（调试），Ctrl+C 停止`);
   process.exit(cmd === '--help' || cmd === '-h' ? 0 : 1);
 }

@@ -27,7 +27,7 @@ npm install @wu529778790/open-im -g
 # 使用 npx 快速体验（无需全局安装）
 npx @wu529778790/open-im start    # 后台运行
 npx @wu529778790/open-im stop     # 停止后台进程
-npx @wu529778790/open-im          # 前台运行，Ctrl+C 停止
+npx @wu529778790/open-im dev     # 前台运行（调试），Ctrl+C 停止
 ```
 
 或全局安装后直接使用：
@@ -45,7 +45,7 @@ open-im start
 |------|------|
 | `open-im start` | 后台运行，适合长期使用 |
 | `open-im stop` | 停止后台进程 |
-| `open-im` 或 `open-im run` | 前台运行，Ctrl+C 停止 |
+| `open-im dev` 或 `open-im` | 前台运行（调试），Ctrl+C 停止 |
 
 ## 会话说明
 
@@ -87,7 +87,15 @@ open-im start
 3. 配置事件订阅：启用 `im.message.receive_v1`，使用 **长连接** 模式（WebSocket）
 4. 将机器人添加到目标群聊或发起私聊
 
-## 命令
+## 开发
+
+```bash
+npm run build      # 构建
+npm run dev        # 直接运行源码（tsx，无需 build）
+npm run foreground # 前台运行已构建版本
+```
+
+## IM 内命令
 
 | 命令 | 说明 |
 |------|------|

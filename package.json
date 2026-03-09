@@ -16,7 +16,7 @@
     "dev": "tsx src/index.ts",
     "start": "node dist/cli.js start",
     "stop": "node dist/cli.js stop",
-    "run": "node dist/cli.js run",
+    "foreground": "node dist/cli.js dev",
     "setup": "node dist/index.js --setup-only",
     "prepublishOnly": "npm run build"
   },
