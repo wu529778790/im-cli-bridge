@@ -66,15 +66,16 @@ const USAGE_TIPS = [
 ];
 
 export function getContextWarning(totalTurns: number): string | null {
-  // 第 6 轮开始显示提示
-  if (totalTurns < 6) return null;
+  // 降低阈值，让提示更早开始轮换显示
+  if (totalTurns < 2) return null;
 
-  // 第 13 轮后一直显示警告
-  if (totalTurns >= 13) {
+  // 第 10 次后一直显示警告
+  if (totalTurns >= 10) {
     return USAGE_TIPS[USAGE_TIPS.length - 1];
   }
 
-  // 根据轮数循环显示提示
-  const tipIndex = (totalTurns - 6) % USAGE_TIPS.length;
-  return USAGE_TIPS[tipIndex];
+  // 根据轮数循环显示提示（排除最后的警告）
+  const regularTips = USAGE_TIPS.slice(0, -1);
+  const tipIndex = (totalTurns - 2) % regularTips.length;
+  return regularTips[tipIndex];
 }
