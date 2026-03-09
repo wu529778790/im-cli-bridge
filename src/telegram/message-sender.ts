@@ -142,12 +142,13 @@ export async function updateMessage(
     // 完成或错误时，显式移除停止按钮（使用空的 inline_keyboard）
     opts.reply_markup = { inline_keyboard: [] };
     // 添加日志，帮助诊断
-    log.info(`Updating message to ${status} status (removing stop button) for ${chatId}:${messageId}`);
+    log.info(`Updating message to ${status} status (removing stop button) for ${chatId}:${messageId}, content length: ${content.length}`);
   }
 
   // 流式输出时使用纯文本，避免 Markdown 解析导致内容减少
-  // 只在完成时应用 Markdown 格式
-  const shouldParseMarkdown = status === 'done' || status === 'error';
+  // 完成时也暂时使用纯文本，避免 Markdown 解析错误
+  // TODO: 等待 Markdown 预处理稳定后再启用 Markdown
+  const shouldParseMarkdown = false; // 暂时禁用 Markdown 解析
 
   let retries = 0;
   const maxRetries = 2; // 减少重试次数，但增加等待时间
