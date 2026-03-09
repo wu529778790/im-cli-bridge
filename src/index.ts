@@ -88,20 +88,27 @@ export async function main() {
 
   const startedAt = Date.now();
 
+  // 防止重复发送关闭通知
+  let shutdownNotificationSent = false;
+
   const shutdown = async () => {
     log.info('Shutting down...');
     const uptimeSec = Math.floor((Date.now() - startedAt) / 1000);
     const m = Math.floor(uptimeSec / 60);
 
-    try {
-      await sendLifecycleNotification(
-        'telegram',
-        `🔴 open-im 服务正在关闭...\n运行时长: ${m}分钟`
-      );
-      // 等待消息发送完成
-      await new Promise(resolve => setTimeout(resolve, 500));
-    } catch (err) {
-      log.debug('Failed to send shutdown notification:', err);
+    // 只发送一次通知
+    if (!shutdownNotificationSent) {
+      shutdownNotificationSent = true;
+      try {
+        await sendLifecycleNotification(
+          'telegram',
+          `🔴 open-im 服务正在关闭...\n运行时长: ${m}分钟`
+        );
+        // 等待消息发送完成
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (err) {
+        log.debug('Failed to send shutdown notification:', err);
+      }
     }
 
     // 清理停止标记文件
