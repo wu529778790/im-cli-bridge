@@ -63,7 +63,7 @@ npx @wu529778790/open-im init
 ```bash
 export TELEGRAM_BOT_TOKEN="你的Bot Token"
 export ALLOWED_USER_IDS="用户ID1,用户ID2"
-open-im start
+open-im run
 ```
 
 ## 📖 常用命令
