@@ -144,9 +144,9 @@ export function setupTelegramHandlers(
     // 创建动态节流器
     const throttle = new DynamicThrottle();
 
-    // 保存思考内容和状态
+    // 不保存思考内容，只显示最终结果
     let savedThinkingText = '';
-    let hasThinkingContent = false; // 是否包含思考内容
+    let hasThinkingContent = false; // 始终为 false，不显示思考内容
 
     // 创建包装的流式更新函数（带串行化、智能跳过和防抖）
     const createStreamUpdateWrapper = () => {
@@ -235,11 +235,10 @@ export function setupTelegramHandlers(
       let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
       return (content: string, toolNote?: string) => {
-        // 检测是否是思考内容
+        // 检测是否是思考内容，如果则跳过不显示
         if (content.startsWith('💭 **思考中...**')) {
-          // 保存思考内容（去掉前缀）
-          savedThinkingText = content.replace('💭 **思考中...**\n\n', '');
-          hasThinkingContent = true;
+          // 不保存思考内容，直接返回，不触发更新
+          return;
         }
 
         const now = Date.now();
@@ -290,14 +289,8 @@ export function setupTelegramHandlers(
         },
         sendComplete: async (content, note) => {
           throttle.reset();
-          // 完成时，如果有思考内容，将其包含在最终消息中
-          if (savedThinkingText && hasThinkingContent) {
-            const thinkingFormatted = `💭 思考过程：\n${savedThinkingText}\n\n─────────\n\n`;
-            const combined = thinkingFormatted + content;
-            await sendFinalMessages(chatId, msgId, combined, note, toolId);
-          } else {
-            await sendFinalMessages(chatId, msgId, content, note, toolId);
-          }
+          // 完成时，只发送最终结果，不包含思考内容
+          await sendFinalMessages(chatId, msgId, content, note, toolId);
         },
         sendError: async (error) => {
           throttle.reset();
