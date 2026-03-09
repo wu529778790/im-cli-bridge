@@ -1,5 +1,8 @@
 import { loadConfig, needsSetup } from './config.js';
 import { runInteractiveSetup } from './setup.js';
+
+// 导出供 cli.ts 使用
+export { needsSetup, runInteractiveSetup };
 import { initTelegram, stopTelegram } from './telegram/client.js';
 import { setupTelegramHandlers } from './telegram/event-handler.js';
 import { sendTextReply } from './telegram/message-sender.js';

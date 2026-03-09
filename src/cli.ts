@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { main } from './index.js';
+import { main, needsSetup, runInteractiveSetup } from './index.js';
 import { spawn, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -148,6 +148,19 @@ if (args[0] === 'stop') {
     process.exit(1);
   });
 } else if (args[0] === 'start') {
+  // 首先检查是否需要配置
+  if (needsSetup()) {
+    console.log('\n━━━ open-im 首次配置 ━━━\n');
+    console.log('检测到未配置，需要先完成配置才能启动服务\n');
+
+    const saved = await runInteractiveSetup();
+    if (!saved) {
+      console.log('配置未完成，取消启动。');
+      process.exit(1);
+    }
+    console.log('');
+  }
+
   // 获取当前工作目录
   const currentDir = process.cwd();
 
