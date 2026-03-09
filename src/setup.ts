@@ -19,6 +19,11 @@ function printManualInstructions(configPath: string): void {
   console.log(`{
   "telegramBotToken": "你的Bot Token",
   "allowedUserIds": ["你的Telegram用户ID"],
+  "platforms": {
+    "telegram": {
+      "proxy": "http://127.0.0.1:7890"
+    }
+  },
   "claudeWorkDir": "${process.cwd().replace(/\\/g, '/')}",
   "claudeSkipPermissions": true,
   "aiCommand": "claude"
@@ -62,8 +67,8 @@ export async function runInteractiveSetup(): Promise<boolean> {
       },
       {
         type: 'text',
-        name: 'proxy',
-        message: '代理地址（可选，用于访问 Telegram，如: http://127.0.0.1:7890 或 socks5://127.0.0.1:1080）',
+        name: 'telegramProxy',
+        message: 'Telegram 代理地址（可选，如: http://127.0.0.1:7890 或 socks5://127.0.0.1:1080）',
         initial: '',
       },
       {
@@ -100,7 +105,11 @@ export async function runInteractiveSetup(): Promise<boolean> {
           .map((s: string) => s.trim())
           .filter(Boolean)
       : [],
-    proxy: response.proxy ? response.proxy.trim() : undefined,
+    platforms: {
+      telegram: response.telegramProxy
+        ? { proxy: response.telegramProxy.trim() }
+        : undefined,
+    },
     claudeWorkDir: (response.workDir || process.cwd()).trim(),
     claudeSkipPermissions: true,
     aiCommand: response.aiCommand ?? 'claude',

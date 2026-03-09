@@ -49,11 +49,43 @@ npx @wu529778790/open-im init
   "allowedUserIds": ["你的Telegram用户ID"],
   "claudeWorkDir": "/path/to/your/work/dir",
   "claudeSkipPermissions": true,
-  "aiCommand": "claude"
+  "aiCommand": "claude",
+  "platforms": {
+    "telegram": {
+      "proxy": "http://127.0.0.1:7890"
+    }
+  }
 }
 ```
 
-获取 Telegram Bot Token：
+### 🌐 代理配置
+
+如果你的网络环境无法直接访问 Telegram，需要配置代理。代理配置按平台独立设置，互不影响。
+
+**配置方式：**
+
+在 JSON 配置文件中添加：
+```json
+{
+  "platforms": {
+    "telegram": {
+      "proxy": "http://127.0.0.1:7890"
+    }
+  }
+}
+```
+
+**支持的代理类型：**
+- HTTP 代理：`http://127.0.0.1:7890`
+- HTTPS 代理：`https://127.0.0.1:7890`
+- SOCKS5 代理：`socks5://127.0.0.1:1080`
+
+**注意：**
+- 代理仅用于访问 Telegram API，不会影响 AI 工具（Claude/Codex/Cursor）的网络请求
+- 飞书等其他国内 IM 平台无需配置代理
+- 如果你的网络能直接访问 Telegram，则无需配置代理
+
+### 获取 Telegram Bot Token
 1. 在 Telegram 中搜索 @BotFather
 2. 发送 `/newbot` 创建新机器人
 3. 按提示设置机器人名称
@@ -64,14 +96,6 @@ npx @wu529778790/open-im init
 2. 发送任意消息
 3. 机器人会返回你的用户 ID
 4. 如不设置，则所有人都可以使用你的机器人
-
-**或者通过环境变量配置：**
-
-```bash
-export TELEGRAM_BOT_TOKEN="你的Bot Token"
-export ALLOWED_USER_IDS="用户ID1,用户ID2"
-open-im run
-```
 
 ## 📖 常用命令
 
@@ -143,6 +167,11 @@ pnpm i @wu529778790/open-im -g
    {
      "telegramBotToken": "你的Bot Token",
      "allowedUserIds": ["你的Telegram用户ID"],
+     "platforms": {
+       "telegram": {
+         "proxy": "http://127.0.0.1:7890"
+       }
+     },
      "claudeWorkDir": "$(pwd)",
      "claudeSkipPermissions": true,
      "aiCommand": "claude"
@@ -175,3 +204,39 @@ npx @wu529778790/open-im run
 1. 在 Telegram 中搜索 @userinfobot
 2. 点击"START"或发送任意消息
 3. 机器人会返回你的用户 ID（数字）
+
+### Q: 如何配置代理？
+
+如果你的网络环境无法直接访问 Telegram，需要在配置文件中添加代理设置：
+
+```json
+{
+  "platforms": {
+    "telegram": {
+      "proxy": "http://127.0.0.1:7890"
+    }
+  }
+}
+```
+
+支持的代理格式：
+- HTTP：`http://127.0.0.1:7890`
+- HTTPS：`https://127.0.0.1:7890`
+- SOCKS5：`socks5://127.0.0.1:1080`
+
+注意：代理仅用于访问 Telegram API，不影响 AI 工具的网络请求。
+
+### Q: Telegram 机器人无响应？
+
+可能原因及解决方法：
+
+1. **网络问题 - Telegram 被阻断**
+   - 配置代理（见上方"如何配置代理"）
+   - 测试代理是否可用：`curl -x http://127.0.0.1:7890 https://api.telegram.org`
+
+2. **Token 错误**
+   - 重新获取 Token：在 @BotFather 中使用 `/revoke` 命令
+
+3. **用户 ID 白名单问题**
+   - 检查配置文件中的 `allowedUserIds` 是否包含你的用户 ID
+   - 或留空允许所有人访问（仅开发环境建议）

@@ -20,14 +20,15 @@ export function getBotUsername(): string | undefined {
 export async function initTelegram(config: Config, setupHandlers: (bot: Telegraf) => void): Promise<void> {
   const telegrafOptions: Record<string, unknown> = {};
 
-  // 配置代理
-  if (config.proxy) {
+  // 配置平台特定代理
+  const proxy = config.platforms?.telegram?.proxy;
+  if (proxy) {
     try {
-      const agent = new HttpsProxyAgent(config.proxy);
+      const agent = new HttpsProxyAgent(proxy);
       telegrafOptions.telegram = {
         agent,
       };
-      log.info(`Using proxy: ${config.proxy}`);
+      log.info(`Using proxy: ${proxy}`);
     } catch (err) {
       log.warn(`Failed to create proxy agent: ${err}. Continuing without proxy.`);
     }
