@@ -1,12 +1,24 @@
 /**
  * 首次运行时的交互式配置引导
  * 使用 prompts 库，兼容 tsx watch、IDE 终端等环境
+ * Telegram Token 使用 readline 避免 Windows 终端 prompts 重绘问题
  */
 
 import prompts from 'prompts';
+import { createInterface } from 'node:readline';
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { APP_HOME } from './constants.js';
+
+function question(prompt: string): Promise<string> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(prompt, (answer) => {
+      rl.close();
+      resolve(answer.trim());
+    });
+  });
+}
 
 function printManualInstructions(configPath: string): void {
   console.log('\n━━━ open-im 首次配置 ━━━\n');
@@ -69,18 +81,13 @@ export async function runInteractiveSetup(): Promise<boolean> {
   const platform = platformResp.platform;
   const config: Record<string, unknown> = {};
 
-  // 收集平台配置
+  // 收集平台配置（Telegram 用 readline 避免 Windows 下 prompts 重绘/重复行问题）
   if (platform === 'telegram' || platform === 'both') {
-    const telegramResp = await prompts({
-      type: 'text',
-      name: 'token',
-      message: 'Telegram Bot Token（从 @BotFather 获取）',
-      validate: (v: string) => (v.trim() ? true : 'Token 不能为空'),
-    }, { onCancel });
-
-    if (telegramResp.token) {
-      config.telegramBotToken = telegramResp.token.trim();
+    const token = await question('Telegram Bot Token（从 @BotFather 获取）: ');
+    if (token) {
+      config.telegramBotToken = token;
     } else if (platform === 'telegram') {
+      console.log('Token 不能为空');
       return false;
     }
   }
