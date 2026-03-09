@@ -5,10 +5,11 @@ import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { main } from './index.js';
-import { APP_HOME } from './constants.js';
+import { APP_HOME, SHUTDOWN_PORT } from './constants.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PID_FILE = join(APP_HOME, 'open-im.pid');
+const PORT_FILE = join(APP_HOME, 'open-im.port');
 const INDEX_JS = join(__dirname, 'index.js');
 
 function getPid(): number | null {
@@ -67,7 +68,7 @@ async function cmdStart(): Promise<void> {
   console.log(`open-im 已在后台启动 (pid=${child.pid})`);
 }
 
-function cmdStop(): void {
+async function cmdStop(): Promise<void> {
   const pid = getPid();
   if (!pid) {
     console.log('open-im 未在后台运行');
@@ -78,14 +79,32 @@ function cmdStop(): void {
     console.log('open-im 进程已不存在');
     return;
   }
+  const port = existsSync(PORT_FILE)
+    ? parseInt(readFileSync(PORT_FILE, 'utf-8').trim(), 10) || SHUTDOWN_PORT
+    : SHUTDOWN_PORT;
   try {
+    const res = await fetch(`http://127.0.0.1:${port}/shutdown`, { signal: AbortSignal.timeout(3000) });
+    if (res.ok) {
+      for (let i = 0; i < 50; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        if (!isRunning(pid)) break;
+      }
+    }
+  } catch {
+    /* HTTP 失败则用 SIGTERM 兜底 */
     process.kill(pid, 'SIGTERM');
-    removePid();
-    console.log(`open-im 已停止 (pid=${pid})`);
-  } catch (err) {
-    console.error('停止失败:', err);
-    process.exit(1);
+    await new Promise((r) => setTimeout(r, 500));
   }
+  if (isRunning(pid)) {
+    process.kill(pid, 'SIGKILL');
+  }
+  removePid();
+  try {
+    if (existsSync(PORT_FILE)) unlinkSync(PORT_FILE);
+  } catch {
+    /* ignore */
+  }
+  console.log(`open-im 已停止 (pid=${pid})`);
 }
 
 const cmd = process.argv[2];
@@ -95,7 +114,10 @@ if (cmd === 'start') {
     process.exit(1);
   });
 } else if (cmd === 'stop') {
-  cmdStop();
+  cmdStop().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
 } else if (cmd === 'run' || cmd === undefined) {
   main().catch((err) => {
     console.error(err);

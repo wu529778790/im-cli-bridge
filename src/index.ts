@@ -1,3 +1,6 @@
+import { createServer } from 'node:http';
+import { writeFileSync, existsSync, mkdirSync, unlinkSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { loadConfig, needsSetup } from './config.js';
 import { runInteractiveSetup } from './setup.js';
 import { initTelegram, stopTelegram } from './telegram/client.js';
@@ -10,7 +13,7 @@ import { initAdapters } from './adapters/registry.js';
 import { SessionManager } from './session/session-manager.js';
 import { loadActiveChats, getActiveChatId, flushActiveChats } from './shared/active-chats.js';
 import { initLogger, createLogger, closeLogger } from './logger.js';
-import { execFileSync } from 'node:child_process';
+import { APP_HOME, SHUTDOWN_PORT } from './constants.js';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -103,6 +106,13 @@ export async function main() {
       await sendLifecycleNotification(platform, shutdownMsg).catch(() => {});
     }
 
+    shutdownServer?.close();
+    const portFile = join(APP_HOME, 'open-im.port');
+    try {
+      if (existsSync(portFile)) unlinkSync(portFile);
+    } catch {
+      /* ignore */
+    }
     telegramHandle?.stop();
     stopTelegram();
     feishuHandle?.stop();
@@ -115,6 +125,24 @@ export async function main() {
 
   process.on('SIGINT', () => shutdown().catch(() => process.exit(1)));
   process.on('SIGTERM', () => shutdown().catch(() => process.exit(1)));
+
+  // 优雅关闭 HTTP 服务：stop 命令通过此端口触发 shutdown（Windows 下 SIGTERM 不可靠）
+  const shutdownServer = createServer((req, res) => {
+    if (req.url === '/shutdown' || req.url === '/') {
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end('ok');
+      shutdown().catch(() => process.exit(1));
+    } else {
+      res.writeHead(404);
+      res.end();
+    }
+  });
+  shutdownServer.listen(SHUTDOWN_PORT, '127.0.0.1', () => {
+    const portFile = join(APP_HOME, 'open-im.port');
+    const dir = dirname(portFile);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(portFile, String(SHUTDOWN_PORT), 'utf-8');
+  });
 }
 
 const isEntry = process.argv[1]?.replace(/\\/g, '/').endsWith('/index.js') || process.argv[1]?.replace(/\\/g, '/').endsWith('/index.ts');

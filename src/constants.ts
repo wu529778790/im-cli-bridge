@@ -2,6 +2,8 @@ import { join } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
 
 export const APP_HOME = join(homedir(), '.open-im');
+/** 优雅关闭 HTTP 端口（stop 命令通过此端口触发 shutdown） */
+export const SHUTDOWN_PORT = 39281;
 export const IMAGE_DIR = join(tmpdir(), 'open-im-images');
 
 export const READ_ONLY_TOOLS = [
