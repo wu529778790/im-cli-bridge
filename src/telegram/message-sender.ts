@@ -137,6 +137,9 @@ export async function updateMessage(
   const opts: Record<string, unknown> = {};
   if (status === 'thinking' || status === 'streaming') {
     opts.reply_markup = buildStopKeyboard(Number(messageId));
+  } else if (status === 'done' || status === 'error') {
+    // 完成或错误时，显式移除停止按钮
+    opts.reply_markup = {};
   }
 
   // 流式输出时使用纯文本，避免 Markdown 解析导致内容减少
@@ -144,7 +147,7 @@ export async function updateMessage(
   const shouldParseMarkdown = status === 'done' || status === 'error';
 
   let retries = 0;
-  const maxRetries = 3;
+  const maxRetries = 2; // 减少重试次数，但增加等待时间
 
   while (retries <= maxRetries) {
     try {
@@ -164,9 +167,19 @@ export async function updateMessage(
 
       const retryAfter = extractRetryAfter(err);
       if (retryAfter !== null && retries < maxRetries) {
-        // 429 错误，使用退避策略
-        const delayMs = Math.min(retryAfter * 1000, 10000); // 最多等待 10 秒
-        log.warn(`Rate limited, waiting ${delayMs}ms before retry (${retries + 1}/${maxRetries})`);
+        // 429 错误，使用 Telegram 返回的实际等待时间
+        // 添加额外的缓冲时间（10%），确保不会立即再次触发限制
+        const delayMs = Math.ceil(retryAfter * 1000 * 1.1);
+        log.warn(`Rate limited, waiting ${delayMs}ms (${retryAfter}s + 10% buffer) before retry (${retries + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        retries++;
+        continue;
+      }
+
+      // 对于非 429 错误，使用指数退避
+      if (retries < maxRetries) {
+        const delayMs = Math.pow(2, retries) * 1000; // 1s, 2s, 4s
+        log.warn(`Temporary error, waiting ${delayMs}ms before retry (${retries + 1}/${maxRetries}):`, err);
         await new Promise(resolve => setTimeout(resolve, delayMs));
         retries++;
         continue;

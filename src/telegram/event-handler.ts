@@ -144,41 +144,90 @@ export function setupTelegramHandlers(
     // 创建动态节流器
     const throttle = new DynamicThrottle();
 
-    // 创建包装的流式更新函数
+    // 创建包装的流式更新函数（带串行化、智能跳过和防抖）
     const createStreamUpdateWrapper = () => {
       let lastUpdateTime = 0;
+      let lastContentLength = 0;
+      let lastContent = '';
       let pendingUpdate: ReturnType<typeof setTimeout> | null = null;
+      let updateInProgress = false; // 串行化锁
+      let scheduledContent: string | null = null; // 待更新内容
+      let scheduledToolNote: string | undefined;
+
+      // 流式输出时只显示最后 N 个字符，避免消息过大
+      const STREAM_PREVIEW_LENGTH = 500;
+
+      // 执行更新（串行化）
+      const performUpdate = async (content: string, toolNote?: string) => {
+        if (updateInProgress) {
+          // 如果有更新正在进行，保存当前内容待更新
+          scheduledContent = content;
+          scheduledToolNote = toolNote;
+          return;
+        }
+
+        updateInProgress = true;
+
+        try {
+          // 流式输出时只显示最后部分内容，避免触发速率限制
+          const displayContent = content.length > STREAM_PREVIEW_LENGTH
+            ? `...(已输出 ${content.length} 字符，显示最后 ${STREAM_PREVIEW_LENGTH} 字符)...\n\n${content.slice(-STREAM_PREVIEW_LENGTH)}`
+            : content;
+
+          const note = toolNote ? '输出中...\n' + toolNote : '输出中...';
+          await updateMessage(chatId, msgId, displayContent, 'streaming', note, toolId);
+          throttle.recordSuccess();
+          lastUpdateTime = Date.now();
+        } catch (err) {
+          throttle.recordError();
+        } finally {
+          updateInProgress = false;
+
+          // 如果有待更新的内容，立即更新
+          if (scheduledContent !== null) {
+            const nextContent = scheduledContent;
+            const nextNote = scheduledToolNote;
+            scheduledContent = null;
+            scheduledToolNote = undefined;
+            await performUpdate(nextContent, nextNote);
+          }
+        }
+      };
+
+      // 防抖延迟（毫秒）
+      const DEBOUNCE_MS = 200;
+      let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
       return (content: string, toolNote?: string) => {
         const now = Date.now();
         const elapsed = now - lastUpdateTime;
 
-        // 使用动态节流器计算延迟
-        const delay = throttle.getNextDelay(content.length);
-
-        const performUpdate = () => {
-          const note = toolNote ? '输出中...\n' + toolNote : '输出中...';
-          updateMessage(chatId, msgId, content, 'streaming', note, toolId)
-            .then(() => throttle.recordSuccess())
-            .catch((err) => {
-              throttle.recordError();
-            });
-          lastUpdateTime = Date.now();
-          pendingUpdate = null;
-        };
-
-        // 清除之前的待处理更新
-        if (pendingUpdate) {
-          clearTimeout(pendingUpdate);
+        // 智能跳过：内容增长小于 50 字符且距离上次更新不足 1 秒
+        const contentGrowth = content.length - lastContentLength;
+        if (contentGrowth < 50 && elapsed < 1000 && lastContentLength > 0) {
+          // 跳过此次更新，但更新长度记录
+          lastContentLength = content.length;
+          lastContent = content;
+          return;
         }
 
-        // 如果已经过了足够的时间，立即更新
-        if (elapsed >= delay) {
-          performUpdate();
-        } else {
-          // 否则等待剩余时间
-          pendingUpdate = setTimeout(performUpdate, delay - elapsed);
+        // 更新记录
+        lastContentLength = content.length;
+        lastContent = content;
+
+        // 使用动态节流器计算基础延迟
+        const baseDelay = throttle.getNextDelay(content.length);
+
+        // 清除之前的防抖定时器
+        if (debounceTimer) {
+          clearTimeout(debounceTimer);
         }
+
+        // 设置防抖定时器
+        debounceTimer = setTimeout(() => {
+          debounceTimer = null;
+          performUpdate(content, toolNote);
+        }, Math.max(DEBOUNCE_MS, baseDelay));
       };
     };
 
