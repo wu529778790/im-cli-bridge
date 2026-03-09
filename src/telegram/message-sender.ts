@@ -55,17 +55,18 @@ export async function sendThinkingMessage(
       message_id: Number(replyToMessageId),
     };
   }
+  // 初始消息使用纯文本，避免 Markdown 解析问题
   const msg = await bot.telegram.sendMessage(
     Number(chatId),
     formatMessage('正在思考...', 'thinking', '请稍候', toolId),
-    { ...extra, parse_mode: 'Markdown' }
+    extra
   );
   await bot.telegram.editMessageText(
     Number(chatId),
     msg.message_id,
     undefined,
     formatMessage('正在思考...', 'thinking', '请稍候', toolId),
-    { reply_markup: buildStopKeyboard(msg.message_id), parse_mode: 'Markdown' }
+    { reply_markup: buildStopKeyboard(msg.message_id) }
   );
   return String(msg.message_id);
 }
@@ -83,13 +84,18 @@ export async function updateMessage(
   if (status === 'thinking' || status === 'streaming') {
     opts.reply_markup = buildStopKeyboard(Number(messageId));
   }
+
+  // 流式输出时使用纯文本，避免 Markdown 解析导致内容减少
+  // 只在完成时应用 Markdown 格式
+  const shouldParseMarkdown = status === 'done' || status === 'error';
+
   try {
     await bot.telegram.editMessageText(
       Number(chatId),
       Number(messageId),
       undefined,
       formatMessage(content, status, note, toolId),
-      { ...opts, parse_mode: 'Markdown' }
+      { ...opts, parse_mode: shouldParseMarkdown ? 'Markdown' : undefined }
     );
   } catch (err) {
     if (err && typeof err === 'object' && 'message' in err && String((err as { message: string }).message).includes('not modified')) {
