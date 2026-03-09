@@ -53,10 +53,17 @@ npx @wu529778790/open-im init
 }
 ```
 
-获取 Telegram 用户 ID：
+获取 Telegram Bot Token：
+1. 在 Telegram 中搜索 @BotFather
+2. 发送 `/newbot` 创建新机器人
+3. 按提示设置机器人名称
+4. BotFather 会返回 Token，格式如：`123456789:ABCdefGHIjklMNOpqrsTUVwxyz`
+
+获取 Telegram 用户 ID（可选）：
 1. 在 Telegram 中搜索 @userinfobot
 2. 发送任意消息
 3. 机器人会返回你的用户 ID
+4. 如不设置，则所有人都可以使用你的机器人
 
 **或者通过环境变量配置：**
 
