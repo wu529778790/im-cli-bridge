@@ -96,6 +96,7 @@ export function runClaude(
         stdio: ["ignore", "pipe", "pipe"],
         env,
         shell: true,
+        windowsHide: true,
       });
     } else {
       // In pure cmd/PowerShell, direct spawn works best
