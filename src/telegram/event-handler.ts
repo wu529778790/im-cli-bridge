@@ -162,7 +162,26 @@ export function setupTelegramHandlers(
       const STREAM_PREVIEW_LENGTH = 1500;
 
       // 执行更新（串行化）
-      const performUpdate = async (content: string, toolNote?: string) => {
+      const performUpdate = async (content: string, toolNote?: string, isComplete = false) => {
+        // 如果是完成更新，需要优先处理，取消待处理的更新
+        if (isComplete) {
+          // 清除防抖定时器
+          if (debounceTimer) {
+            clearTimeout(debounceTimer);
+            debounceTimer = null;
+          }
+
+          // 如果有更新正在进行，等待它完成
+          while (updateInProgress) {
+            await new Promise(resolve => setTimeout(resolve, 50));
+          }
+
+          // 重置状态，确保完成更新能立即执行
+          updateInProgress = false;
+          scheduledContent = null;
+          scheduledToolNote = undefined;
+        }
+
         if (updateInProgress) {
           // 如果有更新正在进行，保存当前内容待更新
           scheduledContent = content;
@@ -289,8 +308,15 @@ export function setupTelegramHandlers(
         },
         sendComplete: async (content, note) => {
           throttle.reset();
-          // 完成时，只发送最终结果，不包含思考内容
-          await sendFinalMessages(chatId, msgId, content, note, toolId);
+          // 完成时，直接调用 updateMessage 更新状态，绕过流式更新机制
+          // 确保完成状态能够立即生效，移除停止按钮
+          try {
+            await sendFinalMessages(chatId, msgId, content, note, toolId);
+          } catch (err) {
+            log.error('Failed to send complete message:', err);
+            // 如果发送失败，至少尝试更新状态
+            await updateMessage(chatId, msgId, content, 'done', note, toolId);
+          }
         },
         sendError: async (error) => {
           throttle.reset();

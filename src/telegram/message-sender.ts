@@ -135,6 +135,8 @@ export async function updateMessage(
   } else if (status === 'done' || status === 'error') {
     // 完成或错误时，显式移除停止按钮（使用空的 inline_keyboard）
     opts.reply_markup = { inline_keyboard: [] };
+    // 添加日志，帮助诊断
+    log.info(`Updating message to ${status} status (removing stop button) for ${chatId}:${messageId}`);
   }
 
   // 流式输出时使用纯文本，避免 Markdown 解析导致内容减少
