@@ -99,15 +99,17 @@ export function loadConfig(): Config {
       : file.claudeTimeoutMs ?? 600000;
 
   if (aiCommand === 'claude') {
-    if (isAbsolute(claudeCliPath) || claudeCliPath.includes('/')) {
+    if (isAbsolute(claudeCliPath) || claudeCliPath.includes('/') || claudeCliPath.includes('\\')) {
       try {
         accessSync(claudeCliPath, constants.F_OK | constants.X_OK);
       } catch {
         throw new Error(`Claude CLI 不可执行: ${claudeCliPath}`);
       }
     } else {
+      // 检查命令是否存在（Windows 用 where，Unix 用 which）
+      const checkCommand = process.platform === 'win32' ? 'where' : 'which';
       try {
-        execFileSync('which', [claudeCliPath], { stdio: 'pipe' });
+        execFileSync(checkCommand, [claudeCliPath], { stdio: 'pipe' });
       } catch {
         const installGuide = [
           '',
