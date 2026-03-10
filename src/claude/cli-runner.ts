@@ -36,6 +36,7 @@ export interface ClaudeRunCallbacks {
 
 export interface ClaudeRunOptions {
   skipPermissions?: boolean;
+  permissionMode?: 'default' | 'acceptEdits' | 'plan';
   timeoutMs?: number;
   model?: string;
   chatId?: string;
@@ -62,7 +63,11 @@ export function runClaude(
     "--include-partial-messages",
   ];
 
-  if (options?.skipPermissions) args.push("--dangerously-skip-permissions");
+  if (options?.skipPermissions) {
+    args.push("--dangerously-skip-permissions");
+  } else if (options?.permissionMode) {
+    args.push("--permission-mode", options.permissionMode);
+  }
   if (options?.model) args.push("--model", options.model);
   if (sessionId) args.push("--resume", sessionId);
   args.push("--", prompt);

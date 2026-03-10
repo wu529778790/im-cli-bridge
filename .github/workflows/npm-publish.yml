@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version_bump:
-        description: 'Version bump (manual trigger 时必须选，否则会报版本已存在)'
+        description: 'Version bump type (自动从 dev 分支发布 prerelease)'
         required: true
         default: 'patch'
         type: choice
@@ -15,6 +15,16 @@ on:
           - patch
           - minor
           - major
+          - prerelease
+      prerelease_tag:
+        description: 'Prerelease tag (选择 prerelease 时生效)'
+        required: false
+        default: 'beta'
+        type: choice
+        options:
+          - beta
+          - rc
+          - alpha
       dry_run:
         description: 'Dry run (不发布，仅打包)'
         required: false
@@ -24,6 +34,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  pull-requests: read
 
 jobs:
   publish:
@@ -34,20 +45,113 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - run: npm ci
 
       - name: Bump version (manual trigger only)
         if: github.event_name == 'workflow_dispatch'
+        shell: bash
         run: |
-          NPM_VER=$(npm view @wu529778790/open-im version 2>/dev/null) || NPM_VER="0.0.0"
           BUMP="${{ github.event.inputs.version_bump || 'patch' }}"
-          NEXT=$(npx -y semver@7 -i $BUMP $NPM_VER)
-          # 直接修改 package.json，不使用 npm version（避免版本检查）
-          npm pkg set version=$NEXT
+          TAG="${{ github.event.inputs.prerelease_tag || 'beta' }}"
+          IS_DEV="$([[ "${{ github.ref_name }}" == "dev" ]] && echo "true" || echo "false")"
+
+          echo "Inputs: BUMP=$BUMP, TAG=$TAG, IS_DEV=$IS_DEV"
+
+          # 安装 semver（如果还没有）
+          npm install --no-save semver
+
+          # 创建 CommonJS 脚本（使用 .cjs 扩展名）
+          cat > bump-version.cjs << 'NODEEOF'
+          const { execSync } = require('child_process');
+          const semver = require('semver');
+          const fs = require('fs');
+          const bump = process.argv[2];
+          const tag = process.argv[3];
+          const isDev = process.argv[4] === 'true';
+          const doPrerelease = isDev || bump === 'prerelease';
+
+          console.error('DEBUG: bump=' + bump + ', tag=' + tag + ', isDev=' + isDev + ', doPrerelease=' + doPrerelease);
+
+          let version, isPrerelease, prereleaseTag;
+
+          if (!doPrerelease) {
+            const npmVer = execSync('npm view @wu529778790/open-im version 2>/dev/null || echo 0.0.0', { encoding: 'utf8', shell: '/bin/bash' }).trim();
+            version = semver.inc(npmVer, bump);
+            isPrerelease = false;
+            prereleaseTag = '';
+          } else {
+            try {
+              const versionsJson = execSync('npm view @wu529778790/open-im versions --json 2>/dev/null || echo []', { encoding: 'utf8', shell: '/bin/bash' });
+              const versions = JSON.parse(versionsJson.trim() || '[]');
+              const npmVer = versions.length > 0 ? versions.sort(semver.compare).pop() : '0.0.0';
+              console.error('DEBUG: Latest npm version: ' + npmVer);
+
+              const prerelease = semver.prerelease(npmVer);
+
+              if (!prerelease || prerelease.length === 0) {
+                const base = semver.inc(npmVer, 'patch');
+                version = base + '-' + tag + '.0';
+              } else if (npmVer.indexOf('-' + tag + '.') >= 0) {
+                version = semver.inc(npmVer, 'prerelease', tag);
+              } else {
+                const base = npmVer.split('-')[0];
+                version = base + '-' + tag + '.0';
+              }
+
+              console.error('DEBUG: Next version: ' + version);
+              isPrerelease = true;
+              prereleaseTag = tag;
+            } catch (e) {
+              console.error('ERROR: ' + e.message);
+              console.error(e.stack);
+              version = '1.0.0-' + tag + '.0';
+              isPrerelease = true;
+              prereleaseTag = tag;
+            }
+          }
+
+          // 写入结果文件
+          fs.writeFileSync('/tmp/bump-result.txt', [
+            'VERSION=' + version,
+            'IS_PRERELEASE=' + isPrerelease,
+            'PRERELEASE_TAG=' + prereleaseTag
+          ].join('\n'));
+
+          console.log('Result written to /tmp/bump-result.txt');
+          NODEEOF
+
+          # 执行脚本
+          node bump-version.cjs "$BUMP" "$TAG" "$IS_DEV"
+          RC=$?
+
+          if [ $RC -ne 0 ]; then
+            echo "Script failed with exit code $RC"
+            exit 1
+          fi
+
+          # 从结果文件读取变量
+          if [ ! -f /tmp/bump-result.txt ]; then
+            echo "ERROR: Result file not found!"
+            exit 1
+          fi
+
+          cat /tmp/bump-result.txt
+          eval "$(cat /tmp/bump-result.txt)"
+
+          echo "=== Extracted Values ==="
+          echo "VERSION=$VERSION"
+          echo "IS_PRERELEASE=$IS_PRERELEASE"
+          echo "PRERELEASE_TAG=$PRERELEASE_TAG"
+
+          if [ -z "$VERSION" ]; then
+            echo "ERROR: VERSION is empty!"
+            exit 1
+          fi
+
+          npm pkg set version=$VERSION
+          echo "IS_PRERELEASE=${IS_PRERELEASE:-false}" >> $GITHUB_ENV
+          echo "PRERELEASE_TAG=${PRERELEASE_TAG:-beta}" >> $GITHUB_ENV
 
       - run: npm run build
 
@@ -56,7 +160,20 @@ jobs:
 
       - name: Publish to npm
         if: github.event.inputs.dry_run != 'true'
-        run: npm publish --access public
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="${{ github.event.inputs.prerelease_tag || 'beta' }}"
+
+          # 检查是否为 prerelease 版本
+          if [[ "$VERSION" =~ -[a-zA-Z] ]]; then
+            # 提取 prerelease tag（从版本号中）
+            VERSION_TAG=$(echo "$VERSION" | sed -n 's/.*-\([a-zA-Z]*\).*/\1/p')
+            echo "Publishing prerelease version $VERSION with tag $VERSION_TAG"
+            npm publish --access public --tag=$VERSION_TAG
+          else
+            echo "Publishing stable version $VERSION"
+            npm publish --access public
+          fi
 
       - name: Dry run (no publish)
         if: github.event.inputs.dry_run == 'true'

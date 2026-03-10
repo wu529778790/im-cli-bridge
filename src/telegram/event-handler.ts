@@ -13,6 +13,8 @@ import {
   sendTextReply,
   startTypingLoop,
   sendImageReply,
+  sendModeKeyboard,
+  sendDirectorySelection,
 } from "./message-sender.js";
 import {
   registerPermissionSender,
@@ -22,9 +24,11 @@ import { CommandHandler } from "../commands/handler.js";
 import { getAdapter } from "../adapters/registry.js";
 import { runAITask, type TaskRunState } from "../shared/ai-task.js";
 import { startTaskCleanup } from "../shared/task-cleanup.js";
-import { MessageDedup } from "../shared/message-dedup.js";
 import { TELEGRAM_THROTTLE_MS, IMAGE_DIR } from "../constants.js";
 import { setActiveChatId } from "../shared/active-chats.js";
+import { setChatUser } from "../shared/chat-user-map.js";
+import { setPermissionMode } from "../permission-mode/session-mode.js";
+import { MODE_LABELS } from "../permission-mode/types.js";
 import { createLogger } from "../logger.js";
 
 const log = createLogger("TgHandler");
@@ -107,17 +111,16 @@ export function setupTelegramHandlers(
   const requestQueue = new RequestQueue();
   const runningTasks = new Map<string, TaskRunState>();
   const stopTaskCleanup = startTaskCleanup(runningTasks);
-  const dedup = new MessageDedup();
 
   const commandHandler = new CommandHandler({
     config,
     sessionManager,
     requestQueue,
-    sender: { sendTextReply },
+    sender: { sendTextReply, sendDirectorySelection, sendModeKeyboard },
     getRunningTasksSize: () => runningTasks.size,
   });
 
-  registerPermissionSender("telegram", {});
+  registerPermissionSender("telegram", { sendTextReply });
 
   async function handleAIRequest(
     userId: string,
@@ -427,6 +430,15 @@ export function setupTelegramHandlers(
       const decision = isAllow ? "allow" : "deny";
       resolvePermissionById(requestId, decision);
       await ctx.answerCbQuery(isAllow ? "✅ 已允许" : "❌ 已拒绝");
+    } else if (data.startsWith("mode:")) {
+      const parts = data.split(":");
+      if (parts.length >= 3 && parts[1] === userId) {
+        const mode = parts[2] as "ask" | "accept-edits" | "plan" | "yolo";
+        if (["ask", "accept-edits", "plan", "yolo"].includes(mode)) {
+          setPermissionMode(userId, mode);
+          await ctx.answerCbQuery(`✅ 已切换为 ${MODE_LABELS[mode]}`);
+        }
+      }
     }
   });
 
@@ -436,14 +448,13 @@ export function setupTelegramHandlers(
     const messageId = String(ctx.message.message_id);
     let text = ctx.message.text.trim();
 
-    if (dedup.isDuplicate(`${chatId}:${messageId}`)) return;
-
     if (!accessControl.isAllowed(userId)) {
       await sendTextReply(chatId, "抱歉，您没有访问权限。\n您的 ID: " + userId);
       return;
     }
 
     setActiveChatId("telegram", chatId);
+    setChatUser(chatId, userId);
 
     if (
       await commandHandler.dispatch(
@@ -488,10 +499,10 @@ export function setupTelegramHandlers(
     const userId = String(ctx.from!.id);
     const caption = ctx.message.caption?.trim() || "";
 
-    if (dedup.isDuplicate(`${chatId}:${ctx.message.message_id}`)) return;
     if (!accessControl.isAllowed(userId)) return;
 
     setActiveChatId("telegram", chatId);
+    setChatUser(chatId, userId);
 
     const photos = ctx.message.photo;
     const largest = photos[photos.length - 1];

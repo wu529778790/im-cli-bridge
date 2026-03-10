@@ -33,8 +33,10 @@ export interface Config {
   claudeWorkDir: string;
   allowedBaseDirs: string[];
   claudeSkipPermissions: boolean;
+  defaultPermissionMode: 'ask' | 'accept-edits' | 'plan' | 'yolo';
   claudeTimeoutMs: number;
   claudeModel?: string;
+  hookPort: number;
   logDir: string;
   logLevel: LogLevel;
 
@@ -83,8 +85,10 @@ interface FileConfig {
   claudeWorkDir?: string;
   allowedBaseDirs?: string[];
   claudeSkipPermissions?: boolean;
+  defaultPermissionMode?: 'ask' | 'accept-edits' | 'plan' | 'yolo';
   claudeTimeoutMs?: number;
   claudeModel?: string;
+  hookPort?: number;
   logDir?: string;
   logLevel?: LogLevel;
 }
@@ -191,10 +195,17 @@ export function loadConfig(): Config {
       ? process.env.CLAUDE_SKIP_PERMISSIONS === 'true'
       : file.claudeSkipPermissions ?? true;
 
+  const defaultPermissionMode = (file.defaultPermissionMode ?? 'ask') as 'ask' | 'accept-edits' | 'plan' | 'yolo';
+
   const claudeTimeoutMs =
     process.env.CLAUDE_TIMEOUT_MS !== undefined
       ? parseInt(process.env.CLAUDE_TIMEOUT_MS, 10) || 600000
       : file.claudeTimeoutMs ?? 600000;
+
+  const hookPort =
+    process.env.HOOK_PORT !== undefined
+      ? parseInt(process.env.HOOK_PORT, 10) || 35801
+      : file.hookPort ?? 35801;
 
   // 6. 校验 Claude CLI
   if (aiCommand === 'claude') {
@@ -273,8 +284,10 @@ export function loadConfig(): Config {
     claudeWorkDir,
     allowedBaseDirs,
     claudeSkipPermissions,
+    defaultPermissionMode,
     claudeTimeoutMs,
     claudeModel: process.env.CLAUDE_MODEL ?? file.claudeModel,
+    hookPort,
     logDir,
     logLevel,
     platforms,

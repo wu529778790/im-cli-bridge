@@ -87,8 +87,16 @@ open-im run
 
 1. 在 [飞书开放平台](https://open.feishu.cn/) 创建企业自建应用
 2. 开启「机器人」能力
-3. 配置事件订阅：启用 `im.message.receive_v1`，使用 **长连接** 模式（WebSocket）
-4. 将机器人添加到目标群聊或发起私聊
+3. 配置事件订阅：启用 `im.message.receive_v1`（接收消息），使用 **长连接** 模式（WebSocket）
+4. **卡片按钮（/mode、权限允许/拒绝）需额外配置回调**：
+   - 打开 [开放平台](https://open.feishu.cn/app) → 进入你的应用 → **「事件与回调」**
+   - 注意：页面有 **「事件」** 和 **「回调」** 两个 Tab，卡片在 **「回调」** 里，不在「事件」里
+   - 切换到 **「回调」** Tab → 选择 **「使用长连接接收回调」**
+   - 点击 **「添加回调」**（或类似按钮）→ 在列表中找到 **「卡片回传交互」**（`card.action.trigger`）
+   - 若列表里搜不到，可尝试：切换分类、搜「action」或「trigger」、或直接浏览「消息与群组」相关分类
+5. 将机器人添加到目标群聊或发起私聊
+
+**若点击 /mode 卡片按钮报错**：说明未配置卡片回调。配置较复杂时，可直接用 `/mode ask`、`/mode yolo` 等命令切换模式，无需卡片。
 
 ## 开发
 
@@ -103,12 +111,25 @@ npm run foreground # 前台运行已构建版本
 | 命令 | 说明 |
 |------|------|
 | `/help` | 显示帮助 |
+| `/mode` | 切换权限模式（卡片/按钮选择） |
+| `/mode <模式>` | 直接切换：ask / accept-edits / plan / yolo |
 | `/new` | 开始新会话 |
 | `/status` | 显示状态（AI 工具、工作目录、费用等） |
 | `/cd <路径>` | 切换工作目录 |
 | `/pwd` | 显示当前工作目录 |
 | `/allow` `/y` | 允许权限请求 |
 | `/deny` `/n` | 拒绝权限请求 |
+
+### 权限模式
+
+与 Claude Code 官方命名一致，见 [permissions](https://code.claude.com/docs/en/permissions)：
+
+| 模式 | Claude 名 | 说明 |
+|------|-----------|------|
+| ask | default | 首次使用每个工具时提示确认 |
+| accept-edits | acceptEdits | 编辑权限自动通过 |
+| plan | plan | 仅分析，不修改文件不执行命令 |
+| yolo | bypassPermissions | 跳过所有权限确认 |
 
 ## 📝 License
 
@@ -214,3 +235,14 @@ npx @wu529778790/open-im run
 3. **用户 ID 白名单问题**
    - 检查配置文件中的 `allowedUserIds` 是否包含你的用户 ID
    - 或留空允许所有人访问（仅开发环境建议）
+
+### Q: 飞书 /mode 卡片点击报错（如 200340）？
+
+说明未配置**卡片回调**。注意：卡片在 **「回调」** Tab，不在「事件」Tab。
+
+1. 打开 [飞书开放平台](https://open.feishu.cn/app) → 进入你的应用 → **「事件与回调」**
+2. 切换到 **「回调」** Tab（不是「事件」）
+3. 选择 **「使用长连接接收回调」**
+4. 添加 **「卡片回传交互」**（`card.action.trigger`）— 若搜不到，可尝试搜「action」「trigger」或浏览分类
+
+**更简单**：直接用 `/mode ask`、`/mode yolo` 等命令切换模式，无需配置卡片。

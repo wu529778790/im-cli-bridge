@@ -4,6 +4,7 @@
 
 import type { Config } from '../config.js';
 import type { SessionManager } from '../session/session-manager.js';
+import { getPermissionMode } from '../permission-mode/session-mode.js';
 import type { ToolAdapter } from '../adapters/tool-adapter.interface.js';
 import type { ParsedResult } from '../adapters/tool-adapter.interface.js';
 import {
@@ -129,6 +130,20 @@ export function runAITask(
       }
     };
 
+    const mode = getPermissionMode(ctx.userId, config.defaultPermissionMode);
+    // 全部交给 Claude 自己处理：yolo 用 --dangerously-skip-permissions，其他用 --permission-mode
+    const skipPermissions = mode === 'yolo' || config.claudeSkipPermissions;
+    const permissionMode = !skipPermissions
+      ? (mode === 'ask'
+        ? 'default'
+        : mode === 'accept-edits'
+          ? 'acceptEdits'
+          : mode === 'plan'
+            ? 'plan'
+            : undefined)
+      : undefined;
+    process.env.CC_IM_CHAT_ID = ctx.chatId;
+
     const handle = toolAdapter.run(
       prompt,
       ctx.sessionId,
@@ -207,10 +222,12 @@ export function runAITask(
         },
       },
       {
-        skipPermissions: config.claudeSkipPermissions,
+        skipPermissions,
+        permissionMode,
         timeoutMs: config.claudeTimeoutMs,
         model: sessionManager.getModel(ctx.userId, ctx.threadId) ?? config.claudeModel,
         chatId: ctx.chatId,
+        hookPort: config.hookPort,
       }
     );
 

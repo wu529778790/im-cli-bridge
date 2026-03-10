@@ -14,7 +14,7 @@ export function getClient(): Client {
 
 export async function initFeishu(
   config: Config,
-  eventHandler: (data: unknown) => Promise<void>
+  eventHandler: (data: unknown) => Promise<void | Record<string, unknown>>
 ): Promise<void> {
   if (!config.feishuAppId || !config.feishuAppSecret) {
     throw new Error('Feishu app_id and app_secret are required');
@@ -41,6 +41,18 @@ export async function initFeishu(
         log.info('[EVENT] Event handler called successfully');
       } catch (err) {
         log.error('[EVENT] Error calling event handler:', err);
+      }
+    },
+    // 卡片按钮点击回调（权限允许/拒绝等）
+    'card.action.trigger': async (data: unknown) => {
+      log.info('[EVENT] Received Feishu card action event');
+      log.info('[EVENT] Card action data:', JSON.stringify(data).slice(0, 800));
+      try {
+        const result = await eventHandler(data);
+        return result;
+      } catch (err) {
+        log.error('[EVENT] Error handling card action:', err);
+        return { toast: { type: 'error', content: '处理失败' } };
       }
     },
   });
