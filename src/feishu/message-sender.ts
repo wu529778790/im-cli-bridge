@@ -1,5 +1,4 @@
 import { getClient } from './client.js';
-import { messageCard } from '@larksuiteoapi/node-sdk';
 import { readFileSync } from 'node:fs';
 import { createLogger } from '../logger.js';
 import { splitLongContent } from '../shared/utils.js';
@@ -9,24 +8,74 @@ const log = createLogger('FeishuSender');
 
 export type MessageStatus = 'thinking' | 'streaming' | 'done' | 'error';
 
-const STATUS_ICONS: Record<MessageStatus, string> = {
-  thinking: '🔵',
-  streaming: '🔵',
-  done: '🟢',
-  error: '🔴',
+const STATUS_CONFIG: Record<MessageStatus, { icon: string; template: string; title: string }> = {
+  thinking: { icon: '🔵', template: 'blue', title: '思考中' },
+  streaming: { icon: '🔄', template: 'blue', title: '执行中' },
+  done: { icon: '✅', template: 'green', title: '完成' },
+  error: { icon: '❌', template: 'red', title: '错误' },
 };
 
 const TOOL_DISPLAY_NAMES: Record<string, string> = {
-  claude: 'claude-code',
-  codex: 'codex',
-  cursor: 'cursor',
+  claude: 'Claude Code',
+  codex: 'Codex',
+  cursor: 'Cursor',
 };
 
 function getToolTitle(toolId: string, status: MessageStatus): string {
   const name = TOOL_DISPLAY_NAMES[toolId] ?? toolId;
-  if (status === 'thinking') return `${name} - 思考中...`;
-  if (status === 'error') return `${name} - 错误`;
-  return name;
+  const statusText = STATUS_CONFIG[status].title;
+  return status === 'done' ? name : `${name} - ${statusText}`;
+}
+
+/**
+ * Create Feishu interactive card with native lark_md support
+ * Feishu natively supports Markdown through the `lark_md` tag
+ */
+function createFeishuCard(
+  title: string,
+  content: string,
+  status: MessageStatus,
+  note?: string
+): string {
+  const statusConfig = STATUS_CONFIG[status];
+  const elements: any[] = [];
+
+  // Main content - use native lark_md tag
+  elements.push({
+    tag: 'div',
+    text: {
+      tag: 'lark_md',
+      content: content || '_处理中..._',
+    },
+  });
+
+  // Add note separator and hint if provided
+  if (note) {
+    elements.push({ tag: 'hr' });
+    elements.push({
+      tag: 'div',
+      text: {
+        tag: 'lark_md',
+        content: `**💡 ${note}**`,
+      },
+    });
+  }
+
+  const card: any = {
+    config: {
+      wide_screen_mode: true,
+    },
+    header: {
+      template: statusConfig.template,
+      title: {
+        content: `${statusConfig.icon} ${title}`,
+        tag: 'plain_text',
+      },
+    },
+    elements,
+  };
+
+  return JSON.stringify(card);
 }
 
 async function getTenantAccessToken(): Promise<string> {
@@ -50,15 +99,14 @@ export async function sendThinkingMessage(
 ): Promise<string> {
   const client = getClient();
 
-  // Use SDK's built-in card builder for simpler messages
-  const cardContent = messageCard.defaultCard({
-    title: `${STATUS_ICONS.thinking} ${getToolTitle(toolId, 'thinking')}`,
-    content: '正在思考...\n\n请稍候...',
-  });
+  const cardContent = createFeishuCard(
+    getToolTitle(toolId, 'thinking'),
+    '_正在思考，请稍候..._\n\n💭 **准备中**',
+    'thinking'
+  );
 
   try {
     log.info(`Sending thinking message to chat ${chatId}, replyTo: ${replyToMessageId}`);
-    // 注意：飞书 create 接口不支持 uuid 参数，传 uuid 会导致请求失败
     const resp = await client.im.message.create({
       data: {
         receive_id: chatId,
@@ -90,18 +138,9 @@ export async function updateMessage(
 ): Promise<void> {
   const client = getClient();
 
-  // Build content with note
-  let fullContent = content;
-  if (note) {
-    fullContent = `${content}\n\n─────────\n${note}`;
-  }
-
-  const icon = STATUS_ICONS[status];
-  const title = getToolTitle(toolId, status);
-  const cardContent = messageCard.defaultCard({
-    title: `${icon} ${title}`,
-    content: fullContent,
-  });
+  const icon = STATUS_CONFIG[status].icon;
+  const title = `${icon} ${getToolTitle(toolId, status)}`;
+  const cardContent = createFeishuCard(title, content, status, note);
 
   // Try to use patch API for in-place update (streaming)
   try {
@@ -165,10 +204,11 @@ export async function sendFinalMessages(
 
   // If content fits in one message, try patch for smooth transition
   if (parts.length === 1) {
-    const cardContent = messageCard.defaultCard({
-      title: `${STATUS_ICONS.done} ${getToolTitle(toolId, 'done')}`,
-      content: fullContent,
-    });
+    const cardContent = createFeishuCard(
+      getToolTitle(toolId, 'done'),
+      fullContent,
+      'done'
+    );
 
     // Try to use patch API for in-place update
     try {
@@ -205,10 +245,12 @@ export async function sendFinalMessages(
   // Send new messages
   for (let i = 0; i < parts.length; i++) {
     try {
-      const cardContent = messageCard.defaultCard({
-        title: `${STATUS_ICONS.done} ${getToolTitle(toolId, 'done')}`,
-        content: i === 0 ? parts[0] : parts[i] + `\n\n(续 ${i + 1}/${parts.length})`,
-      });
+      const partContent = i === 0 ? parts[0] : `${parts[i]}\n\n_*(续 ${i + 1}/${parts.length})*_`;
+      const cardContent = createFeishuCard(
+        getToolTitle(toolId, 'done'),
+        partContent,
+        'done'
+      );
 
       await client.im.message.create({
         data: {
@@ -227,11 +269,11 @@ export async function sendFinalMessages(
 export async function sendTextReply(chatId: string, text: string): Promise<void> {
   const client = getClient();
 
-  // Use SDK's built-in card builder for simpler messages
-  const cardContent = messageCard.defaultCard({
-    title: 'open-im',
-    content: text,
-  });
+  const cardContent = createFeishuCard(
+    '📢 open-im',
+    text,
+    'done'
+  );
 
   try {
     await client.im.message.create({
