@@ -66,9 +66,9 @@ jobs:
           const { execSync } = require('child_process');
           const semver = require('semver');
           const fs = require('fs');
-          const bump = process.argv[1];
-          const tag = process.argv[2];
-          const isDev = process.argv[3] === 'true';
+          const bump = process.argv[2];
+          const tag = process.argv[3];
+          const isDev = process.argv[4] === 'true';
           const doPrerelease = isDev || bump === 'prerelease';
 
           console.error('DEBUG: bump=' + bump + ', tag=' + tag + ', isDev=' + isDev + ', doPrerelease=' + doPrerelease);
