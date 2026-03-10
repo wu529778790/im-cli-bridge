@@ -5,6 +5,7 @@
 import type { Config } from '../config.js';
 import type { SessionManager } from '../session/session-manager.js';
 import { getPermissionMode } from '../permission-mode/session-mode.js';
+import type { PermissionMode } from '../permission-mode/types.js';
 import type { ToolAdapter } from '../adapters/tool-adapter.interface.js';
 import type { ParsedResult } from '../adapters/tool-adapter.interface.js';
 import {
@@ -54,7 +55,8 @@ export interface TaskRunState {
 function buildCompletionNote(
   result: ParsedResult,
   sessionManager: SessionManager,
-  ctx: TaskContext
+  ctx: TaskContext,
+  mode: PermissionMode
 ): string {
   const toolInfo = formatToolStats(result.toolStats, result.numTurns);
   const parts: string[] = [];
@@ -68,6 +70,10 @@ function buildCompletionNote(
     : sessionManager.addTurns(ctx.userId, 0);
   const ctxWarning = getContextWarning(currentTurns);
   if (ctxWarning) parts.push(ctxWarning);
+
+  if (mode === 'plan') {
+    parts.push('当前模式: plan（只读，不执行命令/不改文件，如需真正改代码请发送 `/mode accept-edits` 或 `/mode yolo`）');
+  }
 
   return parts.join(' | ');
 }
@@ -194,7 +200,7 @@ export function runAITask(
             clearTimeout(pendingUpdate);
             pendingUpdate = null;
           }
-          const note = buildCompletionNote(result, sessionManager, ctx);
+          const note = buildCompletionNote(result, sessionManager, ctx, mode);
           const finalContent = result.accumulated || result.result || '(无输出)';
           try {
             await platformAdapter.sendComplete(finalContent, note, thinkingText || undefined);
