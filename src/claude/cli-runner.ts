@@ -81,45 +81,16 @@ export function runClaude(
   if (options?.chatId) env.CC_IM_CHAT_ID = options.chatId;
   if (options?.hookPort) env.CC_IM_HOOK_PORT = String(options.hookPort);
 
-  // Try different spawn strategies based on platform
+  // 使用 shell: false 直接 spawn，避免 shell 对参数按空格拆分
+  // （用户 prompt 如 "npm 你好" 在 shell: true 下会被拆成 "npm" 和 "你好"，CLI 只收到第一个）
   log.info(`Spawning CLI: path=${cliPath}, platform=${process.platform}`);
 
-  let child;
-  if (process.platform === "win32") {
-    // Check if running in Git Bash (MINGW) or MSYS
-    const isGitBash =
-      process.env.MSYSTEM ||
-      process.env.MINGW_PREFIX ||
-      process.env.SHELL?.includes("bash");
-    log.info(`Detected environment: Git Bash=${isGitBash ? "yes" : "no"}`);
-
-    if (isGitBash) {
-      // In Git Bash, use shell for proper path resolution
-      log.info(`Using shell spawn for Git Bash environment`);
-      child = spawn(cliPath, args, {
-        cwd: workDir,
-        stdio: ["ignore", "pipe", "pipe"],
-        env,
-        shell: true,
-        windowsHide: true,
-      });
-    } else {
-      // In pure cmd/PowerShell, direct spawn works best
-      log.info(`Using direct spawn for Windows cmd/PowerShell`);
-      child = spawn(cliPath, args, {
-        cwd: workDir,
-        stdio: ["ignore", "pipe", "pipe"],
-        env,
-        windowsHide: true,
-      });
-    }
-  } else {
-    child = spawn(cliPath, args, {
-      cwd: workDir,
-      stdio: ["ignore", "pipe", "pipe"],
-      env,
-    });
-  }
+  const child = spawn(cliPath, args, {
+    cwd: workDir,
+    stdio: ["ignore", "pipe", "pipe"],
+    env,
+    windowsHide: process.platform === "win32",
+  });
 
   log.info(
     `Claude CLI: pid=${child.pid}, cwd=${workDir}, session=${sessionId ?? "new"}`,

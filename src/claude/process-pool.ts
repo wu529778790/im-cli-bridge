@@ -157,37 +157,14 @@ export class ClaudeProcessPool {
       if (options.chatId) env.CC_IM_CHAT_ID = options.chatId;
       if (options.hookPort) env.CC_IM_HOOK_PORT = String(options.hookPort);
 
-      // Platform-specific spawn
-      let child: ChildProcess;
-      if (process.platform === "win32") {
-        const isGitBash =
-          process.env.MSYSTEM ||
-          process.env.MINGW_PREFIX ||
-          process.env.SHELL?.includes("bash");
-
-        if (isGitBash) {
-          child = spawn(cliPath, args, {
-            cwd: workDir,
-            stdio: ["ignore", "pipe", "pipe"],
-            env,
-            shell: true,
-            windowsHide: true,
-          });
-        } else {
-          child = spawn(cliPath, args, {
-            cwd: workDir,
-            stdio: ["ignore", "pipe", "pipe"],
-            env,
-            windowsHide: true,
-          });
-        }
-      } else {
-        child = spawn(cliPath, args, {
-          cwd: workDir,
-          stdio: ["ignore", "pipe", "pipe"],
-          env,
-        });
-      }
+      // 使用 shell: false 直接 spawn，避免 shell 对参数按空格拆分
+      // （用户 prompt 如 "npm 你好" 在 shell: true 下会被拆成 "npm" 和 "你好"，CLI 只收到第一个）
+      const child = spawn(cliPath, args, {
+        cwd: workDir,
+        stdio: ["ignore", "pipe", "pipe"],
+        env,
+        windowsHide: process.platform === "win32",
+      });
 
       log.info(`Started process: pid=${child.pid}, key=${key}`);
 

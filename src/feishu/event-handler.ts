@@ -480,7 +480,20 @@ export function setupFeishuHandlers(
 
       // Handle different message types
       if (msgType === 'text') {
-        const text = (content.text as string)?.trim() ?? '';
+        // 飞书 text 消息的 content.text 可能是 HTML（如 <p>...</p>），并且包含空格 / &nbsp;
+        // 这里做一次轻量级清洗，保证空格和文本都被完整保留，而不是被简单截断。
+        const rawText = (content.text as string) ?? '';
+        let text = rawText;
+
+        // 去掉最常见的段落标签，保留内容
+        text = text.replace(/<\/?p[^>]*>/gi, '');
+        // 将 <br> 转成换行
+        text = text.replace(/<br\s*\/?>/gi, '\n');
+        // 将 &nbsp; 等价替换为空格
+        text = text.replace(/&nbsp;/gi, ' ');
+
+        // 最后做一次首尾 trim，但不动中间的空格
+        text = text.trim();
 
         log.info(`[MSG] Type=text, User=${senderId}, Length=${text.length}, Content="${text}"`);
         log.info(`[MSG] Full content keys:`, Object.keys(content).join(', '));
