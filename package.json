@@ -26,6 +26,8 @@
   "keywords": [
     "telegram",
     "feishu",
+    "wechat",
+    "weixin",
     "claude",
     "claude-code",
     "bot",
@@ -43,11 +45,13 @@
   "dependencies": {
     "@larksuiteoapi/node-sdk": "^1.59.0",
     "prompts": "^2.4.2",
-    "telegraf": "^4.16.3"
+    "telegraf": "^4.16.3",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/prompts": "^2.4.9",
+    "@types/ws": "^8.5.13",
     "dotenv": "^16.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0"
