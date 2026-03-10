@@ -165,6 +165,41 @@ export function createFeishuModeCardReadOnly(currentMode: string): Record<string
 }
 
 /**
+ * 延时更新消息卡片（POST /open-apis/im/v1/cards/update）
+ * 用于在卡片回调 3 秒内无法完成时，异步替换卡片为只读版本，防止二次点击
+ * @param token 从卡片交互事件中获取的 token（格式 c-xxxx）
+ * @param card 卡片内容 { config, header, elements }
+ * @param openIds 非共享卡片需指定更新的用户 open_id 列表
+ */
+export async function delayUpdateCard(
+  token: string,
+  card: Record<string, unknown>,
+  openIds?: string[]
+): Promise<void> {
+  const accessToken = await getTenantAccessToken();
+  // 非共享卡片需在 card 内指定 open_ids
+  const cardBody = { ...card };
+  if (openIds && openIds.length > 0) {
+    (cardBody as Record<string, unknown>).open_ids = openIds;
+  }
+  const body = { token, card: cardBody };
+  const resp = await fetch('https://open.feishu.cn/open-apis/interactive/v1/card/update', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = (await resp.json()) as { code?: number; msg?: string };
+  if (data.code !== 0) {
+    log.warn(`[delayUpdateCard] Failed: code=${data.code}, msg=${data.msg}`);
+    return;
+  }
+  log.info('[delayUpdateCard] Card updated successfully');
+}
+
+/**
  * Create mode switch card with action type for card callback
  */
 function createFeishuModeCard(
@@ -285,8 +320,7 @@ export async function updateMessage(
 ): Promise<void> {
   const client = getClient();
 
-  const icon = STATUS_CONFIG[status].icon;
-  const title = `${icon} ${getToolTitle(toolId, status)}`;
+  const title = getToolTitle(toolId, status);
   const cardContent = createFeishuCard(title, content, status, note);
 
   // Try to use patch API for in-place update (streaming)

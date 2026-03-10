@@ -16,6 +16,7 @@ import {
   createFeishuButtonCard,
   sendModeCard,
   createFeishuModeCardReadOnly,
+  delayUpdateCard,
 } from './message-sender.js';
 import { registerPermissionSender, resolvePermissionById } from '../hook/permission-server.js';
 import { setPermissionMode } from '../permission-mode/session-mode.js';
@@ -282,7 +283,31 @@ export function setupFeishuHandlers(
   }
 
   /**
+   * 从卡片回调事件中提取延时更新 token（格式 c-xxxx）
+   * 飞书文档：从卡片交互返回内容获取，用于延时更新接口
+   */
+  function extractCardToken(data: unknown): string | null {
+    const raw = data as Record<string, unknown>;
+    const event = (raw?.event ?? raw) as Record<string, unknown>;
+    const action = event?.action as Record<string, unknown> | undefined;
+    const context = event?.context as Record<string, unknown> | undefined;
+    const candidates = [
+      event?.token,
+      event?.open_api_token,
+      raw?.token,
+      action?.token,
+      context?.token,
+    ].filter((t): t is string => typeof t === 'string' && t.startsWith('c-'));
+    const token = candidates[0] ?? null;
+    if (!token) {
+      log.debug('[extractCardToken] No token found, event keys:', Object.keys(event ?? {}));
+    }
+    return token;
+  }
+
+  /**
    * Handle card button click (card.action.trigger) - 需在 3 秒内返回响应
+   * 同步只返回 toast，避免 200672；用延时更新 API 异步替换为只读卡片，防止二次点击
    */
   async function handleCardAction(
     data: unknown
@@ -317,9 +342,18 @@ export function setupFeishuHandlers(
         };
         const p = sendReply();
         if (p) p.catch((e) => log.warn('[handleCardAction] Send reply failed:', e));
-        // 返回 toast + 更新卡片（替换为只读卡片，防止二次点击报错 200340）
+        // 同步只返回 toast，避免 200672（同步返回 card 格式易出错）
+        const cardToken = extractCardToken(data);
         const readOnlyCard = createFeishuModeCardReadOnly(label);
-        return { toast: { type: 'success', content: toastContent }, card: readOnlyCard };
+        if (cardToken && userId) {
+          // 延时更新：异步替换为只读卡片，防止二次点击
+          delayUpdateCard(cardToken, readOnlyCard, [userId]).catch((e) =>
+            log.warn('[handleCardAction] delayUpdateCard failed:', e)
+          );
+        } else if (!cardToken) {
+          log.debug('[handleCardAction] No card token in event, cannot delay-update card');
+        }
+        return { toast: { type: 'success', content: toastContent } };
       }
     }
 
