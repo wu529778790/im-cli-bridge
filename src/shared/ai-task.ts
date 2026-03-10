@@ -244,7 +244,8 @@ export function runAITask(
         timeoutMs: config.claudeTimeoutMs,
         model: sessionManager.getModel(ctx.userId, ctx.threadId) ?? config.claudeModel,
         chatId: ctx.chatId,
-        hookPort: config.hookPort,
+        // 桥梁模式下不使用 hookPort，由 Claude CLI 原生处理权限
+        ...(config.useBridgeMode ? {} : { hookPort: config.hookPort }),
       }
     );
 
