@@ -569,25 +569,32 @@ const PLATFORM_LABELS: Record<Platform, string> = {
   wechat: "微信（测试中）",
 };
 
+const ALL_PLATFORMS: Platform[] = ["telegram", "feishu", "wework", "wechat"];
+
 /**
- * 多通道启动时让用户确认/选择要启用的平台
- * 仅当配置了 2 个及以上平台且 stdin 为 TTY 时调用
+ * 启动时让用户选择要启用的平台（无论单通道还是多通道）
+ * 显示全部 4 个平台，已配置的预选；若用户选择未配置的，引导运行 init
  * @returns 更新后的 config，或 null 表示取消
  */
 export async function runPlatformSelectionPrompt(
   config: Config,
 ): Promise<Config | null> {
-  const withCreds = getPlatformsWithCredentials(config);
-  if (withCreds.length <= 1) return config;
-
+  const withCreds = new Set(getPlatformsWithCredentials(config));
   const configPath = join(APP_HOME, "config.json");
   const existing = loadExistingConfig();
 
-  const choices = withCreds.map((p) => ({
-    title: `${PLATFORM_LABELS[p]}${config.enabledPlatforms.includes(p) ? " ✓启用" : ""}`,
-    value: p,
-    selected: config.enabledPlatforms.includes(p),
-  }));
+  const choices = ALL_PLATFORMS.map((p) => {
+    const hasCreds = withCreds.has(p);
+    const isEnabled = config.enabledPlatforms.includes(p);
+    const suffix = hasCreds
+      ? (isEnabled ? " ✓已配置且启用" : " ✓已配置")
+      : "（未配置）";
+    return {
+      title: `${PLATFORM_LABELS[p]}${suffix}`,
+      value: p,
+      selected: isEnabled && hasCreds,
+    };
+  });
 
   console.log("\n━━━ 选择要启用的平台 ━━━\n");
   const resp = await prompts(
@@ -596,8 +603,7 @@ export async function runPlatformSelectionPrompt(
       name: "platforms",
       message: "选择要启用的平台（空格切换，回车确认）",
       choices,
-      min: 1,
-      hint: "至少选择 1 个平台",
+      hint: "未配置的平台需先运行 open-im init",
     },
     {
       onCancel: () => {
@@ -610,16 +616,55 @@ export async function runPlatformSelectionPrompt(
   if (!resp.platforms || !Array.isArray(resp.platforms)) return null;
 
   const selected = new Set(resp.platforms as Platform[]);
+  const selectedUnconfigured = ALL_PLATFORMS.filter(
+    (p) => selected.has(p) && !withCreds.has(p),
+  );
 
-  // 更新 config.json 中的 platforms.xxx.enabled，保留其他字段
+  if (selectedUnconfigured.length > 0) {
+    console.log("");
+    console.log(
+      "您选择了 " +
+        selectedUnconfigured.map((p) => PLATFORM_LABELS[p]).join("、") +
+        "，但这些平台尚未配置。",
+    );
+    console.log("请运行 open-im init 进行配置，配置完成后再次启动。");
+    console.log("");
+    const runNow = await prompts(
+      {
+        type: "confirm",
+        name: "run",
+        message: "是否现在运行配置向导？",
+        initial: true,
+      },
+      { onCancel: () => process.exit(0) },
+    );
+    if (runNow.run) {
+      const saved = await runInteractiveSetup();
+      if (saved) {
+        console.log("\n配置完成，请再次运行 open-im start 或 open-im dev 启动。");
+      }
+    }
+    process.exit(0);
+  }
+
+  // 至少需要 1 个已配置的平台被选中
+  const selectedWithCreds = ALL_PLATFORMS.filter(
+    (p) => selected.has(p) && withCreds.has(p),
+  );
+  if (selectedWithCreds.length === 0) {
+    console.log("\n请至少选择 1 个已配置的平台，或运行 open-im init 添加配置。");
+    return null;
+  }
+
+  // 更新 config.json 中的 platforms.xxx.enabled
   const updated = { ...existing } as ExistingConfig;
   if (!updated.platforms) updated.platforms = {};
 
-  for (const p of withCreds) {
+  for (const p of ALL_PLATFORMS) {
     const plat = (updated.platforms as Record<string, unknown>)[p] ?? {};
     (updated.platforms as Record<string, unknown>)[p] = {
       ...plat,
-      enabled: selected.has(p),
+      enabled: selected.has(p) && withCreds.has(p),
     };
   }
 

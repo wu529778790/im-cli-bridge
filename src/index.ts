@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { writeFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { loadConfig, needsSetup, getPlatformsWithCredentials } from "./config.js";
+import { loadConfig, needsSetup } from "./config.js";
 import { runInteractiveSetup, runPlatformSelectionPrompt } from "./setup.js";
 
 // 导出供 cli.ts 使用
@@ -89,11 +89,8 @@ export async function main() {
 
   let config = loadConfig();
 
-  // 多通道时让用户确认启用哪些（仅 TTY 交互模式）
-  if (
-    getPlatformsWithCredentials(config).length > 1 &&
-    process.stdin.isTTY
-  ) {
+  // 有 TTY 时让用户选择要启用的平台（无论单通道还是多通道）
+  if (process.stdin.isTTY) {
     const updated = await runPlatformSelectionPrompt(config);
     if (!updated) process.exit(0);
     config = updated;
