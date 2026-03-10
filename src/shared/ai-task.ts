@@ -211,6 +211,7 @@ export function runAITask(
         timeoutMs: config.claudeTimeoutMs,
         model: sessionManager.getModel(ctx.userId, ctx.threadId) ?? config.claudeModel,
         chatId: ctx.chatId,
+        hookPort: config.hookPort,
       }
     );
 

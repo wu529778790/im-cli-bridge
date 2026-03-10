@@ -12,6 +12,7 @@ import {
   sendTextReply,
   startTypingLoop,
   sendImageReply,
+  createFeishuButtonCard,
 } from './message-sender.js';
 import { registerPermissionSender, resolvePermissionById } from '../hook/permission-server.js';
 import { CommandHandler } from '../commands/handler.js';
@@ -81,6 +82,60 @@ async function downloadFeishuImage(client: Client, imageKey: string): Promise<st
   return imagePath;
 }
 
+/**
+ * Send permission prompt card with interactive buttons
+ */
+async function sendPermissionCard(
+  chatId: string,
+  requestId: string,
+  toolName: string,
+  toolInput: string
+): Promise<void> {
+  const { getClient } = await import('./client.js');
+  const client = getClient();
+
+  // Format tool input for display
+  let formattedInput: string;
+  if (toolInput.length > 300) {
+    formattedInput = toolInput.slice(0, 300) + '...';
+  } else {
+    formattedInput = toolInput;
+  }
+
+  const content = `**工具:** \`${toolName}\`
+
+**参数:**
+\`\`\`
+${formattedInput}
+\`\`\`
+
+**请求 ID:** \`${requestId.slice(-8)}\``;
+
+  const cardContent = createFeishuButtonCard(
+    '权限请求',
+    content,
+    [
+      { label: '✅ 允许', value: `allow_${requestId}`, type: 'primary' },
+      { label: '❌ 拒绝', value: `deny_${requestId}`, type: 'default' },
+    ]
+  );
+
+  try {
+    await client.im.message.create({
+      data: {
+        receive_id: chatId,
+        msg_type: 'interactive',
+        content: cardContent,
+      },
+      params: { receive_id_type: 'chat_id' },
+    });
+    log.info(`Permission card sent for request ${requestId}`);
+  } catch (err) {
+    log.error('Failed to send permission card:', err);
+    throw err;
+  }
+}
+
 export interface FeishuEventHandlerHandle {
   stop: () => void;
   getRunningTaskCount: () => number;
@@ -104,7 +159,7 @@ export function setupFeishuHandlers(
     getRunningTasksSize: () => runningTasks.size,
   });
 
-  registerPermissionSender('feishu', {});
+  registerPermissionSender('feishu', { sendTextReply, sendPermissionCard });
 
   async function handleAIRequest(
     userId: string,
@@ -188,9 +243,17 @@ export function setupFeishuHandlers(
     //   "app_id": "...",
     //   "message": { "chat_id": "...", "content": "...", ... },
     //   "sender": { "sender_id": { "open_id": "..." } }
+    //   "action": {  // For card button clicks
+    //     "action_id": "...",
+    //     "value": { "action": "permission", "value": "allow_xxx" }
+    //   }
     // }
     const event = data as {
       event_type?: string;
+      action?: {
+        action_id?: string;
+        value?: Record<string, unknown>;
+      };
       message?: {
         chat_id?: string;
         message_id?: string;
@@ -211,6 +274,46 @@ export function setupFeishuHandlers(
     // Handle message received events
     if (eventType === 'im.message.receive_v1') {
       log.info('[handleEvent] Processing im.message.receive_v1 event');
+
+      // Check if this is a card button click event
+      // For interactive cards, the action is in a different location
+      if (event?.action) {
+        const action = event.action as {
+          action_id?: string;
+          value?: Record<string, unknown>;
+        };
+        log.info('[handleEvent] Card action detected:', action);
+
+        if (action?.value) {
+          const actionValue = action.value as { action?: string; value?: string };
+          if (actionValue.action === 'permission' && actionValue.value) {
+            const buttonValue = actionValue.value;
+            let decision: 'allow' | 'deny' | null = null;
+            let requestId: string | null = null;
+
+            if (buttonValue.startsWith('allow_')) {
+              decision = 'allow';
+              requestId = buttonValue.slice(6);
+            } else if (buttonValue.startsWith('deny_')) {
+              decision = 'deny';
+              requestId = buttonValue.slice(5);
+            }
+
+            if (decision && requestId) {
+              log.info(`[handleEvent] Permission button clicked: ${decision} for ${requestId}`);
+              const resolved = resolvePermissionById(requestId, decision);
+              const chatId = event.message?.chat_id ?? '';
+              if (resolved) {
+                await sendTextReply(chatId, decision === 'allow' ? '✅ 权限已允许' : '❌ 权限已拒绝');
+              } else {
+                await sendTextReply(chatId, '⚠️ 权限请求已过期或不存在');
+              }
+              return;
+            }
+          }
+        }
+      }
+
       const message = event?.message;
       if (!message) {
         log.warn('No message data in event');

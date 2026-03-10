@@ -21,6 +21,7 @@ import {
 } from "./shared/active-chats.js";
 import { initLogger, createLogger, closeLogger } from "./logger.js";
 import { APP_HOME, SHUTDOWN_PORT } from "./constants.js";
+import { startPermissionServer, stopPermissionServer } from "./hook/permission-server.js";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
@@ -66,6 +67,10 @@ export async function main() {
   loadActiveChats();
 
   initAdapters(config);
+
+  // Start permission server for tool approval
+  const actualPort = startPermissionServer(config.hookPort);
+  log.info(`Permission server listening on port ${actualPort}`);
 
   log.info("Starting open-im bridge...");
   log.info(`AI 工具: ${config.aiCommand}`);
@@ -132,6 +137,7 @@ export async function main() {
     stopTelegram();
     feishuHandle?.stop();
     stopFeishu();
+    stopPermissionServer();
     sessionManager.destroy();
     cleanupAdapters();
     flushActiveChats();

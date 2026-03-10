@@ -78,6 +78,72 @@ function createFeishuCard(
   return JSON.stringify(card);
 }
 
+/**
+ * Create Feishu card with action buttons
+ * Used for permission prompts and other interactive requests
+ */
+export function createFeishuButtonCard(
+  title: string,
+  content: string,
+  buttons: Array<{ label: string; value: string; type?: 'primary' | 'default' }>
+): string {
+  const elements: any[] = [];
+
+  // Main content
+  elements.push({
+    tag: 'div',
+    text: {
+      tag: 'lark_md',
+      content: content,
+    },
+  });
+
+  // Add separator
+  elements.push({ tag: 'hr' });
+
+  // Add action buttons
+  const actionGroups: any[] = [];
+
+  // Split buttons into rows (max 4 buttons per row in Feishu)
+  for (let i = 0; i < buttons.length; i += 4) {
+    const row = buttons.slice(i, i + 4).map((btn) => ({
+      tag: 'button',
+      text: {
+        tag: 'plain_text',
+        content: btn.label,
+      },
+      type: btn.type || 'default',
+      value: {
+        action: 'permission',
+        value: btn.value,
+      },
+    }));
+
+    actionGroups.push({
+      tag: 'action',
+      actions: row,
+    });
+  }
+
+  elements.push(...actionGroups);
+
+  const card: any = {
+    config: {
+      wide_screen_mode: true,
+    },
+    header: {
+      template: 'blue',
+      title: {
+        content: `🔐 ${title}`,
+        tag: 'plain_text',
+      },
+    },
+    elements,
+  };
+
+  return JSON.stringify(card);
+}
+
 async function getTenantAccessToken(): Promise<string> {
   const client = getClient();
   const resp = await client.auth.tenantAccessToken.internal({

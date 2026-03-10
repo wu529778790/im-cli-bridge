@@ -115,7 +115,7 @@ export function setupTelegramHandlers(
     getRunningTasksSize: () => runningTasks.size,
   });
 
-  registerPermissionSender("telegram", {});
+  registerPermissionSender("telegram", { sendTextReply });
 
   async function handleAIRequest(
     userId: string,

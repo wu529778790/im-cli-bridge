@@ -35,6 +35,7 @@ export interface Config {
   claudeSkipPermissions: boolean;
   claudeTimeoutMs: number;
   claudeModel?: string;
+  hookPort: number;
   logDir: string;
   logLevel: LogLevel;
 
@@ -85,6 +86,7 @@ interface FileConfig {
   claudeSkipPermissions?: boolean;
   claudeTimeoutMs?: number;
   claudeModel?: string;
+  hookPort?: number;
   logDir?: string;
   logLevel?: LogLevel;
 }
@@ -196,6 +198,11 @@ export function loadConfig(): Config {
       ? parseInt(process.env.CLAUDE_TIMEOUT_MS, 10) || 600000
       : file.claudeTimeoutMs ?? 600000;
 
+  const hookPort =
+    process.env.HOOK_PORT !== undefined
+      ? parseInt(process.env.HOOK_PORT, 10) || 35801
+      : file.hookPort ?? 35801;
+
   // 6. 校验 Claude CLI
   if (aiCommand === 'claude') {
     if (isAbsolute(claudeCliPath) || claudeCliPath.includes('/') || claudeCliPath.includes('\\')) {
@@ -275,6 +282,7 @@ export function loadConfig(): Config {
     claudeSkipPermissions,
     claudeTimeoutMs,
     claudeModel: process.env.CLAUDE_MODEL ?? file.claudeModel,
+    hookPort,
     logDir,
     logLevel,
     platforms,
