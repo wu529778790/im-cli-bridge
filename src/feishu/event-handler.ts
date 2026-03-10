@@ -512,39 +512,41 @@ export function setupFeishuHandlers(
         }
       } else if (msgType === 'post') {
         // Feishu rich text/post messages - extract text content
-        const post = (content as { post?: { content?: Array<unknown> } })?.post;
+        // 支持 post.content 或 zh_cn.content，content 可能是二维数组（段落→元素）
+        const post = (content as { post?: { content?: Array<unknown> }; zh_cn?: { content?: Array<unknown> } })?.post
+          ?? (content as { zh_cn?: { content?: Array<unknown> } })?.zh_cn;
+        const rawContent = post?.content;
         let text = '';
 
-        if (post?.content && Array.isArray(post.content)) {
-          // Log full structure for debugging
-          log.info(`[MSG] Post content structure:`, JSON.stringify(post.content).slice(0, 500));
+        function extractTextFromElement(el: unknown): string {
+          if (!el || typeof el !== 'object') return '';
+          const obj = el as { tag?: string; text?: string; content?: string };
+          const tag = obj.tag;
+          if (tag === 'text' || tag === 'plain_text') {
+            return (obj.text ?? obj.content ?? '').toString();
+          }
+          if (tag === 'a') return (obj.text ?? obj.content ?? '').toString();
+          if (tag === 'heading' || tag === 'heading1' || tag === 'heading2' || tag === 'heading3') {
+            const headingText = (el as { text?: string | Array<unknown> }).text;
+            if (typeof headingText === 'string') return headingText;
+            if (Array.isArray(headingText)) {
+              return headingText.map(extractTextFromElement).join('');
+            }
+          }
+          return '';
+        }
 
-          // Extract text from rich text structure
-          for (const section of post.content) {
-            if (!section || typeof section !== 'object') continue;
+        if (rawContent && Array.isArray(rawContent)) {
+          log.info(`[MSG] Post content structure:`, JSON.stringify(rawContent).slice(0, 500));
 
-            const tag = (section as { tag?: string })?.tag;
-
-            // Handle different content types
-            if (tag === 'text' || tag === 'plain_text') {
-              const t = (section as { text?: string })?.text ?? '';
-              text += t;
-            } else if (tag === 'heading' || tag === 'heading1' || tag === 'heading2' || tag === 'heading3') {
-              // Handle headings - might be nested structure
-              const headingText = (section as { text?: string | Array<unknown> })?.text;
-              if (typeof headingText === 'string') {
-                text += headingText;
-              } else if (Array.isArray(headingText)) {
-                // Nested text elements in heading
-                for (const item of headingText) {
-                  if (item && typeof item === 'object' && 'text' in item) {
-                    text += (item as { text?: string }).text ?? '';
-                  }
-                }
+          for (const section of rawContent) {
+            if (Array.isArray(section)) {
+              // 二维数组：段落内多个元素
+              for (const el of section) {
+                text += extractTextFromElement(el);
               }
             } else {
-              // Log unhandled tags for debugging
-              log.info(`[MSG] Unhandled post tag: ${tag}, section:`, JSON.stringify(section).slice(0, 200));
+              text += extractTextFromElement(section);
             }
           }
         }

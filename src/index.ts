@@ -74,9 +74,13 @@ export async function main() {
   const actualPort = startPermissionServer(config.hookPort);
   log.info(`Permission server listening on port ${actualPort}`);
 
+  const { MODE_LABELS } = await import('./permission-mode/types.js');
+  const defaultModeLabel = MODE_LABELS[config.defaultPermissionMode];
+
   log.info("Starting open-im bridge...");
   log.info(`AI 工具: ${config.aiCommand}`);
   log.info(`工作目录: ${config.claudeWorkDir}`);
+  log.info(`默认权限模式: ${defaultModeLabel} (${config.defaultPermissionMode})`);
   log.info(`启用平台: ${config.enabledPlatforms.join(", ")}`);
 
   const sessionManager = new SessionManager(
@@ -104,6 +108,7 @@ export async function main() {
     "",
     `AI 工具: ${config.aiCommand}`,
     `工作目录: ${config.claudeWorkDir}`,
+    `默认权限模式: ${defaultModeLabel} (${config.defaultPermissionMode})`,
     `启用平台: ${config.enabledPlatforms.join(", ")}`,
   ].join("\n");
 
