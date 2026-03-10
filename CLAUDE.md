@@ -46,6 +46,10 @@ This is a multi-platform IM bridge that connects Telegram, Feishu (Lark), and We
     - `client.ts` - WeChat WebSocket client initialization
     - `event-handler.ts` - Message/command routing from WeChat
     - `message-sender.ts` - Sending responses back to WeChat
+  - `src/wework/` - WeWork (企业微信) via AI Bot WebSocket
+    - `client.ts` - WeWork WebSocket client, subscribe/auth, proactive send
+    - `event-handler.ts` - Message/command routing from WeWork
+    - `message-sender.ts` - Sending responses back to WeWork
 
 - **AI Adapter Layer** (`src/adapters/`):
   - `tool-adapter.interface.ts` - Common interface for all AI tools

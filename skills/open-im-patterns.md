@@ -20,7 +20,7 @@ analyzed_commits: 200
 
 示例：
 ```
-feat: Add WeWork platform integration via AGP protocol
+feat: Add WeWork platform integration via AI Bot WebSocket
 fix: Update user ID extraction in Feishu event handler
 refactor: Streamline process spawning in CLI and process pool
 ```
@@ -42,8 +42,8 @@ src/
 │   ├── event-handler.ts # AGP 消息事件处理
 │   ├── message-sender.ts # AGP 消息发送
 │   └── types.ts        # AGP 协议类型定义
-├── wework/             # 企业微信平台模块
-│   ├── client.ts       # API 客户端和 WebSocket 连接
+├── wework/             # 企业微信平台模块 (AI Bot WebSocket)
+│   ├── client.ts       # WebSocket 连接、订阅认证、主动推送
 │   ├── event-handler.ts # 消息事件处理
 │   ├── message-sender.ts # 消息发送
 │   └── types.ts        # 企业微信 API 类型

@@ -44,7 +44,7 @@ export class CommandHandler {
     text: string,
     chatId: string,
     userId: string,
-    platform: 'feishu' | 'telegram' | 'wechat' | 'wework' | 'wework',
+    platform: 'feishu' | 'telegram' | 'wechat' | 'wework',
     handleClaudeRequest: ClaudeRequestHandler
   ): Promise<boolean> {
     const t = text.trim();
