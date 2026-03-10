@@ -10,17 +10,23 @@ import {
   updateMessage,
   sendFinalMessages,
   sendTextReply,
+  sendTextReplyByOpenId,
   startTypingLoop,
   sendImageReply,
   createFeishuButtonCard,
+  sendModeCard,
+  createFeishuModeCardReadOnly,
 } from './message-sender.js';
 import { registerPermissionSender, resolvePermissionById } from '../hook/permission-server.js';
+import { setPermissionMode } from '../permission-mode/session-mode.js';
+import { MODE_LABELS } from '../permission-mode/types.js';
 import { CommandHandler } from '../commands/handler.js';
 import { getAdapter } from '../adapters/registry.js';
 import { runAITask, type TaskRunState } from '../shared/ai-task.js';
 import { startTaskCleanup } from '../shared/task-cleanup.js';
 import { THROTTLE_MS, IMAGE_DIR, MAX_FEISHU_MESSAGE_LENGTH } from '../constants.js';
 import { setActiveChatId } from '../shared/active-chats.js';
+import { setChatUser } from '../shared/chat-user-map.js';
 import { splitLongContent } from '../shared/utils.js';
 import { createLogger } from '../logger.js';
 
@@ -155,7 +161,7 @@ export function setupFeishuHandlers(
     config,
     sessionManager,
     requestQueue,
-    sender: { sendTextReply },
+    sender: { sendTextReply, sendModeCard },
     getRunningTasksSize: () => runningTasks.size,
   });
 
@@ -258,23 +264,72 @@ export function setupFeishuHandlers(
   }
 
   /**
+   * 解析 action value（兼容对象、JSON 字符串）
+   */
+  function parseActionValue(raw: unknown): { action?: string; value?: string } | null {
+    if (!raw) return null;
+    let obj: { action?: string; value?: string } | null = null;
+    if (typeof raw === 'string') {
+      try {
+        obj = JSON.parse(raw) as { action?: string; value?: string };
+      } catch {
+        return null;
+      }
+    } else if (typeof raw === 'object' && raw !== null) {
+      obj = raw as { action?: string; value?: string };
+    }
+    return obj?.action && obj?.value ? obj : null;
+  }
+
+  /**
    * Handle card button click (card.action.trigger) - 需在 3 秒内返回响应
    */
   async function handleCardAction(
     data: unknown
-  ): Promise<{ toast?: { type: string; content: string } } | void> {
-    const event = data as {
+  ): Promise<{ toast?: { type: string; content: string }; card?: Record<string, unknown> } | void> {
+    // 兼容 SDK 可能嵌套的 event 结构
+    const wrapped = data as { event?: Record<string, unknown> };
+    const event = (wrapped?.event ?? data) as {
       action?: { value?: unknown };
       context?: { open_chat_id?: string; chat_id?: string; open_id?: string };
+      sender?: { sender_id?: { open_id?: string } };
     };
     const actionValue = event?.action?.value;
-    const parsed = parsePermissionActionValue(actionValue);
-    if (!parsed) return;
-
-    const { decision, requestId } = parsed;
     const chatId =
       event?.context?.open_chat_id ?? event?.context?.chat_id ?? event?.context?.open_id ?? '';
+    const userId = event?.sender?.sender_id?.open_id ?? '';
 
+    log.info(`[handleCardAction] chatId=${chatId}, userId=${userId}, actionValue=${JSON.stringify(actionValue)}`);
+
+    // 处理 mode 按钮（兼容 value 为对象或 JSON 字符串）
+    const modeAv = parseActionValue(actionValue);
+    if (modeAv?.action === 'mode' && modeAv.value) {
+      const mode = modeAv.value as 'ask' | 'accept-edits' | 'plan' | 'yolo';
+      if (['ask', 'accept-edits', 'plan', 'yolo'].includes(mode)) {
+        setPermissionMode(userId, mode);
+        const toastContent = `✅ 已切换为 ${MODE_LABELS[mode]}`;
+        const label = MODE_LABELS[mode];
+        // 异步发送文本回复，不阻塞 3 秒内返回
+        const sendReply = (): Promise<void> | void => {
+          if (chatId) return sendTextReply(chatId, toastContent);
+          if (userId) return sendTextReplyByOpenId(userId, toastContent);
+          log.warn('[handleCardAction] No chatId/userId, cannot send text reply');
+        };
+        const p = sendReply();
+        if (p) p.catch((e) => log.warn('[handleCardAction] Send reply failed:', e));
+        // 返回 toast + 更新卡片（替换为只读卡片，防止二次点击报错 200340）
+        const readOnlyCard = createFeishuModeCardReadOnly(label);
+        return { toast: { type: 'success', content: toastContent }, card: readOnlyCard };
+      }
+    }
+
+    const parsed = parsePermissionActionValue(actionValue);
+    if (!parsed) {
+      log.info('[handleCardAction] Unrecognized action value, returning default toast');
+      return { toast: { type: 'warning', content: '未知操作' } };
+    }
+
+    const { decision, requestId } = parsed;
     log.info(`[handleCardAction] Permission button: ${decision} for ${requestId}, chatId=${chatId}`);
 
     const resolved = resolvePermissionById(requestId, decision);
@@ -284,19 +339,24 @@ export function setupFeishuHandlers(
         : '❌ 权限已拒绝'
       : '⚠️ 权限请求已过期或不存在';
 
-    if (chatId) {
-      sendTextReply(chatId, toastContent).catch((err) => log.warn('Failed to send permission reply:', err));
-    }
+    const sendPermReply = (): Promise<void> | void => {
+      if (chatId) return sendTextReply(chatId, toastContent);
+      if (userId) return sendTextReplyByOpenId(userId, toastContent);
+    };
+    const permP = sendPermReply();
+    if (permP) permP.catch((err) => log.warn('Failed to send permission reply:', err));
 
     return { toast: { type: resolved ? 'success' : 'warning', content: toastContent } };
   }
 
   async function handleEvent(data: unknown): Promise<void | Record<string, unknown>> {
-    log.info('[handleEvent] Called with data:', JSON.stringify(data).slice(0, 500));
+    log.info('[handleEvent] Called with data:', JSON.stringify(data).slice(0, 800));
 
     try {
-      const event = data as {
+      const raw = data as Record<string, unknown>;
+      const event = (raw?.event ?? raw) as {
         event_type?: string;
+        type?: string;
         action?: { action_id?: string; value?: unknown };
         message?: {
           chat_id?: string;
@@ -309,13 +369,13 @@ export function setupFeishuHandlers(
         context?: { open_chat_id?: string; chat_id?: string; open_id?: string };
       };
 
-      const eventType = event?.event_type;
+      const eventType = event?.event_type ?? event?.type;
       log.info('Feishu event type:', eventType);
 
       // 1. 卡片按钮点击 (card.action.trigger) - 需快速返回响应
       if (eventType === 'card.action.trigger') {
         const result = await handleCardAction(data);
-        return result ?? undefined;
+        return result ?? { toast: { type: 'success', content: '已处理' } };
       }
 
       // 2. 消息接收 (im.message.receive_v1)
@@ -382,6 +442,7 @@ export function setupFeishuHandlers(
       log.info(`Access granted for sender: ${senderId}`);
 
       setActiveChatId('feishu', chatId);
+      setChatUser(chatId, senderId);
 
       // Handle different message types
       if (msgType === 'text') {

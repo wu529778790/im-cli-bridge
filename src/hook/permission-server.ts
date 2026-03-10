@@ -3,10 +3,14 @@
  *
  * When claudeSkipPermissions is false, Claude CLI will make HTTP requests
  * to this server to ask for user approval before running tools.
+ * Supports permission modes: ask | accept-edits | plan | yolo
  */
 
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { createLogger } from '../logger.js';
+import { getUserIdByChatId } from '../shared/chat-user-map.js';
+import { getPermissionMode } from '../permission-mode/session-mode.js';
+import type { PermissionMode } from '../permission-mode/types.js';
 
 const log = createLogger('PermissionServer');
 
@@ -34,6 +38,12 @@ let serverPort = DEFAULT_PORT;
 const pendingRequests = new Map<string, PermissionRequest>();
 const requestsByChat = new Map<string, PermissionRequest[]>();
 let messageSender: MessageSender | null = null;
+let defaultPermissionMode: PermissionMode = 'ask';
+
+/** 设置默认权限模式（从 config 调用） */
+export function setDefaultPermissionMode(mode: PermissionMode): void {
+  defaultPermissionMode = mode;
+}
 
 /**
  * Start the permission HTTP server
@@ -181,6 +191,16 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
   }
 }
 
+/** 编辑类工具（accept-edits 模式下自动放行） */
+const EDIT_TOOLS = new Set([
+  'EditBlock', 'Write', 'SearchReplace', 'ApplyPatch', 'Read', 'ListDir', 'GlobFileSearch',
+  'Grep', 'ReadLints', 'TodoWrite', 'EditNotebook',
+]);
+
+function isEditTool(toolName: string): boolean {
+  return EDIT_TOOLS.has(toolName);
+}
+
 /**
  * Handle a permission request from Claude CLI
  */
@@ -193,8 +213,15 @@ function handlePermissionRequest(req: IncomingMessage, res: ServerResponse): voi
 
   req.on('end', async () => {
     try {
-      const data = JSON.parse(body);
-      const { requestId, toolName, toolInput } = data;
+      const data = JSON.parse(body) as Record<string, unknown>;
+      const requestId = String(data.requestId ?? '');
+      const toolName = String(data.toolName ?? '');
+      const toolInput = data.toolInput;
+      const chatId =
+        (typeof data.chatId === 'string' ? data.chatId : null) ??
+        (typeof data.chat_id === 'string' ? data.chat_id : null) ??
+        process.env.CC_IM_CHAT_ID ??
+        undefined;
 
       if (!requestId || !toolName) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -202,16 +229,39 @@ function handlePermissionRequest(req: IncomingMessage, res: ServerResponse): voi
         return;
       }
 
-      // Get chatId from environment (set by CC_IM_CHAT_ID)
-      const chatId = process.env.CC_IM_CHAT_ID;
       if (!chatId) {
-        log.warn('No chatId in environment, auto-allowing permission');
+        log.warn('No chatId, auto-allowing permission');
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ allowed: true }));
         return;
       }
 
-      // Check if skip permissions is enabled
+      // 按用户权限模式决策
+      const userId = getUserIdByChatId(chatId);
+      const mode = userId ? getPermissionMode(userId, defaultPermissionMode) : defaultPermissionMode;
+
+      if (mode === 'yolo') {
+        log.info(`[${mode}] Auto-allow ${toolName}`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ allowed: true }));
+        return;
+      }
+
+      if (mode === 'plan') {
+        log.info(`[${mode}] Auto-deny ${toolName} (plan mode)`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ allowed: false }));
+        return;
+      }
+
+      if (mode === 'accept-edits' && isEditTool(toolName as string)) {
+        log.info(`[${mode}] Auto-allow edit tool ${toolName}`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ allowed: true }));
+        return;
+      }
+
+      // ask 或 accept-edits 下的非编辑工具：需要用户确认
       if (process.env.CC_SKIP_PERMISSIONS === 'true') {
         log.info(`Skip permissions enabled, auto-allowing ${toolName}`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -219,7 +269,6 @@ function handlePermissionRequest(req: IncomingMessage, res: ServerResponse): voi
         return;
       }
 
-      // Check if already resolved (race condition)
       if (pendingRequests.has(requestId)) {
         log.warn(`Duplicate permission request: ${requestId}`);
         res.writeHead(409, { 'Content-Type': 'application/json' });
@@ -227,7 +276,6 @@ function handlePermissionRequest(req: IncomingMessage, res: ServerResponse): voi
         return;
       }
 
-      // Send pending response
       res.writeHead(202, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 'pending' }));
 

@@ -13,6 +13,8 @@ import {
   sendTextReply,
   startTypingLoop,
   sendImageReply,
+  sendModeKeyboard,
+  sendDirectorySelection,
 } from "./message-sender.js";
 import {
   registerPermissionSender,
@@ -24,6 +26,9 @@ import { runAITask, type TaskRunState } from "../shared/ai-task.js";
 import { startTaskCleanup } from "../shared/task-cleanup.js";
 import { TELEGRAM_THROTTLE_MS, IMAGE_DIR } from "../constants.js";
 import { setActiveChatId } from "../shared/active-chats.js";
+import { setChatUser } from "../shared/chat-user-map.js";
+import { setPermissionMode } from "../permission-mode/session-mode.js";
+import { MODE_LABELS } from "../permission-mode/types.js";
 import { createLogger } from "../logger.js";
 
 const log = createLogger("TgHandler");
@@ -111,7 +116,7 @@ export function setupTelegramHandlers(
     config,
     sessionManager,
     requestQueue,
-    sender: { sendTextReply },
+    sender: { sendTextReply, sendDirectorySelection, sendModeKeyboard },
     getRunningTasksSize: () => runningTasks.size,
   });
 
@@ -425,6 +430,15 @@ export function setupTelegramHandlers(
       const decision = isAllow ? "allow" : "deny";
       resolvePermissionById(requestId, decision);
       await ctx.answerCbQuery(isAllow ? "✅ 已允许" : "❌ 已拒绝");
+    } else if (data.startsWith("mode:")) {
+      const parts = data.split(":");
+      if (parts.length >= 3 && parts[1] === userId) {
+        const mode = parts[2] as "ask" | "accept-edits" | "plan" | "yolo";
+        if (["ask", "accept-edits", "plan", "yolo"].includes(mode)) {
+          setPermissionMode(userId, mode);
+          await ctx.answerCbQuery(`✅ 已切换为 ${MODE_LABELS[mode]}`);
+        }
+      }
     }
   });
 
@@ -440,6 +454,7 @@ export function setupTelegramHandlers(
     }
 
     setActiveChatId("telegram", chatId);
+    setChatUser(chatId, userId);
 
     if (
       await commandHandler.dispatch(
@@ -487,6 +502,7 @@ export function setupTelegramHandlers(
     if (!accessControl.isAllowed(userId)) return;
 
     setActiveChatId("telegram", chatId);
+    setChatUser(chatId, userId);
 
     const photos = ctx.message.photo;
     const largest = photos[photos.length - 1];

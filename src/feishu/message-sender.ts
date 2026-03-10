@@ -144,6 +144,87 @@ export function createFeishuButtonCard(
   return JSON.stringify(card);
 }
 
+/** 只读模式卡片（无按钮，用于回调后替换原卡片防止二次点击） */
+export function createFeishuModeCardReadOnly(currentMode: string): Record<string, unknown> {
+  return {
+    config: { wide_screen_mode: true },
+    header: {
+      template: 'green',
+      title: { content: '🔐 权限模式', tag: 'plain_text' },
+    },
+    elements: [
+      {
+        tag: 'div',
+        text: {
+          tag: 'lark_md',
+          content: `**当前模式:** ${currentMode}\n\n✅ 已切换成功，发送 \`/mode\` 可再次切换。`,
+        },
+      },
+    ],
+  };
+}
+
+/**
+ * Create mode switch card with action type for card callback
+ */
+function createFeishuModeCard(
+  currentMode: string,
+  buttons: Array<{ label: string; value: string; type?: 'primary' | 'default' }>
+): string {
+  const elements: any[] = [];
+  elements.push({
+    tag: 'div',
+    text: {
+      tag: 'lark_md',
+      content: `**当前模式:** ${currentMode}\n\n点击下方按钮切换模式：\n\n_💡 若点击报错：开放平台 → 事件与回调 → 切到「回调」Tab → 添加「卡片回传交互」。或直接用 \`/mode ask\` 等命令切换。_`,
+    },
+  });
+  elements.push({ tag: 'hr' });
+  for (let i = 0; i < buttons.length; i += 4) {
+    const row = buttons.slice(i, i + 4).map((btn) => ({
+      tag: 'button',
+      text: { tag: 'plain_text', content: btn.label },
+      type: btn.type || 'default',
+      value: { action: 'mode', value: btn.value },
+    }));
+    elements.push({ tag: 'action', actions: row });
+  }
+  const card: any = {
+    config: { wide_screen_mode: true },
+    header: {
+      template: 'blue',
+      title: { content: '🔐 权限模式', tag: 'plain_text' },
+    },
+    elements,
+  };
+  return JSON.stringify(card);
+}
+
+export async function sendModeCard(
+  chatId: string,
+  _userId: string,
+  currentMode: string
+): Promise<void> {
+  const { getClient } = await import('./client.js');
+  const client = getClient();
+  const MODE_BTNS = [
+    { label: '🛡️ 安全', value: 'ask', type: 'default' as const },
+    { label: '✏️ 编辑放行', value: 'accept-edits', type: 'default' as const },
+    { label: '📋 只读', value: 'plan', type: 'default' as const },
+    { label: '🚀 YOLO', value: 'yolo', type: 'default' as const },
+  ];
+  const currentLabel = MODE_BTNS.find((b) => b.value === currentMode)?.label ?? currentMode;
+  const cardContent = createFeishuModeCard(currentLabel, MODE_BTNS);
+  await client.im.message.create({
+    data: {
+      receive_id: chatId,
+      msg_type: 'interactive',
+      content: cardContent,
+    },
+    params: { receive_id_type: 'chat_id' },
+  });
+}
+
 async function getTenantAccessToken(): Promise<string> {
   const client = getClient();
   const resp = await client.auth.tenantAccessToken.internal({
@@ -352,6 +433,24 @@ export async function sendTextReply(chatId: string, text: string): Promise<void>
     });
   } catch (err) {
     log.error('Failed to send text:', err);
+  }
+}
+
+/** 使用 open_id 发送（私聊时 context 可能只有 open_id） */
+export async function sendTextReplyByOpenId(openId: string, text: string): Promise<void> {
+  const client = getClient();
+  const cardContent = createFeishuCard('📢 open-im', text, 'done');
+  try {
+    await client.im.message.create({
+      data: {
+        receive_id: openId,
+        msg_type: 'interactive',
+        content: cardContent,
+      },
+      params: { receive_id_type: 'open_id' },
+    });
+  } catch (err) {
+    log.error('Failed to send text by open_id:', err);
   }
 }
 
