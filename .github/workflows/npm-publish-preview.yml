@@ -1,9 +1,6 @@
 name: Publish Preview to npm
 
 on:
-  push:
-    branches:
-      - dev
   workflow_dispatch:
     inputs:
       prerelease_type:
