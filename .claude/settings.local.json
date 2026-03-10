@@ -14,7 +14,8 @@
       "Bash(\"C:\\\\Users\\\\52977\\\\.local\\\\bin\\\\claude.exe\":*)",
       "Bash(cmd.exe:*)",
       "Bash(where claude:*)",
-      "Bash(env:*)"
+      "Bash(env:*)",
+      "Bash(git:*)"
     ]
   }
 }
