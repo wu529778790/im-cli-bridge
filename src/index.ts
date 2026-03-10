@@ -12,7 +12,7 @@ import { sendTextReply as sendTelegramTextReply } from "./telegram/message-sende
 import { initFeishu, stopFeishu } from "./feishu/client.js";
 import { setupFeishuHandlers } from "./feishu/event-handler.js";
 import { sendTextReply as sendFeishuTextReply } from "./feishu/message-sender.js";
-import { initAdapters } from "./adapters/registry.js";
+import { initAdapters, cleanupAdapters } from "./adapters/registry.js";
 import { SessionManager } from "./session/session-manager.js";
 import {
   loadActiveChats,
@@ -133,6 +133,7 @@ export async function main() {
     feishuHandle?.stop();
     stopFeishu();
     sessionManager.destroy();
+    cleanupAdapters();
     flushActiveChats();
     closeLogger();
     process.exit(0);
