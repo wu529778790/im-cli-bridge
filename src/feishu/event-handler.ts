@@ -317,11 +317,12 @@ export function setupFeishuHandlers(
       action?: { value?: unknown };
       context?: { open_chat_id?: string; chat_id?: string; open_id?: string };
       sender?: { sender_id?: { open_id?: string } };
+      operator?: { open_id?: string };
     };
     const actionValue = event?.action?.value;
     const chatId =
       event?.context?.open_chat_id ?? event?.context?.chat_id ?? event?.context?.open_id ?? '';
-    const userId = event?.sender?.sender_id?.open_id ?? '';
+    const userId = event?.sender?.sender_id?.open_id ?? event?.operator?.open_id ?? '';
 
     log.info(`[handleCardAction] chatId=${chatId}, userId=${userId}, actionValue=${JSON.stringify(actionValue)}`);
 
