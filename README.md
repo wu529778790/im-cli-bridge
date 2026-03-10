@@ -122,12 +122,14 @@ npm run foreground # 前台运行已构建版本
 
 ### 权限模式
 
-| 模式 | 说明 |
-|------|------|
-| **ask** (安全) | 每次操作需确认 |
-| **accept-edits** (编辑放行) | 文件编辑自动通过，命令需确认 |
-| **plan** (只读) | 仅分析不执行 |
-| **yolo** | 全部自动放行 |
+与 Claude Code 官方命名一致，见 [permissions](https://code.claude.com/docs/en/permissions)：
+
+| 模式 | Claude 名 | 说明 |
+|------|-----------|------|
+| ask | default | 首次使用每个工具时提示确认 |
+| accept-edits | acceptEdits | 编辑权限自动通过 |
+| plan | plan | 仅分析，不修改文件不执行命令 |
+| yolo | bypassPermissions | 跳过所有权限确认 |
 
 ## 📝 License
 

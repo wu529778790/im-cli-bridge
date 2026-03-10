@@ -241,12 +241,13 @@ export async function sendModeCard(
   currentMode: string
 ): Promise<void> {
   const { getClient } = await import('./client.js');
+  const { MODE_LABELS } = await import('../permission-mode/types.js');
   const client = getClient();
   const MODE_BTNS = [
-    { label: '🛡️ 安全', value: 'ask', type: 'default' as const },
-    { label: '✏️ 编辑放行', value: 'accept-edits', type: 'default' as const },
-    { label: '📋 只读', value: 'plan', type: 'default' as const },
-    { label: '🚀 YOLO', value: 'yolo', type: 'default' as const },
+    { label: MODE_LABELS.ask, value: 'ask', type: 'default' as const },
+    { label: MODE_LABELS['accept-edits'], value: 'accept-edits', type: 'default' as const },
+    { label: MODE_LABELS.plan, value: 'plan', type: 'default' as const },
+    { label: MODE_LABELS.yolo, value: 'yolo', type: 'default' as const },
   ];
   const currentLabel = MODE_BTNS.find((b) => b.value === currentMode)?.label ?? currentMode;
   const cardContent = createFeishuModeCard(currentLabel, MODE_BTNS);
