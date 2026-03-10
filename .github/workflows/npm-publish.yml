@@ -72,11 +72,8 @@ jobs:
 
           echo "Inputs: BUMP=$BUMP, TAG=$TAG, IS_DEV=$IS_DEV"
 
-          # 安装 semver（如果还没有）
-          npm install --no-save semver 2>/dev/null || true
-
-          # 创建临时 Node 脚本
-          cat > /tmp/bump-version.js << 'NODEEOF'
+          # 在当前目录创建 Node 脚本（可以访问 node_modules）
+          cat > bump-version.js << 'NODEEOF'
           const { execSync } = require('child_process');
           const semver = require('semver');
           const bump = process.argv[1];
@@ -129,7 +126,7 @@ jobs:
 
           # 执行脚本
           set +e
-          OUTPUT=$(node /tmp/bump-version.js "$BUMP" "$TAG" "$IS_DEV" 2>&1)
+          OUTPUT=$(node bump-version.js "$BUMP" "$TAG" "$IS_DEV" 2>&1)
           RC=$?
           set -e
 
