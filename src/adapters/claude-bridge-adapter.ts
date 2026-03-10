@@ -18,6 +18,9 @@ const bridges = new Map<string, BridgeInstance>();
 interface BridgeInstance {
   handle: BridgeHandle;
   lastUsed: number;
+  callbacks: BridgeCallbacks | null;
+  currentRunPromise: Promise<void> | null;
+  currentResolve: (() => void) | null;
 }
 
 interface BridgeAdapterHandle extends RunHandle {
@@ -46,67 +49,142 @@ export class ClaudeBridgeAdapter implements ToolAdapter {
     log.info(`Running with bridge: userId=${userId}, workDir=${workDir}`);
 
     // 检查是否已有桥梁
-    let existing = bridges.get(bridgeKey);
-    if (existing) {
+    let instance = bridges.get(bridgeKey);
+    if (instance) {
       log.info(`Reusing existing bridge: ${bridgeKey}`);
-      existing.lastUsed = Date.now();
-      const handle = this.createHandleForExistingBridge(existing.handle, callbacks, prompt);
-      return handle;
+      instance.lastUsed = Date.now();
+
+      // 创建 Promise 来追踪本次运行
+      const runPromise = new Promise<void>((resolve) => {
+        instance!.currentResolve = resolve;
+        instance!.callbacks = this.adaptCallbacks(callbacks, sessionId, resolve);
+      });
+
+      instance.currentRunPromise = runPromise;
+
+      // 发送 prompt
+      instance.handle.sendInput(prompt);
+
+      return {
+        abort: () => {
+          instance!.currentResolve?.();
+          instance!.handle.abort();
+        },
+        sendInput: instance.handle.sendInput,
+      } as BridgeAdapterHandle;
     }
 
     // 创建新桥梁
     log.info(`Creating new bridge: ${bridgeKey}`);
-    const bridgeHandle = createBridge(
-      {
-        onText: callbacks.onText,
-        onThinking: callbacks.onThinking || (() => {}),
-        onToolUse: callbacks.onToolUse,
-        onComplete: callbacks.onComplete,
-        onError: callbacks.onError,
-        onSessionId: callbacks.onSessionId,
-      },
-      {
-        cliPath: this.cliPath,
-        workDir,
-        model: options?.model,
-        timeoutMs: options?.timeoutMs,
-      }
-    );
+
+    let currentResolve: (() => void) | null = null;
+    const runPromise = new Promise<void>((resolve) => {
+      currentResolve = resolve;
+    });
+
+    const adaptedCallbacks = this.adaptCallbacks(callbacks, sessionId, currentResolve);
+
+    const bridgeHandle = createBridge(adaptedCallbacks, {
+      cliPath: this.cliPath,
+      workDir,
+      model: options?.model,
+      timeoutMs: options?.timeoutMs,
+    });
 
     // 存储桥梁
-    bridges.set(bridgeKey, {
+    const newInstance: BridgeInstance = {
       handle: bridgeHandle,
       lastUsed: Date.now(),
-    });
+      callbacks: adaptedCallbacks,
+      currentRunPromise: runPromise,
+      currentResolve,
+    };
+
+    bridges.set(bridgeKey, newInstance);
 
     // 发送初始 prompt
     bridgeHandle.sendInput(prompt);
 
     // 返回句柄
     return {
-      abort: bridgeHandle.abort,
-      // @ts-ignore - 扩展句柄以支持 sendInput
+      abort: () => {
+        currentResolve?.();
+        bridgeHandle.abort();
+      },
       sendInput: bridgeHandle.sendInput,
     } as BridgeAdapterHandle;
   }
 
   /**
-   * 为现有桥梁创建句柄
+   * 适配 RunCallbacks 为 BridgeCallbacks
    */
-  private createHandleForExistingBridge(
-    bridgeHandle: BridgeHandle,
+  private adaptCallbacks(
     callbacks: RunCallbacks,
-    prompt: string
-  ): BridgeAdapterHandle {
-    // 发送 prompt
-    bridgeHandle.sendInput(prompt);
+    sessionId: string | undefined,
+    resolveFn: (() => void) | null
+  ): BridgeCallbacks {
+    let settled = false;
 
-    // 注意：这里简化处理，实际上需要重新绑定回调
-    // 在完整的实现中，桥梁应该支持注册回调
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      resolveFn?.();
+    };
 
     return {
-      abort: bridgeHandle.abort,
-      sendInput: bridgeHandle.sendInput,
+      onInit: (sid, _model) => {
+        if (callbacks.onSessionId) {
+          callbacks.onSessionId(sid);
+        }
+      },
+
+      onText: (_delta, accumulated) => {
+        callbacks.onText(accumulated);
+      },
+
+      onThinking: (_delta, accumulated) => {
+        if (callbacks.onThinking) {
+          callbacks.onThinking(accumulated);
+        }
+      },
+
+      onToolUseStart: (toolName, _index) => {
+        if (callbacks.onToolUse) {
+          // 工具使用开始时，暂时不通知，等完成时通知
+        }
+      },
+
+      onToolInputDelta: undefined, // 忽略输入参数增量
+
+      onToolUseComplete: (_index, toolName, input) => {
+        if (callbacks.onToolUse && toolName) {
+          callbacks.onToolUse(toolName, input);
+        }
+      },
+
+      onPermissionPrompt: (message) => {
+        // 权限提示通过 onText 转发，让用户看到
+        callbacks.onText(message);
+      },
+
+      onUserInputRequest: (message) => {
+        // 用户输入请求也通过 onText 转发
+        callbacks.onText(message);
+      },
+
+      onComplete: (result) => {
+        if (!settled) {
+          callbacks.onComplete(result);
+        }
+        settle();
+      },
+
+      onError: (error) => {
+        if (!settled) {
+          callbacks.onError(error);
+        }
+        settle();
+      },
     };
   }
 
@@ -144,6 +222,7 @@ export class ClaudeBridgeAdapter implements ToolAdapter {
       return false;
     }
 
+    instance.currentResolve?.();
     instance.handle.abort();
     bridges.delete(bridgeKey);
     log.info(`Bridge aborted: ${bridgeKey}`);
@@ -160,12 +239,13 @@ export class ClaudeBridgeAdapter implements ToolAdapter {
   /**
    * 清理空闲桥梁
    */
-  static cleanupIdleBridges(idleTimeoutMs: number = 2 * 60 * 1000): number {
+  static cleanupIdleBridges(idleTimeoutMs: number = 10 * 60 * 1000): number {
     const now = Date.now();
     let cleaned = 0;
 
     for (const [key, instance] of bridges.entries()) {
       if (now - instance.lastUsed > idleTimeoutMs) {
+        instance.currentResolve?.();
         instance.handle.close();
         bridges.delete(key);
         cleaned++;
@@ -185,6 +265,7 @@ export class ClaudeBridgeAdapter implements ToolAdapter {
    */
   static closeAll(): void {
     for (const [key, instance] of bridges.entries()) {
+      instance.currentResolve?.();
       instance.handle.close();
       log.info(`Bridge closed: ${key}`);
     }
@@ -194,7 +275,7 @@ export class ClaudeBridgeAdapter implements ToolAdapter {
   /**
    * 初始化定期清理任务
    */
-  static startCleanupTask(intervalMs: number = 60 * 1000, idleTimeoutMs: number = 2 * 60 * 1000): void {
+  static startCleanupTask(intervalMs: number = 60 * 1000, idleTimeoutMs: number = 10 * 60 * 1000): void {
     setInterval(() => {
       this.cleanupIdleBridges(idleTimeoutMs);
     }, intervalMs).unref();
