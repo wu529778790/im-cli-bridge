@@ -1,10 +1,10 @@
 # open-im
 
-多平台 IM 桥接，将 Telegram、飞书 (Feishu/Lark) 和微信连接到 AI CLI 工具（Claude Code、Codex、Cursor），实现移动端/远程访问 AI 编程助手。
+多平台 IM 桥接，将 Telegram、飞书 (Feishu/Lark)、企业微信和微信连接到 AI CLI 工具（Claude Code、Codex、Cursor），实现移动端/远程访问 AI 编程助手。
 
 ## 功能特性
 
-- **多平台**：支持 Telegram、飞书和微信，可同时启用
+- **多平台**：支持 Telegram、飞书、企业微信和微信，可同时启用
 - **多 AI 工具**：通过配置切换 Claude Code / Codex / Cursor
 - **流式输出**：节流更新，实时展示 AI 回复
 - **会话管理**：每用户独立 session，`/new` 重置会话
@@ -71,6 +71,9 @@ npm run dev        # 直接运行源码（tsx，无需 build）
 | `WECHAT_APP_ID` | 微信应用 App ID（AGP 协议） |
 | `WECHAT_APP_SECRET` | 微信应用 App Secret |
 | `WECHAT_WS_URL` | AGP WebSocket URL（可选，默认使用官方服务） |
+| `WEWORK_CORP_ID` | 企业微信机器人 ID（Bot ID） |
+| `WEWORK_SECRET` | 企业微信机器人 Secret |
+| `WEWORK_WS_URL` | 企业微信 WebSocket URL（可选，默认官方） |
 | `ALLOWED_USER_IDS` | 白名单用户 ID（逗号分隔，空=所有人） |
 | `AI_COMMAND` | `claude` \| `codex` \| `cursor`，默认 `claude` |
 | `CLAUDE_CLI_PATH` | Claude CLI 路径，默认 `claude` |
@@ -86,10 +89,11 @@ npm run dev        # 直接运行源码（tsx，无需 build）
 
 配置优先级：环境变量 > `~/.open-im/config.json` > 默认值。
 
-至少需配置 **Telegram**、**飞书** 或 **微信** 其中一个：
+至少需配置 **Telegram**、**飞书**、**企业微信** 或 **微信** 其中一个：
 
 - **Telegram**：`TELEGRAM_BOT_TOKEN` 或 `telegramBotToken`
 - **飞书**：`FEISHU_APP_ID` + `FEISHU_APP_SECRET` 或 `feishuAppId` + `feishuAppSecret`
+- **企业微信**：`WEWORK_CORP_ID` + `WEWORK_SECRET` 或 `platforms.wework.corpId` + `platforms.wework.secret`
 - **微信**：`WECHAT_APP_ID` + `WECHAT_APP_SECRET` 或 `wechatAppId` + `wechatAppSecret`
 
 ### 飞书配置说明
@@ -106,6 +110,28 @@ npm run dev        # 直接运行源码（tsx，无需 build）
 5. 将机器人添加到目标群聊或发起私聊
 
 **若点击 /mode 卡片按钮报错**：说明未配置卡片回调。配置较复杂时，可直接用 `/mode ask`、`/mode yolo` 等命令切换模式，无需卡片。
+
+### 企业微信配置说明
+
+1. 在 [企业微信管理后台](https://work.weixin.qq.com/) 创建企业自建应用
+2. 进入「应用管理」→ 选择你的应用 → 获取 **AgentId** 和 **Secret**
+3. 开启「智能机器人」能力，获取 **机器人 ID（Bot ID）** 和 **机器人 Secret**
+4. 配置到 `~/.open-im/config.json`：
+   ```json
+   {
+     "platforms": {
+       "wework": {
+         "enabled": true,
+         "corpId": "你的机器人ID",
+         "secret": "你的机器人Secret",
+         "allowedUserIds": []
+       }
+     }
+   }
+   ```
+5. 将机器人添加到目标群聊或发起私聊
+
+**说明**：企业微信使用 WebSocket 长连接（`wss://openws.work.weixin.qq.com`），连接建立后会自动订阅，支持接收消息、回复消息和主动推送（如启动/关闭通知）。首次启动时，需用户先发一条消息，机器人才能向其推送启动通知。
 
 ## IM 内命令
 
@@ -165,6 +191,12 @@ npm run dev        # 直接运行源码（tsx，无需 build）
          "enabled": true,
          "botToken": "你的Bot Token",
          "allowedUserIds": ["你的Telegram用户ID"]
+       },
+       "wework": {
+         "enabled": true,
+         "corpId": "你的企业微信机器人ID",
+         "secret": "你的企业微信机器人Secret",
+         "allowedUserIds": []
        }
      },
      "claudeWorkDir": "$(pwd)",
@@ -247,3 +279,27 @@ open-im init
 4. 添加 **「卡片回传交互」**（`card.action.trigger`）— 若搜不到，可尝试搜「action」「trigger」或浏览分类
 
 **更简单**：直接用 `/mode ask`、`/mode yolo` 等命令切换模式，无需配置卡片。
+
+### Q: 企业微信 846609（aibot websocket not subscribed）？
+
+说明在订阅确认完成前就发送了主动消息。当前版本已修复：连接建立后会等待服务端订阅确认（`errcode: 0`）后再发送启动通知。若仍出现，请检查网络或重启服务。
+
+### Q: 企业微信收不到启动通知？
+
+启动通知需要用户先发过消息，系统才能获取到 chatId。请先向机器人发送任意消息（如「你好」），之后重启服务即可收到启动/关闭通知。
+
+### Q: 微信连接失败（错误 1006 或 500）？
+
+微信使用 AGP 协议连接，该协议服务器由第三方提供。如果出现连接失败，可能原因：
+
+1. **AGP 服务器限制**
+   - AGP 服务器使用了 Qclaw 通道，可能有白名单限制
+   - 独立客户端可能不在允许列表中
+   - token 或 guid 无效或已过期
+
+2. **建议**
+   - 确认 token 和 guid 是否正确
+   - 尝试更新 token/guid（如果提供商支持）
+   - 或暂时使用其他平台（Telegram/飞书/企业微信）
+
+**注意**：这是 AGP 协议服务器的限制，非本项目的 bug。如果 AGP 服务器调整策略，微信功能可能恢复正常。

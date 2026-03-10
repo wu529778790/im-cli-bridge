@@ -15,7 +15,12 @@
       "Bash(cmd.exe:*)",
       "Bash(where claude:*)",
       "Bash(env:*)",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(npm view:*)",
+      "Bash(npm pack:*)",
+      "Bash(netstat -ano | grep -E \"35801|39281\")",
+      "Bash(taskkill //F //PID 17344)",
+      "Bash(sleep 1 && netstat -ano | grep -E \"35801|39281\" || echo \"Ports are free\")"
     ]
   }
 }

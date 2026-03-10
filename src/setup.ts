@@ -14,7 +14,19 @@ interface ExistingConfig {
   platforms?: {
     telegram?: { enabled?: boolean; botToken?: string; allowedUserIds?: string[]; proxy?: string };
     feishu?: { enabled?: boolean; appId?: string; appSecret?: string; allowedUserIds?: string[] };
-    wechat?: { enabled?: boolean; appId?: string; appSecret?: string; wsUrl?: string; allowedUserIds?: string[] };
+    wechat?: {
+      enabled?: boolean;
+      appId?: string;
+      appSecret?: string;
+      token?: string;
+      jwtToken?: string;
+      loginKey?: string;
+      guid?: string;
+      userId?: string;
+      wsUrl?: string;
+      allowedUserIds?: string[];
+    };
+    wework?: { enabled?: boolean; corpId?: string; secret?: string; allowedUserIds?: string[] };
   };
   claudeWorkDir?: string;
   claudeSkipPermissions?: boolean;
@@ -37,6 +49,7 @@ function getConfiguredPlatforms(existing: ExistingConfig | null): string[] {
     { k: "telegram", label: "Telegram" },
     { k: "feishu", label: "飞书" },
     { k: "wechat", label: "微信" },
+    { k: "wework", label: "企业微信" },
   ];
   return names
     .filter(({ k }) => {
@@ -44,7 +57,9 @@ function getConfiguredPlatforms(existing: ExistingConfig | null): string[] {
       if (!p) return false;
       if (k === "telegram") return !!p.botToken;
       if (k === "feishu") return !!(p.appId && p.appSecret);
-      if (k === "wechat") return !!(p.appId && p.appSecret);
+      // 微信支持 AGP 协议（token + guid + userId）或标准协议（appId + appSecret）
+      if (k === "wechat") return !!(p.token && p.guid && p.userId) || !!(p.appId && p.appSecret);
+      if (k === "wework") return !!(p.corpId && p.secret);
       return false;
     })
     .map(({ label }) => label);
@@ -87,6 +102,13 @@ function printManualInstructions(configPath: string): void {
       "appSecret": "你的微信 App Secret（可选）",
       "wsUrl": "AGP WebSocket URL（可选，默认使用官方服务）",
       "allowedUserIds": ["允许访问的微信用户 ID（可选）"]
+    },
+    "wework": {
+      "enabled": false,
+      "corpId": "你的企业微信 Corp ID（可选）",
+      "agentId": "你的企业微信 Agent ID（可选）",
+      "secret": "你的企业微信 Secret（可选）",
+      "allowedUserIds": ["允许访问的企业微信用户 ID（可选）"]
     }
   },
   "claudeWorkDir": "${process.cwd().replace(/\\/g, "/")}",
@@ -94,9 +116,9 @@ function printManualInstructions(configPath: string): void {
   "aiCommand": "claude"
 }`);
   console.log("");
-  console.log("提示：至少需要配置 Telegram、Feishu 或 WeChat 其中一个平台");
+  console.log("提示：至少需要配置 Telegram、Feishu、WeChat 或 WeWork 其中一个平台");
   console.log(
-    "或设置环境变量: TELEGRAM_BOT_TOKEN=xxx、FEISHU_APP_ID=xxx 或 WECHAT_APP_ID=xxx 后再运行",
+    "或设置环境变量: TELEGRAM_BOT_TOKEN=xxx、FEISHU_APP_ID=xxx、WECHAT_APP_ID=xxx 或 WEWORK_CORP_ID=xxx 后再运行",
   );
   console.log("");
 }
@@ -129,7 +151,9 @@ export async function runInteractiveSetup(): Promise<boolean> {
 
   const hasTg = !!existing?.platforms?.telegram?.botToken;
   const hasFs = !!(existing?.platforms?.feishu?.appId && existing?.platforms?.feishu?.appSecret);
-  const hasWc = !!(existing?.platforms?.wechat?.appId && existing?.platforms?.wechat?.appSecret);
+  const wc = existing?.platforms?.wechat;
+  const hasWc = !!(wc?.token && wc?.guid && wc?.userId) || !!(wc?.appId && wc?.appSecret);
+  const hasWw = !!(existing?.platforms?.wework?.corpId && existing?.platforms?.wework?.secret);
 
   // 第一步：选择平台（在选项和提示中显示已配置项）
   const configuredHint =
@@ -152,9 +176,15 @@ export async function runInteractiveSetup(): Promise<boolean> {
         },
         {
           title:
-            "微信 (WeChat) - 需要 App ID 和 App Secret（AGP 协议）" +
+            "微信 (WeChat) - 扫码登录获取 token（QClaw/AGP 协议）" +
             (hasWc ? " ✓已配置" : ""),
           value: "wechat",
+        },
+        {
+          title:
+            "企业微信 (WeCom/WeWork) - 需要 Bot ID 和 Secret" +
+            (hasWw ? " ✓已配置" : ""),
+          value: "wework",
         },
         { title: "配置多个平台", value: "multi" },
       ],
@@ -182,6 +212,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
           { title: "Telegram" + (hasTg ? " ✓已配置" : ""), value: "telegram", selected: hasTg },
           { title: "飞书 (Feishu)" + (hasFs ? " ✓已配置" : ""), value: "feishu", selected: hasFs },
           { title: "微信 (WeChat)" + (hasWc ? " ✓已配置" : ""), value: "wechat", selected: hasWc },
+          { title: "企业微信 (WeWork)" + (hasWw ? " ✓已配置" : ""), value: "wework", selected: hasWw },
         ],
       },
       { onCancel },
@@ -245,42 +276,104 @@ export async function runInteractiveSetup(): Promise<boolean> {
   }
 
   if (selectedPlatforms.includes("wechat")) {
-    const wechatResp = await prompts(
-      [
+    const wc = existing?.platforms?.wechat;
+    const hasToken = !!(wc?.token && wc?.guid && wc?.userId);
+
+    const wechatModeResp = await prompts(
+      {
+        type: "select",
+        name: "mode",
+        message: "微信登录方式",
+        choices: [
+          {
+            title: "扫码登录（推荐）- 用微信扫描二维码，自动获取 token",
+            value: "qr",
+          },
+          {
+            title: "使用已有配置" + (hasToken ? " ✓" : "（需已通过扫码登录获取）"),
+            value: "keep",
+            disabled: !hasToken,
+          },
+        ],
+        initial: hasToken ? 1 : 0,
+      },
+      { onCancel }
+    );
+
+    if (wechatModeResp.mode === "qr") {
+      console.log("\n正在启动微信扫码登录...\n");
+      const appIdResp = await prompts(
         {
           type: "text",
           name: "appId",
-          message: "微信 App ID（从微信开放平台获取）",
-          initial: existing?.platforms?.wechat?.appId ?? "",
-          validate: (v: string) => (v.trim() ? true : "App ID 不能为空"),
+          message: "请输入微信 AppID",
+          initial: wc?.appId ?? "",
+          validate: (v: string) => (v.trim() ? true : "AppID 不能为空"),
+        },
+        { onCancel }
+      );
+
+      try {
+        const { performWeChatLogin } = await import("./wechat/auth/index.js");
+        const credentials = await performWeChatLogin({
+          envName: "production",
+          appId: appIdResp.appId?.trim() || wc?.appId || "",
+        });
+        (config.platforms as Record<string, unknown>).wechat = {
+          appId: appIdResp.appId?.trim() || wc?.appId,
+          enabled: true,
+          token: credentials.channelToken,
+          jwtToken: credentials.jwtToken,
+          loginKey: credentials.loginKey,
+          guid: credentials.guid,
+          userId: credentials.userId,
+          wsUrl: "wss://mmgrcalltoken.3g.qq.com/agentwss",
+        };
+        console.log("\n✅ 微信登录成功，配置已获取");
+      } catch (err) {
+        console.error("\n❌ 微信登录失败:", err instanceof Error ? err.message : String(err));
+        if (platform === "wechat") return false;
+      }
+    } else if (hasToken) {
+      (config.platforms as Record<string, unknown>).wechat = {
+        ...wc,
+        enabled: true,
+      };
+    } else if (platform === "wechat") {
+      return false;
+    }
+  }
+
+  if (selectedPlatforms.includes("wework")) {
+    const weworkResp = await prompts(
+      [
+        {
+          type: "text",
+          name: "corpId",
+          message: "企业微信 Bot ID（从企业微信管理后台获取）",
+          initial: existing?.platforms?.wework?.corpId ?? "",
+          validate: (v: string) => (v.trim() ? true : "Bot ID 不能为空"),
         },
         {
           type: "text",
-          name: "appSecret",
-          message: "微信 App Secret（从微信开放平台获取）",
-          initial: existing?.platforms?.wechat?.appSecret ?? "",
-          validate: (v: string) => (v.trim() ? true : "App Secret 不能为空"),
-        },
-        {
-          type: "text",
-          name: "wsUrl",
-          message: "AGP WebSocket URL（可选，留空使用默认）",
-          initial: existing?.platforms?.wechat?.wsUrl ?? "",
+          name: "secret",
+          message: "企业微信 Secret（从企业微信管理后台获取）",
+          initial: existing?.platforms?.wework?.secret ?? "",
+          validate: (v: string) => (v.trim() ? true : "Secret 不能为空"),
         },
       ],
       { onCancel },
     );
 
-    const wcAppId = wechatResp.appId?.trim() || existing?.platforms?.wechat?.appId;
-    const wcAppSecret = wechatResp.appSecret?.trim() || existing?.platforms?.wechat?.appSecret;
-    if (wcAppId && wcAppSecret) {
-      (config.platforms as any).wechat = {
+    const wwCorpId = weworkResp.corpId?.trim() || existing?.platforms?.wework?.corpId;
+    const wwSecret = weworkResp.secret?.trim() || existing?.platforms?.wework?.secret;
+    if (wwCorpId && wwSecret) {
+      (config.platforms as any).wework = {
         enabled: true,
-        appId: wcAppId,
-        appSecret: wcAppSecret,
-        wsUrl: wechatResp.wsUrl?.trim() || existing?.platforms?.wechat?.wsUrl || undefined,
+        corpId: wwCorpId,
+        secret: wwSecret,
       };
-    } else if (platform === "wechat") {
+    } else if (platform === "wework") {
       return false;
     }
   }
@@ -289,6 +382,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
   const tgIds = existing?.platforms?.telegram?.allowedUserIds?.join(", ") ?? "";
   const fsIds = existing?.platforms?.feishu?.allowedUserIds?.join(", ") ?? "";
   const wcIds = existing?.platforms?.wechat?.allowedUserIds?.join(", ") ?? "";
+  const wwIds = existing?.platforms?.wework?.allowedUserIds?.join(", ") ?? "";
   const aiIdx = ["claude", "codex", "cursor"].indexOf(existing?.aiCommand ?? "claude");
 
   const commonPrompts: prompts.PromptObject[] = [];
@@ -314,6 +408,14 @@ export async function runInteractiveSetup(): Promise<boolean> {
       name: "wechatAllowedUserIds",
       message: "微信白名单用户 ID（可选，逗号分隔，留空=所有人可访问）",
       initial: wcIds,
+    });
+  }
+  if (selectedPlatforms.includes("wework")) {
+    commonPrompts.push({
+      type: "text",
+      name: "weworkAllowedUserIds",
+      message: "企业微信白名单用户 ID（可选，逗号分隔，留空=所有人可访问）",
+      initial: wwIds,
     });
   }
   commonPrompts.push(
@@ -356,6 +458,9 @@ export async function runInteractiveSetup(): Promise<boolean> {
   const wechatIds = selectedPlatforms.includes("wechat")
     ? parseIds(commonResp.wechatAllowedUserIds)
     : parseIds(existing?.platforms?.wechat?.allowedUserIds?.join(", "));
+  const weworkIds = selectedPlatforms.includes("wework")
+    ? parseIds(commonResp.weworkAllowedUserIds)
+    : parseIds(existing?.platforms?.wework?.allowedUserIds?.join(", "));
 
   // 增量合并：以已有配置为底，只覆盖本次选中的平台（不写入根级旧字段 telegramBotToken 等）
   const base = existing
@@ -404,12 +509,18 @@ export async function runInteractiveSetup(): Promise<boolean> {
   }
 
   if (selectedPlatforms.includes("wechat")) {
-    (out.platforms as any).wechat = {
+    const wcConfig = (config.platforms as Record<string, unknown>)?.wechat as Record<string, unknown> | undefined;
+    (out.platforms as Record<string, unknown>).wechat = {
       ...(base?.platforms?.wechat as object),
       enabled: true,
-      appId: (config.platforms as any).wechat?.appId,
-      appSecret: (config.platforms as any).wechat?.appSecret,
-      wsUrl: (config.platforms as any).wechat?.wsUrl,
+      appId: wcConfig?.appId ?? base?.platforms?.wechat?.appId,
+      appSecret: wcConfig?.appSecret ?? base?.platforms?.wechat?.appSecret,
+      token: wcConfig?.token ?? base?.platforms?.wechat?.token,
+      jwtToken: wcConfig?.jwtToken ?? base?.platforms?.wechat?.jwtToken,
+      loginKey: wcConfig?.loginKey ?? base?.platforms?.wechat?.loginKey,
+      guid: wcConfig?.guid ?? base?.platforms?.wechat?.guid,
+      userId: wcConfig?.userId ?? base?.platforms?.wechat?.userId,
+      wsUrl: wcConfig?.wsUrl ?? base?.platforms?.wechat?.wsUrl,
       allowedUserIds: wechatIds,
     };
   } else if (base?.platforms?.wechat) {
@@ -419,6 +530,23 @@ export async function runInteractiveSetup(): Promise<boolean> {
     };
   } else {
     (out.platforms as any).wechat = { enabled: false, allowedUserIds: wechatIds };
+  }
+
+  if (selectedPlatforms.includes("wework")) {
+    (out.platforms as any).wework = {
+      ...(base?.platforms?.wework as object),
+      enabled: true,
+      corpId: (config.platforms as any).wework?.corpId,
+      secret: (config.platforms as any).wework?.secret,
+      allowedUserIds: weworkIds,
+    };
+  } else if (base?.platforms?.wework) {
+    (out.platforms as any).wework = {
+      ...base.platforms.wework,
+      allowedUserIds: weworkIds.length > 0 ? weworkIds : (base.platforms.wework as any).allowedUserIds,
+    };
+  } else {
+    (out.platforms as any).wework = { enabled: false, allowedUserIds: weworkIds };
   }
 
   const dir = dirname(configPath);
