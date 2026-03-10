@@ -23,8 +23,11 @@ export interface Config {
   feishuAppSecret?: string;
   wechatAppId?: string;
   wechatAppSecret?: string;
-  wechatToken?: string;  // AGP 协议 token
-  wechatGuid?: string;   // AGP 协议 guid
+  wechatToken?: string;     // AGP 协议 token
+  wechatJwtToken?: string;  // AGP 协议 jwtToken
+  wechatLoginKey?: string;  // AGP 协议 loginKey
+  wechatGuid?: string;      // AGP 协议 guid
+  wechatUserId?: string;    // AGP 协议 userId
   wechatWsUrl?: string;
   weworkCorpId?: string;
   weworkAgentId?: string;
@@ -63,6 +66,11 @@ export interface Config {
     wechat?: {
       enabled: boolean;
       wsUrl?: string;
+      token?: string;
+      jwtToken?: string;
+      loginKey?: string;
+      guid?: string;
+      userId?: string;
       allowedUserIds: string[];
     };
     wework?: {
@@ -90,9 +98,11 @@ interface FilePlatformWechat {
   enabled?: boolean;
   appId?: string;
   appSecret?: string;
-  token?: string;  // AGP 协议 token
-  guid?: string;   // AGP 协议 guid
-  userId?: string; // AGP 协议 userId
+  token?: string;      // AGP 协议 token
+  jwtToken?: string;   // JWT Token，用于刷新 channel_token
+  loginKey?: string;   // 4026 登录返回的 loginKey
+  guid?: string;       // AGP 协议 guid
+  userId?: string;     // AGP 协议 userId
   wsUrl?: string;
   allowedUserIds?: string[];
 }
@@ -149,6 +159,7 @@ export function needsSetup(): boolean {
   if (process.env.TELEGRAM_BOT_TOKEN) return false;
   if (process.env.FEISHU_APP_ID && process.env.FEISHU_APP_SECRET) return false;
   if (process.env.WECHAT_APP_ID && process.env.WECHAT_APP_SECRET) return false;
+  if (process.env.WECHAT_TOKEN && process.env.WECHAT_GUID && process.env.WECHAT_USER_ID) return false;
   if (process.env.WEWORK_CORP_ID && process.env.WEWORK_AGENT_ID && process.env.WEWORK_SECRET) return false;
 
   const file = loadFileConfig();
@@ -159,8 +170,8 @@ export function needsSetup(): boolean {
 
   const hasTelegram = !!tg?.botToken;
   const hasFeishu = !!(fs?.appId && fs?.appSecret);
-  // 微信支持 AGP 协议（token + guid）或标准协议（appId + appSecret）
-  const hasWechat = !!(wc?.token && wc?.guid) || !!(wc?.appId && wc?.appSecret);
+  // 微信支持 AGP 协议（token + guid + userId）或标准协议（appId + appSecret）
+  const hasWechat = !!(wc?.token && wc?.guid && wc?.userId) || !!(wc?.appId && wc?.appSecret);
   const hasWework = !!(ww?.corpId && ww?.agentId && ww?.secret);
 
   return !hasTelegram && !hasFeishu && !hasWechat && !hasWework;
@@ -194,14 +205,19 @@ export function loadConfig(): Config {
     file.feishuAppSecret;
 
   // 微信支持两种协议：
-  // 1. AGP 协议：token + guid（推荐）
+  // 1. AGP 协议：token + guid + userId（推荐）
   // 2. 标准协议：appId + appSecret
   const wechatToken =
     process.env.WECHAT_TOKEN ??
     fileWechat?.token;
+  const wechatJwtToken = fileWechat?.jwtToken;
+  const wechatLoginKey = fileWechat?.loginKey;
   const wechatGuid =
     process.env.WECHAT_GUID ??
     fileWechat?.guid;
+  const wechatUserId =
+    process.env.WECHAT_USER_ID ??
+    fileWechat?.userId;
 
   const wechatAppId =
     process.env.WECHAT_APP_ID ??
@@ -236,7 +252,7 @@ export function loadConfig(): Config {
   const feishuEnabled =
     !!(feishuAppId && feishuAppSecret) && (feishuEnabledFlag !== false);
   // 微信启用条件：AGP 协议凭证 或 标准协议凭证
-  const hasWechatAGPCreds = !!(wechatToken && wechatGuid);
+  const hasWechatAGPCreds = !!(wechatToken && wechatGuid && wechatUserId);
   const hasWechatStandardCreds = !!(wechatAppId && wechatAppSecret);
   const wechatEnabled =
     (hasWechatAGPCreds || hasWechatStandardCreds) && (wechatEnabledFlag !== false);
@@ -373,11 +389,21 @@ export function loadConfig(): Config {
       ? {
           enabled: true,
           wsUrl: wechatWsUrl,
+          token: wechatToken,
+          jwtToken: wechatJwtToken,
+          loginKey: wechatLoginKey,
+          guid: wechatGuid,
+          userId: wechatUserId,
           allowedUserIds: wechatAllowedUserIds,
         }
       : {
           enabled: false,
           wsUrl: wechatWsUrl,
+          token: wechatToken,
+          jwtToken: wechatJwtToken,
+          loginKey: wechatLoginKey,
+          guid: wechatGuid,
+          userId: wechatUserId,
           allowedUserIds: wechatAllowedUserIds,
         },
     wework: weworkEnabled
@@ -399,7 +425,10 @@ export function loadConfig(): Config {
     wechatAppId: wechatAppId ?? '',
     wechatAppSecret: wechatAppSecret ?? '',
     wechatToken: wechatToken,
+    wechatJwtToken: wechatJwtToken,
+    wechatLoginKey: wechatLoginKey,
     wechatGuid: wechatGuid,
+    wechatUserId: wechatUserId,
     wechatWsUrl: wechatWsUrl,
     weworkCorpId: weworkCorpId ?? '',
     weworkAgentId: weworkAgentId ?? '',
