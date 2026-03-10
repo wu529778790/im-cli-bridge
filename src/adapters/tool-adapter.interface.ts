@@ -24,6 +24,8 @@ export interface RunCallbacks {
 
 export interface RunOptions {
   skipPermissions?: boolean;
+  /** Claude --permission-mode: default | acceptEdits | plan（yolo 时用 skipPermissions） */
+  permissionMode?: 'default' | 'acceptEdits' | 'plan';
   timeoutMs?: number;
   model?: string;
   chatId?: string;

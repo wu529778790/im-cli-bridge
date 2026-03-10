@@ -30,6 +30,7 @@ export class ClaudeAdapter implements ToolAdapter {
   ): RunHandle {
     const opts = {
       skipPermissions: options?.skipPermissions,
+      permissionMode: options?.permissionMode,
       timeoutMs: options?.timeoutMs,
       model: options?.model,
       chatId: options?.chatId,

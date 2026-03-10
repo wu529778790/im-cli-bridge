@@ -1,16 +1,13 @@
 /**
  * Permission Server - Handles tool permission requests from Claude CLI
  *
- * When claudeSkipPermissions is false, Claude CLI will make HTTP requests
- * to this server to ask for user approval before running tools.
- * Supports permission modes: ask | accept-edits | plan | yolo
+ * When claudeSkipPermissions is false and not in yolo mode, Claude CLI will make
+ * HTTP requests to this server. We forward all requests to the user for approval;
+ * permission mode logic (ask/accept-edits/plan) is handled by Claude via --permission-mode.
  */
 
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { createLogger } from '../logger.js';
-import { getUserIdByChatId } from '../shared/chat-user-map.js';
-import { getPermissionMode } from '../permission-mode/session-mode.js';
-import type { PermissionMode } from '../permission-mode/types.js';
 
 const log = createLogger('PermissionServer');
 
@@ -38,12 +35,6 @@ let serverPort = DEFAULT_PORT;
 const pendingRequests = new Map<string, PermissionRequest>();
 const requestsByChat = new Map<string, PermissionRequest[]>();
 let messageSender: MessageSender | null = null;
-let defaultPermissionMode: PermissionMode = 'ask';
-
-/** 设置默认权限模式（从 config 调用） */
-export function setDefaultPermissionMode(mode: PermissionMode): void {
-  defaultPermissionMode = mode;
-}
 
 /**
  * Start the permission HTTP server
@@ -191,16 +182,6 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
   }
 }
 
-/** 编辑类工具（accept-edits 模式下自动放行） */
-const EDIT_TOOLS = new Set([
-  'EditBlock', 'Write', 'SearchReplace', 'ApplyPatch', 'Read', 'ListDir', 'GlobFileSearch',
-  'Grep', 'ReadLints', 'TodoWrite', 'EditNotebook',
-]);
-
-function isEditTool(toolName: string): boolean {
-  return EDIT_TOOLS.has(toolName);
-}
-
 /**
  * Handle a permission request from Claude CLI
  */
@@ -236,32 +217,6 @@ function handlePermissionRequest(req: IncomingMessage, res: ServerResponse): voi
         return;
       }
 
-      // 按用户权限模式决策
-      const userId = getUserIdByChatId(chatId);
-      const mode = userId ? getPermissionMode(userId, defaultPermissionMode) : defaultPermissionMode;
-
-      if (mode === 'yolo') {
-        log.info(`[${mode}] Auto-allow ${toolName}`);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ allowed: true }));
-        return;
-      }
-
-      if (mode === 'plan') {
-        log.info(`[${mode}] Auto-deny ${toolName} (plan mode)`);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ allowed: false }));
-        return;
-      }
-
-      if (mode === 'accept-edits' && isEditTool(toolName as string)) {
-        log.info(`[${mode}] Auto-allow edit tool ${toolName}`);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ allowed: true }));
-        return;
-      }
-
-      // ask 或 accept-edits 下的非编辑工具：需要用户确认
       if (process.env.CC_SKIP_PERMISSIONS === 'true') {
         log.info(`Skip permissions enabled, auto-allowing ${toolName}`);
         res.writeHead(200, { 'Content-Type': 'application/json' });

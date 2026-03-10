@@ -21,7 +21,7 @@ import {
 } from "./shared/active-chats.js";
 import { initLogger, createLogger, closeLogger } from "./logger.js";
 import { APP_HOME, SHUTDOWN_PORT } from "./constants.js";
-import { startPermissionServer, stopPermissionServer, setDefaultPermissionMode } from "./hook/permission-server.js";
+import { startPermissionServer, stopPermissionServer } from "./hook/permission-server.js";
 import { initPermissionModes } from "./permission-mode/session-mode.js";
 import { createRequire } from "node:module";
 
@@ -67,7 +67,6 @@ export async function main() {
   initLogger(config.logDir, config.logLevel);
   loadActiveChats();
   initPermissionModes();
-  setDefaultPermissionMode(config.defaultPermissionMode);
 
   initAdapters(config);
 
