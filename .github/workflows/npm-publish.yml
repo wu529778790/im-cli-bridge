@@ -72,8 +72,8 @@ jobs:
 
           echo "Inputs: BUMP=$BUMP, TAG=$TAG, IS_DEV=$IS_DEV"
 
-          # 在当前目录创建 Node 脚本（可以访问 node_modules）
-          cat > bump-version.js << 'NODEEOF'
+          # 创建 CommonJS 脚本（使用 .cjs 扩展名）
+          cat > bump-version.cjs << 'NODEEOF'
           const { execSync } = require('child_process');
           const semver = require('semver');
           const bump = process.argv[1];
@@ -126,7 +126,7 @@ jobs:
 
           # 执行脚本
           set +e
-          OUTPUT=$(node bump-version.js "$BUMP" "$TAG" "$IS_DEV" 2>&1)
+          OUTPUT=$(node bump-version.cjs "$BUMP" "$TAG" "$IS_DEV" 2>&1)
           RC=$?
           set -e
 
