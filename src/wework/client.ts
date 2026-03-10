@@ -59,6 +59,39 @@ export function getConnectionState(): WeWorkConnectionState {
 }
 
 /**
+ * 主动推送消息 (aibot_send_msg)
+ * 用于启动/关闭通知等场景，无需用户消息触发
+ * 注意：需用户曾与机器人对话后，才能向该会话主动推送
+ */
+export function sendProactiveMessage(chatId: string, content: string): void {
+  if (!ws || connectionState !== 'connected') {
+    log.error('Cannot send proactive message: WebSocket not connected');
+    return;
+  }
+  if (!chatId) {
+    log.error('Cannot send proactive message: chatId is required');
+    return;
+  }
+
+  const message = {
+    cmd: WeWorkCommand.AIBOT_SEND_MSG,
+    headers: { req_id: generateReqId() },
+    body: {
+      chatid: chatId,
+      chat_type: 1, // 单聊
+      msgtype: 'markdown',
+      markdown: { content },
+    },
+  };
+  try {
+    ws.send(JSON.stringify(message));
+    log.info(`[WeWork] Sent aibot_send_msg to ${chatId}`);
+  } catch (err) {
+    log.error('Error sending proactive message:', err);
+  }
+}
+
+/**
  * Send reply via WebSocket (aibot_respond_msg)
  * 长连接模式下必须用此方式回复，透传 req_id
  */
@@ -138,11 +171,10 @@ async function connectWebSocket(): Promise<void> {
         updateState('connected');
         startHeartbeat();
 
-        // 发送认证订阅消息
+        // 发送认证订阅消息，并等待服务端确认（否则 aibot_send_msg 会报 846609 not subscribed）
         try {
-          await sendSubscribe();
+          await sendSubscribeAndWaitAck(resolve, reject);
           log.info('WeWork authentication successful');
-          resolve();
         } catch (err) {
           log.error('WeWork authentication failed:', err);
           reject(err);
@@ -178,19 +210,28 @@ async function connectWebSocket(): Promise<void> {
   });
 }
 
+/** 等待订阅确认的回调，收到服务端 errcode 响应后调用 */
+let subscribeAckResolve: (() => void) | null = null;
+let subscribeAckReject: ((err: Error) => void) | null = null;
+
 /**
- * Send subscribe message for authentication
+ * 发送认证订阅消息，并等待服务端 errcode: 0 确认
+ * 必须在收到确认后才能发送 aibot_send_msg，否则报 846609 not subscribed
  */
-async function sendSubscribe(): Promise<void> {
+function sendSubscribeAndWaitAck(
+  onSuccess: () => void,
+  onError: (err: Error) => void
+): void {
   if (!config || !ws) {
     throw new Error('WebSocket not connected');
   }
 
+  subscribeAckResolve = onSuccess;
+  subscribeAckReject = onError;
+
   const subscribeMessage = {
     cmd: WeWorkCommand.SUBSCRIBE,
-    headers: {
-      req_id: generateReqId(),
-    },
+    headers: { req_id: generateReqId() },
     body: {
       secret: config.secret,
       bot_id: config.botId,
@@ -198,7 +239,7 @@ async function sendSubscribe(): Promise<void> {
   };
 
   ws.send(JSON.stringify(subscribeMessage));
-  log.debug('Sent subscribe message');
+  log.debug('Sent subscribe message, waiting for ack...');
 }
 
 /**
@@ -208,6 +249,21 @@ async function handleMessage(message: WeWorkCallbackMessage | WeWorkResponse): P
   // 检查是否是响应消息（我们发送的消息的响应）
   if ('errcode' in message) {
     const response = message as { errcode: number; errmsg: string };
+    // 若在等待订阅确认，优先处理
+    if (subscribeAckResolve || subscribeAckReject) {
+      const resolve = subscribeAckResolve;
+      const reject = subscribeAckReject;
+      subscribeAckResolve = null;
+      subscribeAckReject = null;
+      if (response.errcode === 0) {
+        log.debug('Subscribe ack received');
+        resolve?.();
+      } else {
+        log.error(`WeWork subscribe failed: ${response.errcode} - ${response.errmsg}`);
+        reject?.(new Error(`Subscribe failed: ${response.errcode} ${response.errmsg}`));
+      }
+      return;
+    }
     if (response.errcode !== 0) {
       log.error(`WeWork error response: ${response.errcode} - ${response.errmsg}`);
     } else {

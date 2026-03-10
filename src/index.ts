@@ -17,7 +17,7 @@ import { setupWeChatHandlers } from "./wechat/event-handler.js";
 import { sendTextReply as sendWeChatTextReply } from "./wechat/message-sender.js";
 import { initWeWork, stopWeWork } from "./wework/client.js";
 import { setupWeWorkHandlers } from "./wework/event-handler.js";
-import { sendTextReply as sendWeWorkTextReply } from "./wework/message-sender.js";
+import { sendProactiveTextReply as sendWeWorkTextReply } from "./wework/message-sender.js";
 import { initAdapters, cleanupAdapters } from "./adapters/registry.js";
 import { SessionManager } from "./session/session-manager.js";
 import {

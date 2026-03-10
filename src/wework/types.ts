@@ -18,6 +18,8 @@ export const enum WeWorkCommand {
   AIBOT_CALLBACK = 'aibot_msg_callback',
   /** 回复消息（长连接模式必须用此命令，不能用 HTTP response_url） */
   AIBOT_RESPOND_MSG = 'aibot_respond_msg',
+  /** 主动推送消息（无需回调，用于启动/关闭通知等） */
+  AIBOT_SEND_MSG = 'aibot_send_msg',
   /** AI bot 响应消息（旧） */
   AIBOT_RESPONSE = 'aibot_response',
 }

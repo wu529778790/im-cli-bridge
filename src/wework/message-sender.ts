@@ -3,7 +3,7 @@
  * 通过 WebSocket aibot_respond_msg 发送，需透传 req_id
  */
 
-import { sendText, sendStream, sendMessage } from './client.js';
+import { sendText, sendStream, sendMessage, sendProactiveMessage } from './client.js';
 import { createLogger } from '../logger.js';
 import { splitLongContent } from '../shared/utils.js';
 import { MAX_WEWORK_MESSAGE_LENGTH } from '../constants.js';
@@ -193,6 +193,19 @@ export async function sendFinalMessages(
     }
   } catch (err) {
     log.error('Failed to send final messages:', err);
+  }
+}
+
+/**
+ * 主动推送文本（用于启动/关闭通知等，无需 req_id）
+ */
+export async function sendProactiveTextReply(chatId: string, text: string): Promise<void> {
+  const message = formatWeWorkMessage('📢 open-im', text, 'done');
+  try {
+    sendProactiveMessage(chatId, message);
+    log.info(`Proactive text sent to user ${chatId}`);
+  } catch (err) {
+    log.error('Failed to send proactive text:', err);
   }
 }
 
