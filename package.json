@@ -21,13 +21,7 @@
     "foreground": "node dist/cli.js dev",
     "setup": "node dist/index.js --setup-only",
     "test": "npm run build",
-    "prepublishOnly": "npm run build",
-    "version:alpha": "npm version prerelease --preid=alpha",
-    "version:beta": "npm version prerelease --preid=beta",
-    "version:rc": "npm version prerelease --preid=rc",
-    "publish:alpha": "npm publish --tag next",
-    "publish:beta": "npm publish --tag next",
-    "publish:rc": "npm publish --tag next"
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "telegram",
