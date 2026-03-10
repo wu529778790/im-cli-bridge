@@ -15,6 +15,7 @@ interface ExistingConfig {
     telegram?: { enabled?: boolean; botToken?: string; allowedUserIds?: string[]; proxy?: string };
     feishu?: { enabled?: boolean; appId?: string; appSecret?: string; allowedUserIds?: string[] };
     wechat?: { enabled?: boolean; appId?: string; appSecret?: string; wsUrl?: string; allowedUserIds?: string[] };
+    wework?: { enabled?: boolean; corpId?: string; agentId?: string; secret?: string; allowedUserIds?: string[] };
   };
   claudeWorkDir?: string;
   claudeSkipPermissions?: boolean;
@@ -37,6 +38,7 @@ function getConfiguredPlatforms(existing: ExistingConfig | null): string[] {
     { k: "telegram", label: "Telegram" },
     { k: "feishu", label: "飞书" },
     { k: "wechat", label: "微信" },
+    { k: "wework", label: "企业微信" },
   ];
   return names
     .filter(({ k }) => {
@@ -45,6 +47,7 @@ function getConfiguredPlatforms(existing: ExistingConfig | null): string[] {
       if (k === "telegram") return !!p.botToken;
       if (k === "feishu") return !!(p.appId && p.appSecret);
       if (k === "wechat") return !!(p.appId && p.appSecret);
+      if (k === "wework") return !!(p.corpId && p.agentId && p.secret);
       return false;
     })
     .map(({ label }) => label);
@@ -87,6 +90,13 @@ function printManualInstructions(configPath: string): void {
       "appSecret": "你的微信 App Secret（可选）",
       "wsUrl": "AGP WebSocket URL（可选，默认使用官方服务）",
       "allowedUserIds": ["允许访问的微信用户 ID（可选）"]
+    },
+    "wework": {
+      "enabled": false,
+      "corpId": "你的企业微信 Corp ID（可选）",
+      "agentId": "你的企业微信 Agent ID（可选）",
+      "secret": "你的企业微信 Secret（可选）",
+      "allowedUserIds": ["允许访问的企业微信用户 ID（可选）"]
     }
   },
   "claudeWorkDir": "${process.cwd().replace(/\\/g, "/")}",
@@ -94,9 +104,9 @@ function printManualInstructions(configPath: string): void {
   "aiCommand": "claude"
 }`);
   console.log("");
-  console.log("提示：至少需要配置 Telegram、Feishu 或 WeChat 其中一个平台");
+  console.log("提示：至少需要配置 Telegram、Feishu、WeChat 或 WeWork 其中一个平台");
   console.log(
-    "或设置环境变量: TELEGRAM_BOT_TOKEN=xxx、FEISHU_APP_ID=xxx 或 WECHAT_APP_ID=xxx 后再运行",
+    "或设置环境变量: TELEGRAM_BOT_TOKEN=xxx、FEISHU_APP_ID=xxx、WECHAT_APP_ID=xxx 或 WEWORK_CORP_ID=xxx 后再运行",
   );
   console.log("");
 }
@@ -130,6 +140,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
   const hasTg = !!existing?.platforms?.telegram?.botToken;
   const hasFs = !!(existing?.platforms?.feishu?.appId && existing?.platforms?.feishu?.appSecret);
   const hasWc = !!(existing?.platforms?.wechat?.appId && existing?.platforms?.wechat?.appSecret);
+  const hasWw = !!(existing?.platforms?.wework?.corpId && existing?.platforms?.wework?.agentId && existing?.platforms?.wework?.secret);
 
   // 第一步：选择平台（在选项和提示中显示已配置项）
   const configuredHint =
@@ -155,6 +166,12 @@ export async function runInteractiveSetup(): Promise<boolean> {
             "微信 (WeChat) - 需要 App ID 和 App Secret（AGP 协议）" +
             (hasWc ? " ✓已配置" : ""),
           value: "wechat",
+        },
+        {
+          title:
+            "企业微信 (WeCom/WeWork) - 需要 Corp ID、Agent ID 和 Secret" +
+            (hasWw ? " ✓已配置" : ""),
+          value: "wework",
         },
         { title: "配置多个平台", value: "multi" },
       ],
@@ -182,6 +199,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
           { title: "Telegram" + (hasTg ? " ✓已配置" : ""), value: "telegram", selected: hasTg },
           { title: "飞书 (Feishu)" + (hasFs ? " ✓已配置" : ""), value: "feishu", selected: hasFs },
           { title: "微信 (WeChat)" + (hasWc ? " ✓已配置" : ""), value: "wechat", selected: hasWc },
+          { title: "企业微信 (WeWork)" + (hasWw ? " ✓已配置" : ""), value: "wework", selected: hasWw },
         ],
       },
       { onCancel },
@@ -285,10 +303,54 @@ export async function runInteractiveSetup(): Promise<boolean> {
     }
   }
 
+  if (selectedPlatforms.includes("wework")) {
+    const weworkResp = await prompts(
+      [
+        {
+          type: "text",
+          name: "corpId",
+          message: "企业微信 Corp ID（从企业微信管理后台获取）",
+          initial: existing?.platforms?.wework?.corpId ?? "",
+          validate: (v: string) => (v.trim() ? true : "Corp ID 不能为空"),
+        },
+        {
+          type: "text",
+          name: "agentId",
+          message: "企业微信 Agent ID（应用 ID，从企业微信管理后台获取）",
+          initial: existing?.platforms?.wework?.agentId ?? "",
+          validate: (v: string) => (v.trim() ? true : "Agent ID 不能为空"),
+        },
+        {
+          type: "text",
+          name: "secret",
+          message: "企业微信 Secret（从企业微信管理后台获取）",
+          initial: existing?.platforms?.wework?.secret ?? "",
+          validate: (v: string) => (v.trim() ? true : "Secret 不能为空"),
+        },
+      ],
+      { onCancel },
+    );
+
+    const wwCorpId = weworkResp.corpId?.trim() || existing?.platforms?.wework?.corpId;
+    const wwAgentId = weworkResp.agentId?.trim() || existing?.platforms?.wework?.agentId;
+    const wwSecret = weworkResp.secret?.trim() || existing?.platforms?.wework?.secret;
+    if (wwCorpId && wwAgentId && wwSecret) {
+      (config.platforms as any).wework = {
+        enabled: true,
+        corpId: wwCorpId,
+        agentId: wwAgentId,
+        secret: wwSecret,
+      };
+    } else if (platform === "wework") {
+      return false;
+    }
+  }
+
   // 通用配置：只询问所选平台的白名单，未选平台沿用已有配置
   const tgIds = existing?.platforms?.telegram?.allowedUserIds?.join(", ") ?? "";
   const fsIds = existing?.platforms?.feishu?.allowedUserIds?.join(", ") ?? "";
   const wcIds = existing?.platforms?.wechat?.allowedUserIds?.join(", ") ?? "";
+  const wwIds = existing?.platforms?.wework?.allowedUserIds?.join(", ") ?? "";
   const aiIdx = ["claude", "codex", "cursor"].indexOf(existing?.aiCommand ?? "claude");
 
   const commonPrompts: prompts.PromptObject[] = [];
@@ -314,6 +376,14 @@ export async function runInteractiveSetup(): Promise<boolean> {
       name: "wechatAllowedUserIds",
       message: "微信白名单用户 ID（可选，逗号分隔，留空=所有人可访问）",
       initial: wcIds,
+    });
+  }
+  if (selectedPlatforms.includes("wework")) {
+    commonPrompts.push({
+      type: "text",
+      name: "weworkAllowedUserIds",
+      message: "企业微信白名单用户 ID（可选，逗号分隔，留空=所有人可访问）",
+      initial: wwIds,
     });
   }
   commonPrompts.push(
@@ -356,6 +426,9 @@ export async function runInteractiveSetup(): Promise<boolean> {
   const wechatIds = selectedPlatforms.includes("wechat")
     ? parseIds(commonResp.wechatAllowedUserIds)
     : parseIds(existing?.platforms?.wechat?.allowedUserIds?.join(", "));
+  const weworkIds = selectedPlatforms.includes("wework")
+    ? parseIds(commonResp.weworkAllowedUserIds)
+    : parseIds(existing?.platforms?.wework?.allowedUserIds?.join(", "));
 
   // 增量合并：以已有配置为底，只覆盖本次选中的平台（不写入根级旧字段 telegramBotToken 等）
   const base = existing
@@ -419,6 +492,24 @@ export async function runInteractiveSetup(): Promise<boolean> {
     };
   } else {
     (out.platforms as any).wechat = { enabled: false, allowedUserIds: wechatIds };
+  }
+
+  if (selectedPlatforms.includes("wework")) {
+    (out.platforms as any).wework = {
+      ...(base?.platforms?.wework as object),
+      enabled: true,
+      corpId: (config.platforms as any).wework?.corpId,
+      agentId: (config.platforms as any).wework?.agentId,
+      secret: (config.platforms as any).wework?.secret,
+      allowedUserIds: weworkIds,
+    };
+  } else if (base?.platforms?.wework) {
+    (out.platforms as any).wework = {
+      ...base.platforms.wework,
+      allowedUserIds: weworkIds.length > 0 ? weworkIds : (base.platforms.wework as any).allowedUserIds,
+    };
+  } else {
+    (out.platforms as any).wework = { enabled: false, allowedUserIds: weworkIds };
   }
 
   const dir = dirname(configPath);

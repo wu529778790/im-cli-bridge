@@ -44,6 +44,8 @@ export const FEISHU_THROTTLE_MS = 200;
 export const TELEGRAM_THROTTLE_MS = 200;
 /** WeChat 流式更新节流：1000ms（AGP 协议建议值） */
 export const WECHAT_THROTTLE_MS = 1000;
+export const WEWORK_THROTTLE_MS = 500;
 export const MAX_TELEGRAM_MESSAGE_LENGTH = 4000;
 export const MAX_FEISHU_MESSAGE_LENGTH = 4000;
 export const MAX_WECHAT_MESSAGE_LENGTH = 2048;
+export const MAX_WEWORK_MESSAGE_LENGTH = 2048;
