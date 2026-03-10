@@ -4,7 +4,7 @@
 
 ## 功能特性
 
-- **多平台**：支持 Telegram、飞书、企业微信和微信，可同时启用
+- **多平台**：支持 Telegram、飞书、企业微信、微信（测试中），可同时启用
 - **多 AI 工具**：通过配置切换 Claude Code / Codex / Cursor
 - **流式输出**：节流更新，实时展示 AI 回复
 - **会话管理**：每用户独立 session，`/new` 重置会话
@@ -68,12 +68,12 @@ npm run dev        # 直接运行源码（tsx，无需 build）
 | `TELEGRAM_BOT_TOKEN` | Telegram Bot Token（从 @BotFather 获取） |
 | `FEISHU_APP_ID` | 飞书应用 App ID |
 | `FEISHU_APP_SECRET` | 飞书应用 App Secret |
-| `WECHAT_APP_ID` | 微信应用 App ID（AGP 协议） |
-| `WECHAT_APP_SECRET` | 微信应用 App Secret |
-| `WECHAT_WS_URL` | AGP WebSocket URL（可选，默认使用官方服务） |
 | `WEWORK_CORP_ID` | 企业微信机器人 ID（Bot ID） |
 | `WEWORK_SECRET` | 企业微信机器人 Secret |
 | `WEWORK_WS_URL` | 企业微信 WebSocket URL（可选，默认官方） |
+| `WECHAT_APP_ID` | 微信应用 App ID（AGP/Qclaw 协议，测试中） |
+| `WECHAT_APP_SECRET` | 微信应用 App Secret |
+| `WECHAT_WS_URL` | AGP WebSocket URL（可选，默认使用官方服务） |
 | `ALLOWED_USER_IDS` | 白名单用户 ID（逗号分隔，空=所有人） |
 | `AI_COMMAND` | `claude` \| `codex` \| `cursor`，默认 `claude` |
 | `CLAUDE_CLI_PATH` | Claude CLI 路径，默认 `claude` |
@@ -94,7 +94,7 @@ npm run dev        # 直接运行源码（tsx，无需 build）
 - **Telegram**：`TELEGRAM_BOT_TOKEN` 或 `telegramBotToken`
 - **飞书**：`FEISHU_APP_ID` + `FEISHU_APP_SECRET` 或 `feishuAppId` + `feishuAppSecret`
 - **企业微信**：`WEWORK_CORP_ID` + `WEWORK_SECRET` 或 `platforms.wework.corpId` + `platforms.wework.secret`
-- **微信**：`WECHAT_APP_ID` + `WECHAT_APP_SECRET` 或 `wechatAppId` + `wechatAppSecret`
+- **微信**：`WECHAT_APP_ID` + `WECHAT_APP_SECRET` 或 `wechatAppId` + `wechatAppSecret`（测试中，基于 Qclaw 通道，连接可能不稳定）
 
 ### 飞书配置说明
 
@@ -290,10 +290,10 @@ open-im init
 
 ### Q: 微信连接失败（错误 1006 或 500）？
 
-微信使用 AGP 协议连接，该协议服务器由第三方提供。如果出现连接失败，可能原因：
+微信通道基于 **Qclaw** 接入，目前处于**测试阶段**，连接可能不稳定。若出现连接失败，可能原因：
 
-1. **AGP 服务器限制**
-   - AGP 服务器使用了 Qclaw 通道，可能有白名单限制
+1. **Qclaw 通道限制**
+   - Qclaw 通道可能有白名单限制
    - 独立客户端可能不在允许列表中
    - token 或 guid 无效或已过期
 
@@ -302,4 +302,4 @@ open-im init
    - 尝试更新 token/guid（如果提供商支持）
    - 或暂时使用其他平台（Telegram/飞书/企业微信）
 
-**注意**：这是 AGP 协议服务器的限制，非本项目的 bug。如果 AGP 服务器调整策略，微信功能可能恢复正常。
+**注意**：微信通道为测试功能，基于 Qclaw 接入，连接稳定性取决于第三方服务。建议优先使用 Telegram、飞书或企业微信。
