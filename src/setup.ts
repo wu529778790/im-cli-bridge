@@ -127,7 +127,11 @@ export async function runInteractiveSetup(): Promise<boolean> {
     process.exit(0);
   };
 
-  // 第一步：选择平台（在提示中显示已配置项）
+  const hasTg = !!existing?.platforms?.telegram?.botToken;
+  const hasFs = !!(existing?.platforms?.feishu?.appId && existing?.platforms?.feishu?.appSecret);
+  const hasWc = !!(existing?.platforms?.wechat?.appId && existing?.platforms?.wechat?.appSecret);
+
+  // 第一步：选择平台（在选项和提示中显示已配置项）
   const configuredHint =
     configured.length > 0 ? `（当前已配置: ${configured.join("、")}）` : "";
   const platformResp = await prompts(
@@ -136,13 +140,20 @@ export async function runInteractiveSetup(): Promise<boolean> {
       name: "platform",
       message: `选择要配置的平台 ${configuredHint}（↑↓ 选择）`,
       choices: [
-        { title: "Telegram - 需要 Bot Token", value: "telegram" },
         {
-          title: "飞书 (Feishu/Lark) - 需要 App ID 和 App Secret",
+          title: "Telegram - 需要 Bot Token" + (hasTg ? " ✓已配置" : ""),
+          value: "telegram",
+        },
+        {
+          title:
+            "飞书 (Feishu/Lark) - 需要 App ID 和 App Secret" +
+            (hasFs ? " ✓已配置" : ""),
           value: "feishu",
         },
         {
-          title: "微信 (WeChat) - 需要 App ID 和 App Secret（AGP 协议）",
+          title:
+            "微信 (WeChat) - 需要 App ID 和 App Secret（AGP 协议）" +
+            (hasWc ? " ✓已配置" : ""),
           value: "wechat",
         },
         { title: "配置多个平台", value: "multi" },
@@ -161,9 +172,6 @@ export async function runInteractiveSetup(): Promise<boolean> {
 
   // 第二步：选择要配置的多个平台（如果选择了 multi）
   let selectedPlatforms: string[] = [];
-  const hasTg = !!existing?.platforms?.telegram?.botToken;
-  const hasFs = !!(existing?.platforms?.feishu?.appId && existing?.platforms?.feishu?.appSecret);
-  const hasWc = !!(existing?.platforms?.wechat?.appId && existing?.platforms?.wechat?.appSecret);
   if (platform === "multi") {
     const multiResp = await prompts(
       {
@@ -277,54 +285,58 @@ export async function runInteractiveSetup(): Promise<boolean> {
     }
   }
 
-  // 通用配置（使用已有值作为默认）
+  // 通用配置：只询问所选平台的白名单，未选平台沿用已有配置
   const tgIds = existing?.platforms?.telegram?.allowedUserIds?.join(", ") ?? "";
   const fsIds = existing?.platforms?.feishu?.allowedUserIds?.join(", ") ?? "";
   const wcIds = existing?.platforms?.wechat?.allowedUserIds?.join(", ") ?? "";
   const aiIdx = ["claude", "codex", "cursor"].indexOf(existing?.aiCommand ?? "claude");
-  const commonResp = await prompts(
-    [
-      {
-        type: "text",
-        name: "telegramAllowedUserIds",
-        message:
-          "Telegram 白名单用户 ID（可选，逗号分隔，留空=所有人可访问）",
-        initial: tgIds,
-      },
-      {
-        type: "text",
-        name: "feishuAllowedUserIds",
-        message:
-          "飞书白名单用户 ID（可选，逗号分隔，留空=所有人可访问）",
-        initial: fsIds,
-      },
-      {
-        type: "text",
-        name: "wechatAllowedUserIds",
-        message:
-          "微信白名单用户 ID（可选，逗号分隔，留空=所有人可访问）",
-        initial: wcIds,
-      },
-      {
-        type: "select",
-        name: "aiCommand",
-        message: "AI 工具（↑↓ 选择）",
-        choices: [
-          { title: "claude-code", value: "claude" },
-          { title: "codex", value: "codex" },
-          { title: "cursor", value: "cursor" },
-        ],
-        initial: aiIdx >= 0 ? aiIdx : 0,
-      },
-      {
-        type: "text",
-        name: "workDir",
-        message: "工作目录",
-        initial: existing?.claudeWorkDir ?? process.cwd(),
-      },
-    ],
-    { onCancel },
+
+  const commonPrompts: prompts.PromptObject[] = [];
+  if (selectedPlatforms.includes("telegram")) {
+    commonPrompts.push({
+      type: "text",
+      name: "telegramAllowedUserIds",
+      message: "Telegram 白名单用户 ID（可选，逗号分隔，留空=所有人可访问）",
+      initial: tgIds,
+    });
+  }
+  if (selectedPlatforms.includes("feishu")) {
+    commonPrompts.push({
+      type: "text",
+      name: "feishuAllowedUserIds",
+      message: "飞书白名单用户 ID（可选，逗号分隔，留空=所有人可访问）",
+      initial: fsIds,
+    });
+  }
+  if (selectedPlatforms.includes("wechat")) {
+    commonPrompts.push({
+      type: "text",
+      name: "wechatAllowedUserIds",
+      message: "微信白名单用户 ID（可选，逗号分隔，留空=所有人可访问）",
+      initial: wcIds,
+    });
+  }
+  commonPrompts.push(
+    {
+      type: "select",
+      name: "aiCommand",
+      message: "AI 工具（↑↓ 选择）",
+      choices: [
+        { title: "claude-code", value: "claude" },
+        { title: "codex", value: "codex" },
+        { title: "cursor", value: "cursor" },
+      ],
+      initial: aiIdx >= 0 ? aiIdx : 0,
+    },
+    {
+      type: "text",
+      name: "workDir",
+      message: "工作目录",
+      initial: existing?.claudeWorkDir ?? process.cwd(),
+    },
   );
+
+  const commonResp = await prompts(commonPrompts, { onCancel });
 
   const parseIds = (value: string | undefined): string[] =>
     value
@@ -334,10 +346,16 @@ export async function runInteractiveSetup(): Promise<boolean> {
           .filter(Boolean)
       : [];
 
-  // 分平台白名单
-  const telegramIds = parseIds(commonResp.telegramAllowedUserIds);
-  const feishuIds = parseIds(commonResp.feishuAllowedUserIds);
-  const wechatIds = parseIds(commonResp.wechatAllowedUserIds);
+  // 分平台白名单：已询问的用输入值，未询问的用已有配置
+  const telegramIds = selectedPlatforms.includes("telegram")
+    ? parseIds(commonResp.telegramAllowedUserIds)
+    : parseIds(existing?.platforms?.telegram?.allowedUserIds?.join(", "));
+  const feishuIds = selectedPlatforms.includes("feishu")
+    ? parseIds(commonResp.feishuAllowedUserIds)
+    : parseIds(existing?.platforms?.feishu?.allowedUserIds?.join(", "));
+  const wechatIds = selectedPlatforms.includes("wechat")
+    ? parseIds(commonResp.wechatAllowedUserIds)
+    : parseIds(existing?.platforms?.wechat?.allowedUserIds?.join(", "));
 
   // 增量合并：以已有配置为底，只覆盖本次选中的平台（不写入根级旧字段 telegramBotToken 等）
   const base = existing
