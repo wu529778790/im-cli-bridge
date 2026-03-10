@@ -1,8 +1,8 @@
 import { createServer } from "node:http";
 import { writeFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { loadConfig, needsSetup } from "./config.js";
-import { runInteractiveSetup } from "./setup.js";
+import { loadConfig, needsSetup, getPlatformsWithCredentials } from "./config.js";
+import { runInteractiveSetup, runPlatformSelectionPrompt } from "./setup.js";
 
 // 导出供 cli.ts 使用
 export { needsSetup, runInteractiveSetup };
@@ -87,7 +87,17 @@ export async function main() {
     if (!saved) process.exit(1);
   }
 
-  const config = loadConfig();
+  let config = loadConfig();
+
+  // 多通道时让用户确认启用哪些（仅 TTY 交互模式）
+  if (
+    getPlatformsWithCredentials(config).length > 1 &&
+    process.stdin.isTTY
+  ) {
+    const updated = await runPlatformSelectionPrompt(config);
+    if (!updated) process.exit(0);
+    config = updated;
+  }
   initLogger(config.logDir, config.logLevel);
   loadActiveChats();
   initPermissionModes();

@@ -454,3 +454,16 @@ export function loadConfig(): Config {
     platforms,
   };
 }
+
+/** 获取已配置凭证的平台列表（用于多通道启动时让用户选择） */
+export function getPlatformsWithCredentials(config: Config): Platform[] {
+  const r: Platform[] = [];
+  if (config.telegramBotToken) r.push('telegram');
+  if (config.feishuAppId && config.feishuAppSecret) r.push('feishu');
+  const hasWechat =
+    (config.wechatToken && config.wechatGuid && config.wechatUserId) ||
+    (config.wechatAppId && config.wechatAppSecret);
+  if (hasWechat) r.push('wechat');
+  if (config.weworkCorpId && config.weworkSecret) r.push('wework');
+  return r;
+}
