@@ -163,7 +163,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
         },
         {
           title:
-            "微信 (WeChat) - 需要 App ID 和 App Secret（AGP 协议）" +
+            "微信 (WeChat) - 需要 token 和 guid（AGP 协议）" +
             (hasWc ? " ✓已配置" : ""),
           value: "wechat",
         },
@@ -263,6 +263,13 @@ export async function runInteractiveSetup(): Promise<boolean> {
   }
 
   if (selectedPlatforms.includes("wechat")) {
+    console.log("\n⚠️  微信 AGP 协议说明：");
+    console.log("   本项目使用 AGP 协议连接微信，该协议服务器由第三方提供。");
+    console.log("   如果启动后出现连接失败（错误 1006），可能原因：");
+    console.log("   - AGP 服务器使用了 Qclaw 通道，可能有白名单限制");
+    console.log("   - token 或 guid 无效或已过期");
+    console.log("");
+
     const wechatResp = await prompts(
       [
         {
