@@ -169,8 +169,9 @@ jobs:
       - name: Publish to npm
         if: github.event.inputs.dry_run != 'true'
         run: |
+          TAG="${{ github.event.inputs.prerelease_tag || 'beta' }}"
           if [[ "$IS_PRERELEASE" == "true" ]]; then
-            npm publish --access public --tag=$PRERELEASE_TAG
+            npm publish --access public --tag=$TAG
           else
             npm publish --access public
           fi
