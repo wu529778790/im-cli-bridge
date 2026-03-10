@@ -37,16 +37,16 @@ src/
 │   ├── client.ts       # 飞书客户端和 WebSocket 事件处理
 │   ├── event-handler.ts # 消息事件处理、权限控制
 │   └── message-sender.ts # 消息发送（文本、图片、卡片等）
-├── wechat/             # 微信平台模块 (AGP 协议)
-│   ├── client.ts       # WebSocket 长连接管理
-│   ├── event-handler.ts # AGP 消息事件处理
-│   ├── message-sender.ts # AGP 消息发送
-│   └── types.ts        # AGP 协议类型定义
 ├── wework/             # 企业微信平台模块 (AI Bot WebSocket)
 │   ├── client.ts       # WebSocket 连接、订阅认证、主动推送
 │   ├── event-handler.ts # 消息事件处理
 │   ├── message-sender.ts # 消息发送
 │   └── types.ts        # 企业微信 API 类型
+├── wechat/             # 微信平台模块 (AGP/Qclaw 协议，测试中)
+│   ├── client.ts       # WebSocket 长连接管理
+│   ├── event-handler.ts # AGP 消息事件处理
+│   ├── message-sender.ts # AGP 消息发送
+│   └── types.ts        # AGP 协议类型定义
 ├── adapters/           # AI 工具适配器层
 │   ├── tool-adapter.interface.ts # 适配器接口定义
 │   ├── claude-adapter.ts # Claude Code CLI 集成

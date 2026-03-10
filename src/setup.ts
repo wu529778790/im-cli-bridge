@@ -9,6 +9,8 @@ import { createInterface } from "node:readline";
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { APP_HOME } from "./constants.js";
+import type { Config, Platform } from "./config.js";
+import { loadConfig, getPlatformsWithCredentials } from "./config.js";
 
 interface ExistingConfig {
   platforms?: {
@@ -48,8 +50,8 @@ function getConfiguredPlatforms(existing: ExistingConfig | null): string[] {
   const names: { k: string; label: string }[] = [
     { k: "telegram", label: "Telegram" },
     { k: "feishu", label: "飞书" },
-    { k: "wechat", label: "微信" },
     { k: "wework", label: "企业微信" },
+    { k: "wechat", label: "微信" },
   ];
   return names
     .filter(({ k }) => {
@@ -96,19 +98,19 @@ function printManualInstructions(configPath: string): void {
       "appSecret": "你的飞书 App Secret（可选）",
       "allowedUserIds": ["允许访问的飞书用户 ID（可选）"]
     },
-    "wechat": {
-      "enabled": false,
-      "appId": "你的微信 App ID（可选）",
-      "appSecret": "你的微信 App Secret（可选）",
-      "wsUrl": "AGP WebSocket URL（可选，默认使用官方服务）",
-      "allowedUserIds": ["允许访问的微信用户 ID（可选）"]
-    },
     "wework": {
       "enabled": false,
       "corpId": "你的企业微信 Corp ID（可选）",
       "agentId": "你的企业微信 Agent ID（可选）",
       "secret": "你的企业微信 Secret（可选）",
       "allowedUserIds": ["允许访问的企业微信用户 ID（可选）"]
+    },
+    "wechat": {
+      "enabled": false,
+      "appId": "你的微信 App ID（可选，测试中）",
+      "appSecret": "你的微信 App Secret（可选）",
+      "wsUrl": "AGP WebSocket URL（可选，默认使用官方服务）",
+      "allowedUserIds": ["允许访问的微信用户 ID（可选）"]
     }
   },
   "claudeWorkDir": "${process.cwd().replace(/\\/g, "/")}",
@@ -176,15 +178,15 @@ export async function runInteractiveSetup(): Promise<boolean> {
         },
         {
           title:
-            "微信 (WeChat) - 扫码登录获取 token（QClaw/AGP 协议）" +
-            (hasWc ? " ✓已配置" : ""),
-          value: "wechat",
-        },
-        {
-          title:
             "企业微信 (WeCom/WeWork) - 需要 Bot ID 和 Secret" +
             (hasWw ? " ✓已配置" : ""),
           value: "wework",
+        },
+        {
+          title:
+            "微信 (WeChat) - 扫码登录获取 token（QClaw/AGP 协议，测试中）" +
+            (hasWc ? " ✓已配置" : ""),
+          value: "wechat",
         },
         { title: "配置多个平台", value: "multi" },
       ],
@@ -211,8 +213,8 @@ export async function runInteractiveSetup(): Promise<boolean> {
         choices: [
           { title: "Telegram" + (hasTg ? " ✓已配置" : ""), value: "telegram", selected: hasTg },
           { title: "飞书 (Feishu)" + (hasFs ? " ✓已配置" : ""), value: "feishu", selected: hasFs },
-          { title: "微信 (WeChat)" + (hasWc ? " ✓已配置" : ""), value: "wechat", selected: hasWc },
           { title: "企业微信 (WeWork)" + (hasWw ? " ✓已配置" : ""), value: "wework", selected: hasWw },
+          { title: "微信 (WeChat，测试中)" + (hasWc ? " ✓已配置" : ""), value: "wechat", selected: hasWc },
         ],
       },
       { onCancel },
@@ -558,4 +560,72 @@ export async function runInteractiveSetup(): Promise<boolean> {
   console.log("\n✅ 配置已保存到", configPath);
   console.log("");
   return true;
+}
+
+const PLATFORM_LABELS: Record<Platform, string> = {
+  telegram: "Telegram",
+  feishu: "飞书",
+  wework: "企业微信",
+  wechat: "微信（测试中）",
+};
+
+/**
+ * 多通道启动时让用户确认/选择要启用的平台
+ * 仅当配置了 2 个及以上平台且 stdin 为 TTY 时调用
+ * @returns 更新后的 config，或 null 表示取消
+ */
+export async function runPlatformSelectionPrompt(
+  config: Config,
+): Promise<Config | null> {
+  const withCreds = getPlatformsWithCredentials(config);
+  if (withCreds.length <= 1) return config;
+
+  const configPath = join(APP_HOME, "config.json");
+  const existing = loadExistingConfig();
+
+  const choices = withCreds.map((p) => ({
+    title: `${PLATFORM_LABELS[p]}${config.enabledPlatforms.includes(p) ? " ✓启用" : ""}`,
+    value: p,
+    selected: config.enabledPlatforms.includes(p),
+  }));
+
+  console.log("\n━━━ 选择要启用的平台 ━━━\n");
+  const resp = await prompts(
+    {
+      type: "multiselect",
+      name: "platforms",
+      message: "选择要启用的平台（空格切换，回车确认）",
+      choices,
+      min: 1,
+      hint: "至少选择 1 个平台",
+    },
+    {
+      onCancel: () => {
+        console.log("\n已取消启动。");
+        process.exit(0);
+      },
+    },
+  );
+
+  if (!resp.platforms || !Array.isArray(resp.platforms)) return null;
+
+  const selected = new Set(resp.platforms as Platform[]);
+
+  // 更新 config.json 中的 platforms.xxx.enabled，保留其他字段
+  const updated = { ...existing } as ExistingConfig;
+  if (!updated.platforms) updated.platforms = {};
+
+  for (const p of withCreds) {
+    const plat = (updated.platforms as Record<string, unknown>)[p] ?? {};
+    (updated.platforms as Record<string, unknown>)[p] = {
+      ...plat,
+      enabled: selected.has(p),
+    };
+  }
+
+  const dir = dirname(configPath);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  writeFileSync(configPath, JSON.stringify(updated, null, 2), "utf-8");
+
+  return loadConfig();
 }
