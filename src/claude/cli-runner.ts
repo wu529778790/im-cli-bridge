@@ -151,6 +151,30 @@ export function runClaude(
     }, timeoutMs);
   }
 
+  // stderr 截断：只保留首 4KB + 尾 6KB，减少 I/O 和内存
+  const MAX_STDERR_HEAD = 4 * 1024;
+  const MAX_STDERR_TAIL = 6 * 1024;
+  let stderrHead = "";
+  let stderrTail = "";
+  let stderrTotal = 0;
+  let stderrHeadFull = false;
+
+  child.stderr?.on("data", (chunk: Buffer) => {
+    const text = chunk.toString();
+    stderrTotal += text.length;
+    if (!stderrHeadFull) {
+      const room = MAX_STDERR_HEAD - stderrHead.length;
+      if (room > 0) {
+        stderrHead += text.slice(0, room);
+        if (stderrHead.length >= MAX_STDERR_HEAD) stderrHeadFull = true;
+      }
+    }
+    stderrTail += text;
+    if (stderrTail.length > MAX_STDERR_TAIL) {
+      stderrTail = stderrTail.slice(-MAX_STDERR_TAIL);
+    }
+  });
+
   const rl = createInterface({ input: child.stdout! });
 
   rl.on("line", (line) => {
@@ -234,7 +258,20 @@ export function runClaude(
     if (timeoutHandle) clearTimeout(timeoutHandle);
     if (!completed) {
       if (exitCode !== null && exitCode !== 0) {
-        callbacks.onError(`Claude CLI exited with code ${exitCode}`);
+        let errMsg = "";
+        if (stderrTotal > 0) {
+          if (!stderrHeadFull) {
+            errMsg = stderrHead;
+          } else if (stderrTotal <= MAX_STDERR_HEAD + MAX_STDERR_TAIL) {
+            errMsg = stderrHead + stderrTail.slice(stderrTail.length - (stderrTotal - MAX_STDERR_HEAD));
+          } else {
+            errMsg =
+              stderrHead +
+              `\n\n... (省略 ${stderrTotal - MAX_STDERR_HEAD - MAX_STDERR_TAIL} 字节) ...\n\n` +
+              stderrTail;
+          }
+        }
+        callbacks.onError(errMsg || `Claude CLI exited with code ${exitCode}`);
       } else {
         callbacks.onComplete({
           success: true,

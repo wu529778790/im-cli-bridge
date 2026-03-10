@@ -38,8 +38,8 @@ export const TERMINAL_ONLY_COMMANDS = new Set([
 ]);
 
 export const DEDUP_TTL_MS = 5 * 60 * 1000;
-/** 飞书流式更新节流 */
-export const THROTTLE_MS = 80;
+/** 飞书流式更新节流：≥200ms 以满足单条消息 5 QPS 频控，避免触发 delete 回退（撤回提示） */
+export const FEISHU_THROTTLE_MS = 200;
 /** Telegram 编辑消息节流：200ms（open-im 默认值） */
 export const TELEGRAM_THROTTLE_MS = 200;
 export const MAX_TELEGRAM_MESSAGE_LENGTH = 4000;

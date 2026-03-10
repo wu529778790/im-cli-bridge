@@ -202,6 +202,30 @@ export class ClaudeProcessPool {
       const pendingToolInputs = new Map<number, { name: string; json: string }>();
       const startTime = Date.now();
 
+      // stderr 截断：只保留首 4KB + 尾 6KB
+      const MAX_STDERR_HEAD = 4 * 1024;
+      const MAX_STDERR_TAIL = 6 * 1024;
+      let stderrHead = "";
+      let stderrTail = "";
+      let stderrTotal = 0;
+      let stderrHeadFull = false;
+
+      child.stderr?.on("data", (chunk: Buffer) => {
+        const text = chunk.toString();
+        stderrTotal += text.length;
+        if (!stderrHeadFull) {
+          const room = MAX_STDERR_HEAD - stderrHead.length;
+          if (room > 0) {
+            stderrHead += text.slice(0, room);
+            if (stderrHead.length >= MAX_STDERR_HEAD) stderrHeadFull = true;
+          }
+        }
+        stderrTail += text;
+        if (stderrTail.length > MAX_STDERR_TAIL) {
+          stderrTail = stderrTail.slice(-MAX_STDERR_TAIL);
+        }
+      });
+
       const rl = createInterface({ input: child.stdout! });
 
       rl.on("line", (line) => {
@@ -291,9 +315,24 @@ export class ClaudeProcessPool {
         resolved = true;
 
         if (exitCode !== null && exitCode !== 0) {
-          const errorMsg = `Claude CLI exited with code ${exitCode}`;
-          callbacks.onError(errorMsg);
-          reject(new Error(errorMsg));
+          let errorMsg = "";
+          if (stderrTotal > 0) {
+            if (!stderrHeadFull) {
+              errorMsg = stderrHead;
+            } else if (stderrTotal <= MAX_STDERR_HEAD + MAX_STDERR_TAIL) {
+              errorMsg =
+                stderrHead +
+                stderrTail.slice(stderrTail.length - (stderrTotal - MAX_STDERR_HEAD));
+            } else {
+              errorMsg =
+                stderrHead +
+                `\n\n... (省略 ${stderrTotal - MAX_STDERR_HEAD - MAX_STDERR_TAIL} 字节) ...\n\n` +
+                stderrTail;
+            }
+          }
+          const msg = errorMsg || `Claude CLI exited with code ${exitCode}`;
+          callbacks.onError(msg);
+          reject(new Error(msg));
         }
         // If exitCode is 0 and we haven't resolved yet, the result was already sent
         // via the extractResult handler. This is just cleanup.

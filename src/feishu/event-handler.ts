@@ -25,10 +25,9 @@ import { CommandHandler } from '../commands/handler.js';
 import { getAdapter } from '../adapters/registry.js';
 import { runAITask, type TaskRunState } from '../shared/ai-task.js';
 import { startTaskCleanup } from '../shared/task-cleanup.js';
-import { THROTTLE_MS, IMAGE_DIR, MAX_FEISHU_MESSAGE_LENGTH } from '../constants.js';
+import { FEISHU_THROTTLE_MS, IMAGE_DIR } from '../constants.js';
 import { setActiveChatId } from '../shared/active-chats.js';
 import { setChatUser } from '../shared/chat-user-map.js';
-import { splitLongContent } from '../shared/utils.js';
 import { createLogger } from '../logger.js';
 
 const log = createLogger('FeishuHandler');
@@ -208,7 +207,7 @@ export function setupFeishuHandlers(
       prompt,
       toolAdapter,
       {
-        throttleMs: THROTTLE_MS,
+        throttleMs: FEISHU_THROTTLE_MS,
         streamUpdate: async (content, toolNote) => {
           const note = toolNote ? '输出中...\n' + toolNote : '输出中...';
           try {
