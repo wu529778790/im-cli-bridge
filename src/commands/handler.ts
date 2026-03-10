@@ -56,14 +56,14 @@ export class CommandHandler {
 
     if (t === '/help') return this.handleHelp(chatId, platform);
     if (t === '/mode' || t.startsWith('/mode ')) return this.handleMode(chatId, userId, platform, t.slice(6).trim());
-    if (t === '/new') return this.handleNew(chatId, userId);
+    if (t === '/new') return this.handleNew(chatId, userId, platform);
     if (t === '/pwd') return this.handlePwd(chatId, userId);
     if (t === '/status') return this.handleStatus(chatId, userId);
     if (t === '/allow' || t === '/y') return this.handleAllow(chatId);
     if (t === '/deny' || t === '/n') return this.handleDeny(chatId);
 
     if (t === '/cd' || t.startsWith('/cd ')) {
-      return this.handleCd(chatId, userId, t.slice(3).trim());
+      return this.handleCd(chatId, userId, t.slice(3).trim(), platform);
     }
 
     const cmd = t.split(/\s+/)[0];
@@ -121,6 +121,12 @@ export class CommandHandler {
     return true;
   }
 
+  private getClearHistoryHint(platform: 'feishu' | 'telegram'): string {
+    return platform === 'feishu'
+      ? '💡 提示：如需清除本对话的历史消息，请点击飞书聊天右上角「...」→ 清除聊天记录'
+      : '💡 提示：如需清除本对话的历史消息，请点击 Telegram 聊天右上角 ⋮ → 清除历史';
+  }
+
   private async handleHelp(chatId: string, platform: 'feishu' | 'telegram'): Promise<boolean> {
     const help = [
       '📋 可用命令:',
@@ -134,19 +140,18 @@ export class CommandHandler {
       '/allow (/y) - 允许权限请求',
       '/deny (/n) - 拒绝权限请求',
       '',
-      '💡 提示：清除聊天历史请点击 Telegram 右上角 ⋮ → 清除历史',
+      this.getClearHistoryHint(platform),
     ].join('\n');
     await this.deps.sender.sendTextReply(chatId, help);
     return true;
   }
 
-  private async handleNew(chatId: string, userId: string): Promise<boolean> {
+  private async handleNew(chatId: string, userId: string, platform: 'feishu' | 'telegram'): Promise<boolean> {
     const ok = this.deps.sessionManager.newSession(userId);
     await this.deps.sender.sendTextReply(
       chatId,
       ok
-        ? '✅ AI 会话已重置，下一条消息将使用全新上下文。\n\n' +
-          '💡 提示：如需清除本对话的历史消息，请点击 Telegram 聊天右上角 ⋮ → 清除历史'
+        ? `✅ AI 会话已重置，下一条消息将使用全新上下文。\n\n${this.getClearHistoryHint(platform)}`
         : '当前没有活动会话。'
     );
     return true;
@@ -175,7 +180,7 @@ export class CommandHandler {
     return true;
   }
 
-  private async handleCd(chatId: string, userId: string, dir: string): Promise<boolean> {
+  private async handleCd(chatId: string, userId: string, dir: string, platform: 'feishu' | 'telegram'): Promise<boolean> {
     // 如果 dir 为空，显示目录选择界面
     if (!dir) {
       const currentDir = this.deps.sessionManager.getWorkDir(userId);
@@ -195,7 +200,7 @@ export class CommandHandler {
         chatId,
         `📁 工作目录已切换到: ${resolved}\n\n` +
         `🔄 AI 会话已重置，下一条消息将使用全新上下文。\n` +
-        `💡 提示：如需清除本对话的历史消息，请点击 Telegram 聊天右上角 ⋮ → 清除历史`
+        this.getClearHistoryHint(platform)
       );
     } catch (err) {
       await this.deps.sender.sendTextReply(chatId, err instanceof Error ? err.message : String(err));
