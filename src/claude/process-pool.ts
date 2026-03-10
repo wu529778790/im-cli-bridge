@@ -53,71 +53,22 @@ export interface ClaudeRunOptions {
   hookPort?: number;
 }
 
-/**
- * A cached process entry with metadata.
- * The process is started fresh for each request but we cache
- * configuration and environment to speed up startup.
- */
-class CachedProcessEntry {
-  private lastUsed: number;
-  private readonly ttl: number;
-
-  constructor(
-    private cliPath: string,
-    private workDir: string,
-    private options: ClaudeRunOptions,
-    ttlMs: number = 2 * 60 * 1000, // 2 minutes TTL
-  ) {
-    this.lastUsed = Date.now();
-    this.ttl = ttlMs;
-  }
-
-  /**
-   * Check if this entry has expired.
-   */
-  isExpired(): boolean {
-    return Date.now() - this.lastUsed > this.ttl;
-  }
-
-  /**
-   * Update the last used time.
-   */
-  touch(): void {
-    this.lastUsed = Date.now();
-  }
-
-  /**
-   * Get the age of this entry in milliseconds.
-   */
-  getAge(): number {
-    return Date.now() - this.lastUsed;
-  }
-
-  getCliPath(): string {
-    return this.cliPath;
-  }
-
-  getWorkDir(): string {
-    return this.workDir;
-  }
-
-  getOptions(): ClaudeRunOptions {
-    return this.options;
-  }
+interface SessionEntry {
+  lastUsed: number;
 }
 
 /**
- * Process pool that manages cached process configurations.
+ * Process pool that manages cached session configurations.
  *
  * Since Claude CLI doesn't support persistent mode, we use this pool to:
- * 1. Cache active sessions for faster resume
+ * 1. Cache active sessions for faster resume using --resume
  * 2. Track which sessions are actively being used
  * 3. Clean up stale entries
  *
  * The main benefit is that resumed sessions don't need to reload conversation history.
  */
 export class ClaudeProcessPool {
-  private entries = new Map<string, CachedProcessEntry>();
+  private entries = new Map<string, SessionEntry>();
   private activeProcesses = new Map<string, ChildProcess>();
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
   private readonly ttl: number;
@@ -146,13 +97,13 @@ export class ClaudeProcessPool {
   ): Promise<ClaudeResult> {
     const key = `${userId}:${sessionId || "default"}`;
 
-    // Get or create cache entry
-    let entry = this.entries.get(key);
-    if (!entry || entry.isExpired()) {
-      entry = new CachedProcessEntry(cliPath, workDir, options || {}, this.ttl);
-      this.entries.set(key, entry);
+    // Update cache entry (tracks active sessions)
+    const entry = this.entries.get(key);
+    if (entry) {
+      entry.lastUsed = Date.now();
+    } else {
+      this.entries.set(key, { lastUsed: Date.now() });
     }
-    entry.touch();
 
     // Check if there's an active process for this session
     const activePid = this.activeProcesses.get(key);
@@ -327,15 +278,20 @@ export class ClaudeProcessPool {
       let rlClosed = false;
       let childClosed = false;
 
+      let resolved = false;
+
       const finalize = () => {
-        if (!rlClosed || !childClosed) return;
+        if (!rlClosed || !childClosed || resolved) return;
         this.activeProcesses.delete(key);
+        resolved = true;
 
         if (exitCode !== null && exitCode !== 0) {
           const errorMsg = `Claude CLI exited with code ${exitCode}`;
           callbacks.onError(errorMsg);
           reject(new Error(errorMsg));
         }
+        // If exitCode is 0 and we haven't resolved yet, the result was already sent
+        // via the extractResult handler. This is just cleanup.
       };
 
       child.on("close", (code) => {
@@ -368,7 +324,7 @@ export class ClaudeProcessPool {
     let cleaned = 0;
 
     for (const [key, entry] of this.entries.entries()) {
-      if (entry.isExpired()) {
+      if (now - entry.lastUsed > this.ttl) {
         this.entries.delete(key);
         cleaned++;
       }
