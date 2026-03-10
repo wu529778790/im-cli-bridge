@@ -34,6 +34,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  pull-requests: read
 
 jobs:
   publish:
@@ -44,9 +45,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - run: npm ci
 
@@ -69,65 +67,82 @@ jobs:
         run: |
           BUMP="${{ github.event.inputs.version_bump || 'patch' }}"
           TAG="${{ github.event.inputs.prerelease_tag || 'beta' }}"
+          IS_DEV="$([[ "${{ github.ref_name }}" == "dev" ]] && echo "true" || echo "false")"
+
+          echo "Inputs: BUMP=$BUMP, TAG=$TAG, IS_DEV=$IS_DEV"
 
           # 创建临时 Node 脚本
-          cat > /tmp/bump-version.js << 'EOF'
+          cat > /tmp/bump-version.js << 'NODEEOF'
           const { execSync } = require('child_process');
-          try { var semver = require('semver'); } catch { null; }
+          const semver = require('semver');
           const bump = process.argv[1];
           const tag = process.argv[2];
           const isDev = process.argv[3] === 'true';
           const isPrerelease = isDev || bump === 'prerelease';
 
-          function semverInc(version, type, preid) {
-            const semver = require('semver');
-            return semver.inc(version, type, preid);
-          }
+          console.error(`DEBUG: bump=${bump}, tag=${tag}, isDev=${isDev}, isPrerelease=${isPrerelease}`);
 
           if (!isPrerelease) {
             const npmVer = execSync('npm view @wu529778790/open-im version 2>/dev/null', { encoding: 'utf8' }).trim() || '0.0.0';
-            const next = semverInc(npmVer, bump);
+            const next = semver.inc(npmVer, bump);
             console.log('VERSION=' + next);
             console.log('IS_PRERELEASE=false');
             console.log('PRERELEASE_TAG=');
-            return;
+            process.exit(0);
           }
 
           try {
-            const versions = JSON.parse(execSync('npm view @wu529778790/open-im versions --json', { encoding: 'utf8' }));
-            const semver = require('semver');
+            const versionsJson = execSync('npm view @wu529778790/open-im versions --json', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+            const versions = JSON.parse(versionsJson);
             const npmVer = versions.sort(semver.compare).pop() || '0.0.0';
-            console.error('Latest npm version:', npmVer);
+            console.error('DEBUG: Latest npm version:', npmVer);
 
             let next;
             const prerelease = semver.prerelease(npmVer);
 
             if (!prerelease || prerelease.length === 0) {
-              const base = semverInc(npmVer, 'patch');
+              const base = semver.inc(npmVer, 'patch');
               next = `${base}-${tag}.0`;
             } else if (npmVer.includes(`-${tag}.`)) {
-              next = semverInc(npmVer, 'prerelease', tag);
+              next = semver.inc(npmVer, 'prerelease', tag);
             } else {
               const base = npmVer.split('-')[0];
               next = `${base}-${tag}.0`;
             }
 
+            console.error('DEBUG: Next version:', next);
             console.log('VERSION=' + next);
             console.log('IS_PRERELEASE=true');
             console.log('PRERELEASE_TAG=' + tag);
           } catch (e) {
-            console.error('Error:', e.message);
+            console.error('ERROR:', e.message);
             console.log('VERSION=1.0.0-' + tag + '.0');
             console.log('IS_PRERELEASE=true');
             console.log('PRERELEASE_TAG=' + tag);
           }
-          EOF
+          NODEEOF
 
-          # 执行脚本并解析结果
-          RESULT=$(node /tmp/bump-version.js "$BUMP" "$TAG" "$([[ "${{ github.ref_name }}" == "dev" ]] && echo "true" || echo "false")" 2>&1)
-          eval "$(echo "$RESULT" | grep '^VERSION\|^IS_PRERELEASE\|^PRERELEASE_TAG')"
+          # 执行脚本，分别捕获 stdout 和 stderr
+          OUTPUT=$(node /tmp/bump-version.js "$BUMP" "$TAG" "$IS_DEV" 2>&1)
+          RC=$?
+          echo "Script output:"
+          echo "$OUTPUT"
+          echo "Exit code: $RC"
+
+          if [ $RC -ne 0 ]; then
+            echo "Script failed!"
+            exit 1
+          fi
+
+          # 从输出中提取变量（stderr 的调试信息会被 echo 但不影响 eval）
+          eval "$(echo "$OUTPUT" | grep '^VERSION=' | head -1)"
+          eval "$(echo "$OUTPUT" | grep '^IS_PRERELEASE=' | head -1)"
+          eval "$(echo "$OUTPUT" | grep '^PRERELEASE_TAG=' | head -1)"
 
           echo "Publishing version: $VERSION"
+          echo "IS_PRERELEASE: $IS_PRERELEASE"
+          echo "PRERELEASE_TAG: $PRERELEASE_TAG"
+
           npm pkg set version=$VERSION
           echo "IS_PRERELEASE=$IS_PRERELEASE" >> $GITHUB_ENV
           echo "PRERELEASE_TAG=$PRERELEASE_TAG" >> $GITHUB_ENV
