@@ -8,6 +8,7 @@ const ACTIVE_CHATS_FILE = join(APP_HOME, 'data', 'active-chats.json');
 interface Data {
   feishu?: string;
   telegram?: string;
+  wechat?: string;
 }
 
 let data: Data = {};
@@ -36,11 +37,11 @@ export function loadActiveChats(): void {
   }
 }
 
-export function getActiveChatId(platform: 'feishu' | 'telegram'): string | undefined {
+export function getActiveChatId(platform: 'feishu' | 'telegram' | 'wechat'): string | undefined {
   return data[platform];
 }
 
-export function setActiveChatId(platform: 'feishu' | 'telegram', chatId: string): void {
+export function setActiveChatId(platform: 'feishu' | 'telegram' | 'wechat', chatId: string): void {
   if (data[platform] === chatId) return;
   data[platform] = chatId;
   scheduleSave();

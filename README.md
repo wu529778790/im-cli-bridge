@@ -1,10 +1,10 @@
 # open-im
 
-多平台 IM 桥接，将 Telegram 和飞书 (Feishu/Lark) 连接到 AI CLI 工具（Claude Code、Codex、Cursor），实现移动端/远程访问 AI 编程助手。
+多平台 IM 桥接，将 Telegram、飞书 (Feishu/Lark) 和微信连接到 AI CLI 工具（Claude Code、Codex、Cursor），实现移动端/远程访问 AI 编程助手。
 
 ## 功能特性
 
-- **多平台**：支持 Telegram 和飞书，可同时启用
+- **多平台**：支持 Telegram、飞书和微信，可同时启用
 - **多 AI 工具**：通过配置切换 Claude Code / Codex / Cursor
 - **流式输出**：节流更新，实时展示 AI 回复
 - **会话管理**：每用户独立 session，`/new` 重置会话
@@ -21,12 +21,13 @@
 npm install @wu529778790/open-im -g
 ```
 
-## ✨ 为什么选择 open-im
+## 快速开始
 
 ```bash
 # 使用 npx 快速体验（无需全局安装）
-npx @wu529778790/open-im start    # 后台运行
-npx @wu529778790/open-im stop     # 停止后台进程
+npx @wu529778790/open-im init    # 初始化配置
+npx @wu529778790/open-im start   # 后台运行
+npx @wu529778790/open-im stop    # 停止后台服务
 npx @wu529778790/open-im dev     # 前台运行（调试），Ctrl+C 停止
 ```
 
@@ -34,27 +35,31 @@ npx @wu529778790/open-im dev     # 前台运行（调试），Ctrl+C 停止
 
 ```bash
 npm install @wu529778790/open-im -g
-open-im start
+open-im init    # 初始化配置
+open-im start   # 后台运行
 ```
 
-首次运行会进入交互式配置向导，按提示输入 Token 后自动启动。配置保存到 `~/.open-im/config.json`。
+配置保存到 `~/.open-im/config.json`。
 
-## 运行方式
+## 命令说明
 
 | 命令 | 说明 |
 |------|------|
+| `open-im init` | 初始化配置（不启动服务） |
 | `open-im start` | 后台运行，适合长期使用 |
-| `open-im stop` | 停止后台进程 |
-| `open-im dev` 或 `open-im` | 前台运行（调试），Ctrl+C 停止 |
+| `open-im stop` | 停止后台服务 |
+| `open-im dev` | 前台运行（调试模式），Ctrl+C 停止 |
+
+## 开发
+
+```bash
+npm run build      # 构建编译
+npm run dev        # 直接运行源码（tsx，无需 build）
+```
 
 ## 会话说明
 
 **会话上下文存储在本地**（`~/.open-im/data/sessions.json`），与 IM 聊天记录无关。每用户在本地维护独立的 session 和 Claude 会话 ID，`/new` 可重置当前会话。
-
-```bash
-npm i @wu529778790/open-im -g
-open-im run
-```
 
 ### 环境变量
 
@@ -63,6 +68,9 @@ open-im run
 | `TELEGRAM_BOT_TOKEN` | Telegram Bot Token（从 @BotFather 获取） |
 | `FEISHU_APP_ID` | 飞书应用 App ID |
 | `FEISHU_APP_SECRET` | 飞书应用 App Secret |
+| `WECHAT_APP_ID` | 微信应用 App ID（AGP 协议） |
+| `WECHAT_APP_SECRET` | 微信应用 App Secret |
+| `WECHAT_WS_URL` | AGP WebSocket URL（可选，默认使用官方服务） |
 | `ALLOWED_USER_IDS` | 白名单用户 ID（逗号分隔，空=所有人） |
 | `AI_COMMAND` | `claude` \| `codex` \| `cursor`，默认 `claude` |
 | `CLAUDE_CLI_PATH` | Claude CLI 路径，默认 `claude` |
@@ -78,10 +86,11 @@ open-im run
 
 配置优先级：环境变量 > `~/.open-im/config.json` > 默认值。
 
-至少需配置 **Telegram** 或 **飞书** 其一：
+至少需配置 **Telegram**、**飞书** 或 **微信** 其中一个：
 
 - **Telegram**：`TELEGRAM_BOT_TOKEN` 或 `telegramBotToken`
 - **飞书**：`FEISHU_APP_ID` + `FEISHU_APP_SECRET` 或 `feishuAppId` + `feishuAppSecret`
+- **微信**：`WECHAT_APP_ID` + `WECHAT_APP_SECRET` 或 `wechatAppId` + `wechatAppSecret`
 
 ### 飞书配置说明
 
@@ -97,14 +106,6 @@ open-im run
 5. 将机器人添加到目标群聊或发起私聊
 
 **若点击 /mode 卡片按钮报错**：说明未配置卡片回调。配置较复杂时，可直接用 `/mode ask`、`/mode yolo` 等命令切换模式，无需卡片。
-
-## 开发
-
-```bash
-npm run build      # 构建
-npm run dev        # 直接运行源码（tsx，无需 build）
-npm run foreground # 前台运行已构建版本
-```
 
 ## IM 内命令
 
@@ -159,11 +160,11 @@ npm run foreground # 前台运行已构建版本
    mkdir -p ~/.open-im
    cat > ~/.open-im/config.json << 'EOF'
    {
-     "telegramBotToken": "你的Bot Token",
-     "allowedUserIds": ["你的Telegram用户ID"],
      "platforms": {
        "telegram": {
-         "proxy": "http://127.0.0.1:7890"
+         "enabled": true,
+         "botToken": "你的Bot Token",
+         "allowedUserIds": ["你的Telegram用户ID"]
        }
      },
      "claudeWorkDir": "$(pwd)",
@@ -183,7 +184,7 @@ tail -f ~/.open-im/logs/*.log
 
 # 重新配置
 rm ~/.open-im/config.json
-npx @wu529778790/open-im run
+open-im init
 ```
 
 ### Q: 如何获取 Telegram Bot Token？

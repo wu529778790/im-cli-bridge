@@ -10,7 +10,7 @@ import { join, isAbsolute } from 'node:path';
 import type { LogLevel } from './logger.js';
 import { APP_HOME } from './constants.js';
 
-export type Platform = 'feishu' | 'telegram';
+export type Platform = 'feishu' | 'telegram' | 'wechat';
 
 export type AiCommand = 'claude' | 'codex' | 'cursor';
 
@@ -21,12 +21,16 @@ export interface Config {
   telegramBotToken?: string;
   feishuAppId?: string;
   feishuAppSecret?: string;
+  wechatAppId?: string;
+  wechatAppSecret?: string;
+  wechatWsUrl?: string;
 
   // 全局白名单（旧版兼容）
   allowedUserIds: string[];
   // 分平台白名单（新配置推荐）
   telegramAllowedUserIds: string[];
   feishuAllowedUserIds: string[];
+  wechatAllowedUserIds: string[];
 
   aiCommand: AiCommand;
   claudeCliPath: string;
@@ -50,6 +54,11 @@ export interface Config {
       enabled: boolean;
       allowedUserIds: string[];
     };
+    wechat?: {
+      enabled: boolean;
+      wsUrl?: string;
+      allowedUserIds: string[];
+    };
   };
 }
 
@@ -67,6 +76,14 @@ interface FilePlatformFeishu {
   allowedUserIds?: string[];
 }
 
+interface FilePlatformWechat {
+  enabled?: boolean;
+  appId?: string;
+  appSecret?: string;
+  wsUrl?: string;
+  allowedUserIds?: string[];
+}
+
 interface FileConfig {
   // 旧版扁平字段（兼容）
   telegramBotToken?: string;
@@ -78,6 +95,7 @@ interface FileConfig {
   platforms?: {
     telegram?: FilePlatformTelegram;
     feishu?: FilePlatformFeishu;
+    wechat?: FilePlatformWechat;
   };
 
   aiCommand?: string;
@@ -108,15 +126,18 @@ export function needsSetup(): boolean {
   // 环境变量已提供任一平台的凭证，则认为已配置
   if (process.env.TELEGRAM_BOT_TOKEN) return false;
   if (process.env.FEISHU_APP_ID && process.env.FEISHU_APP_SECRET) return false;
+  if (process.env.WECHAT_APP_ID && process.env.WECHAT_APP_SECRET) return false;
 
   const file = loadFileConfig();
   const tg = file.platforms?.telegram;
   const fs = file.platforms?.feishu;
+  const wc = file.platforms?.wechat;
 
   const hasTelegram = !!tg?.botToken;
   const hasFeishu = !!(fs?.appId && fs?.appSecret);
+  const hasWechat = !!(wc?.appId && wc?.appSecret);
 
-  return !hasTelegram && !hasFeishu;
+  return !hasTelegram && !hasFeishu && !hasWechat;
 }
 
 function parseCommaSeparated(value: string): string[] {
@@ -128,6 +149,7 @@ export function loadConfig(): Config {
 
   const fileTelegram = file.platforms?.telegram;
   const fileFeishu = file.platforms?.feishu;
+  const fileWechat = file.platforms?.wechat;
 
   // 1. 加载各平台凭证（env 优先，其次新结构，最后旧字段）
   const telegramBotToken =
@@ -144,22 +166,36 @@ export function loadConfig(): Config {
     fileFeishu?.appSecret ??
     file.feishuAppSecret;
 
+  const wechatAppId =
+    process.env.WECHAT_APP_ID ??
+    fileWechat?.appId;
+  const wechatAppSecret =
+    process.env.WECHAT_APP_SECRET ??
+    fileWechat?.appSecret;
+  const wechatWsUrl =
+    process.env.WECHAT_WS_URL ??
+    fileWechat?.wsUrl;
+
   // 2. 计算启用平台
   const enabledPlatforms: Platform[] = [];
 
   const telegramEnabledFlag = fileTelegram?.enabled;
   const feishuEnabledFlag = fileFeishu?.enabled;
+  const wechatEnabledFlag = fileWechat?.enabled;
 
   const telegramEnabled =
     !!telegramBotToken && (telegramEnabledFlag !== false);
   const feishuEnabled =
     !!(feishuAppId && feishuAppSecret) && (feishuEnabledFlag !== false);
+  const wechatEnabled =
+    !!(wechatAppId && wechatAppSecret) && (wechatEnabledFlag !== false);
 
   if (telegramEnabled) enabledPlatforms.push('telegram');
   if (feishuEnabled) enabledPlatforms.push('feishu');
+  if (wechatEnabled) enabledPlatforms.push('wechat');
 
   if (enabledPlatforms.length === 0) {
-    throw new Error('至少需要配置 Telegram 或 Feishu 其中一个平台（可以通过环境变量或 config.json）');
+    throw new Error('至少需要配置 Telegram、Feishu 或 WeChat 其中一个平台（可以通过环境变量或 config.json）');
   }
 
   // 3. 全局白名单（旧字段，向后兼容，主要用于作为 per-platform 的兜底）
@@ -178,6 +214,11 @@ export function loadConfig(): Config {
     process.env.FEISHU_ALLOWED_USER_IDS !== undefined
       ? parseCommaSeparated(process.env.FEISHU_ALLOWED_USER_IDS)
       : fileFeishu?.allowedUserIds ?? allowedUserIds;
+
+  const wechatAllowedUserIds =
+    process.env.WECHAT_ALLOWED_USER_IDS !== undefined
+      ? parseCommaSeparated(process.env.WECHAT_ALLOWED_USER_IDS)
+      : fileWechat?.allowedUserIds ?? allowedUserIds;
 
   // 5. AI / 工作目录 / 安全配置
   const aiCommand = (process.env.AI_COMMAND ?? file.aiCommand ?? 'claude') as AiCommand;
@@ -269,6 +310,17 @@ export function loadConfig(): Config {
           enabled: false,
           allowedUserIds: feishuAllowedUserIds,
         },
+    wechat: wechatEnabled
+      ? {
+          enabled: true,
+          wsUrl: wechatWsUrl,
+          allowedUserIds: wechatAllowedUserIds,
+        }
+      : {
+          enabled: false,
+          wsUrl: wechatWsUrl,
+          allowedUserIds: wechatAllowedUserIds,
+        },
   };
 
   return {
@@ -276,9 +328,13 @@ export function loadConfig(): Config {
     telegramBotToken: telegramBotToken ?? '',
     feishuAppId: feishuAppId ?? '',
     feishuAppSecret: feishuAppSecret ?? '',
+    wechatAppId: wechatAppId ?? '',
+    wechatAppSecret: wechatAppSecret ?? '',
+    wechatWsUrl: wechatWsUrl,
     allowedUserIds,
     telegramAllowedUserIds,
     feishuAllowedUserIds,
+    wechatAllowedUserIds,
     aiCommand,
     claudeCliPath,
     claudeWorkDir,

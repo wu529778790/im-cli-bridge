@@ -81,45 +81,16 @@ export function runClaude(
   if (options?.chatId) env.CC_IM_CHAT_ID = options.chatId;
   if (options?.hookPort) env.CC_IM_HOOK_PORT = String(options.hookPort);
 
-  // Try different spawn strategies based on platform
+  // 使用 shell: false 直接 spawn，避免 shell 对参数按空格拆分
+  // （用户 prompt 如 "npm 你好" 在 shell: true 下会被拆成 "npm" 和 "你好"，CLI 只收到第一个）
   log.info(`Spawning CLI: path=${cliPath}, platform=${process.platform}`);
 
-  let child;
-  if (process.platform === "win32") {
-    // Check if running in Git Bash (MINGW) or MSYS
-    const isGitBash =
-      process.env.MSYSTEM ||
-      process.env.MINGW_PREFIX ||
-      process.env.SHELL?.includes("bash");
-    log.info(`Detected environment: Git Bash=${isGitBash ? "yes" : "no"}`);
-
-    if (isGitBash) {
-      // In Git Bash, use shell for proper path resolution
-      log.info(`Using shell spawn for Git Bash environment`);
-      child = spawn(cliPath, args, {
-        cwd: workDir,
-        stdio: ["ignore", "pipe", "pipe"],
-        env,
-        shell: true,
-        windowsHide: true,
-      });
-    } else {
-      // In pure cmd/PowerShell, direct spawn works best
-      log.info(`Using direct spawn for Windows cmd/PowerShell`);
-      child = spawn(cliPath, args, {
-        cwd: workDir,
-        stdio: ["ignore", "pipe", "pipe"],
-        env,
-        windowsHide: true,
-      });
-    }
-  } else {
-    child = spawn(cliPath, args, {
-      cwd: workDir,
-      stdio: ["ignore", "pipe", "pipe"],
-      env,
-    });
-  }
+  const child = spawn(cliPath, args, {
+    cwd: workDir,
+    stdio: ["ignore", "pipe", "pipe"],
+    env,
+    windowsHide: process.platform === "win32",
+  });
 
   log.info(
     `Claude CLI: pid=${child.pid}, cwd=${workDir}, session=${sessionId ?? "new"}`,
@@ -150,6 +121,30 @@ export function runClaude(
       }
     }, timeoutMs);
   }
+
+  // stderr 截断：只保留首 4KB + 尾 6KB，减少 I/O 和内存
+  const MAX_STDERR_HEAD = 4 * 1024;
+  const MAX_STDERR_TAIL = 6 * 1024;
+  let stderrHead = "";
+  let stderrTail = "";
+  let stderrTotal = 0;
+  let stderrHeadFull = false;
+
+  child.stderr?.on("data", (chunk: Buffer) => {
+    const text = chunk.toString();
+    stderrTotal += text.length;
+    if (!stderrHeadFull) {
+      const room = MAX_STDERR_HEAD - stderrHead.length;
+      if (room > 0) {
+        stderrHead += text.slice(0, room);
+        if (stderrHead.length >= MAX_STDERR_HEAD) stderrHeadFull = true;
+      }
+    }
+    stderrTail += text;
+    if (stderrTail.length > MAX_STDERR_TAIL) {
+      stderrTail = stderrTail.slice(-MAX_STDERR_TAIL);
+    }
+  });
 
   const rl = createInterface({ input: child.stdout! });
 
@@ -234,7 +229,20 @@ export function runClaude(
     if (timeoutHandle) clearTimeout(timeoutHandle);
     if (!completed) {
       if (exitCode !== null && exitCode !== 0) {
-        callbacks.onError(`Claude CLI exited with code ${exitCode}`);
+        let errMsg = "";
+        if (stderrTotal > 0) {
+          if (!stderrHeadFull) {
+            errMsg = stderrHead;
+          } else if (stderrTotal <= MAX_STDERR_HEAD + MAX_STDERR_TAIL) {
+            errMsg = stderrHead + stderrTail.slice(stderrTail.length - (stderrTotal - MAX_STDERR_HEAD));
+          } else {
+            errMsg =
+              stderrHead +
+              `\n\n... (省略 ${stderrTotal - MAX_STDERR_HEAD - MAX_STDERR_TAIL} 字节) ...\n\n` +
+              stderrTail;
+          }
+        }
+        callbacks.onError(errMsg || `Claude CLI exited with code ${exitCode}`);
       } else {
         callbacks.onComplete({
           success: true,

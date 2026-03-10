@@ -157,37 +157,14 @@ export class ClaudeProcessPool {
       if (options.chatId) env.CC_IM_CHAT_ID = options.chatId;
       if (options.hookPort) env.CC_IM_HOOK_PORT = String(options.hookPort);
 
-      // Platform-specific spawn
-      let child: ChildProcess;
-      if (process.platform === "win32") {
-        const isGitBash =
-          process.env.MSYSTEM ||
-          process.env.MINGW_PREFIX ||
-          process.env.SHELL?.includes("bash");
-
-        if (isGitBash) {
-          child = spawn(cliPath, args, {
-            cwd: workDir,
-            stdio: ["ignore", "pipe", "pipe"],
-            env,
-            shell: true,
-            windowsHide: true,
-          });
-        } else {
-          child = spawn(cliPath, args, {
-            cwd: workDir,
-            stdio: ["ignore", "pipe", "pipe"],
-            env,
-            windowsHide: true,
-          });
-        }
-      } else {
-        child = spawn(cliPath, args, {
-          cwd: workDir,
-          stdio: ["ignore", "pipe", "pipe"],
-          env,
-        });
-      }
+      // 使用 shell: false 直接 spawn，避免 shell 对参数按空格拆分
+      // （用户 prompt 如 "npm 你好" 在 shell: true 下会被拆成 "npm" 和 "你好"，CLI 只收到第一个）
+      const child = spawn(cliPath, args, {
+        cwd: workDir,
+        stdio: ["ignore", "pipe", "pipe"],
+        env,
+        windowsHide: process.platform === "win32",
+      });
 
       log.info(`Started process: pid=${child.pid}, key=${key}`);
 
@@ -201,6 +178,30 @@ export class ClaudeProcessPool {
       const toolStats: Record<string, number> = {};
       const pendingToolInputs = new Map<number, { name: string; json: string }>();
       const startTime = Date.now();
+
+      // stderr 截断：只保留首 4KB + 尾 6KB
+      const MAX_STDERR_HEAD = 4 * 1024;
+      const MAX_STDERR_TAIL = 6 * 1024;
+      let stderrHead = "";
+      let stderrTail = "";
+      let stderrTotal = 0;
+      let stderrHeadFull = false;
+
+      child.stderr?.on("data", (chunk: Buffer) => {
+        const text = chunk.toString();
+        stderrTotal += text.length;
+        if (!stderrHeadFull) {
+          const room = MAX_STDERR_HEAD - stderrHead.length;
+          if (room > 0) {
+            stderrHead += text.slice(0, room);
+            if (stderrHead.length >= MAX_STDERR_HEAD) stderrHeadFull = true;
+          }
+        }
+        stderrTail += text;
+        if (stderrTail.length > MAX_STDERR_TAIL) {
+          stderrTail = stderrTail.slice(-MAX_STDERR_TAIL);
+        }
+      });
 
       const rl = createInterface({ input: child.stdout! });
 
@@ -291,9 +292,24 @@ export class ClaudeProcessPool {
         resolved = true;
 
         if (exitCode !== null && exitCode !== 0) {
-          const errorMsg = `Claude CLI exited with code ${exitCode}`;
-          callbacks.onError(errorMsg);
-          reject(new Error(errorMsg));
+          let errorMsg = "";
+          if (stderrTotal > 0) {
+            if (!stderrHeadFull) {
+              errorMsg = stderrHead;
+            } else if (stderrTotal <= MAX_STDERR_HEAD + MAX_STDERR_TAIL) {
+              errorMsg =
+                stderrHead +
+                stderrTail.slice(stderrTail.length - (stderrTotal - MAX_STDERR_HEAD));
+            } else {
+              errorMsg =
+                stderrHead +
+                `\n\n... (省略 ${stderrTotal - MAX_STDERR_HEAD - MAX_STDERR_TAIL} 字节) ...\n\n` +
+                stderrTail;
+            }
+          }
+          const msg = errorMsg || `Claude CLI exited with code ${exitCode}`;
+          callbacks.onError(msg);
+          reject(new Error(msg));
         }
         // If exitCode is 0 and we haven't resolved yet, the result was already sent
         // via the extractResult handler. This is just cleanup.

@@ -392,7 +392,6 @@ export async function sendFinalMessages(
       'done'
     );
 
-    // Try to use patch API for in-place update
     try {
       const resp = await client.im.message.patch({
         path: { message_id: messageId },
@@ -424,7 +423,7 @@ export async function sendFinalMessages(
     log.warn('Failed to delete old message:', err);
   }
 
-  // Send new messages
+  // Send new messages (split when content exceeds limit)
   for (let i = 0; i < parts.length; i++) {
     try {
       const partContent = i === 0 ? parts[0] : `${parts[i]}\n\n_*(续 ${i + 1}/${parts.length})*_`;

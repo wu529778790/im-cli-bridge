@@ -12,6 +12,9 @@ import { sendTextReply as sendTelegramTextReply } from "./telegram/message-sende
 import { initFeishu, stopFeishu } from "./feishu/client.js";
 import { setupFeishuHandlers } from "./feishu/event-handler.js";
 import { sendTextReply as sendFeishuTextReply } from "./feishu/message-sender.js";
+import { initWeChat, stopWeChat } from "./wechat/client.js";
+import { setupWeChatHandlers } from "./wechat/event-handler.js";
+import { sendTextReply as sendWeChatTextReply } from "./wechat/message-sender.js";
 import { initAdapters, cleanupAdapters } from "./adapters/registry.js";
 import { SessionManager } from "./session/session-manager.js";
 import {
@@ -35,6 +38,7 @@ const log = createLogger("Main");
 async function sendLifecycleNotification(platform: string, message: string) {
   const telegramChatId = getActiveChatId("telegram");
   const feishuChatId = getActiveChatId("feishu");
+  const wechatChatId = getActiveChatId("wechat");
 
   const sendPromises: Promise<void>[] = [];
 
@@ -50,6 +54,14 @@ async function sendLifecycleNotification(platform: string, message: string) {
     sendPromises.push(
       sendFeishuTextReply(feishuChatId, message).catch((err) => {
         log.debug("Failed to send Feishu notification:", err);
+      }),
+    );
+  }
+
+  if (platform === "wechat" && wechatChatId) {
+    sendPromises.push(
+      sendWeChatTextReply(wechatChatId, message).catch((err) => {
+        log.debug("Failed to send WeChat notification:", err);
       }),
     );
   }
@@ -89,6 +101,7 @@ export async function main() {
   );
   let telegramHandle: ReturnType<typeof setupTelegramHandlers> | null = null;
   let feishuHandle: ReturnType<typeof setupFeishuHandlers> | null = null;
+  let wechatHandle: ReturnType<typeof setupWeChatHandlers> | null = null;
 
   if (config.enabledPlatforms.includes("telegram")) {
     await initTelegram(config, (bot) => {
@@ -99,6 +112,11 @@ export async function main() {
   if (config.enabledPlatforms.includes("feishu")) {
     feishuHandle = setupFeishuHandlers(config, sessionManager);
     await initFeishu(config, feishuHandle.handleEvent);
+  }
+
+  if (config.enabledPlatforms.includes("wechat")) {
+    wechatHandle = setupWeChatHandlers(config, sessionManager);
+    await initWeChat(config, wechatHandle.handleEvent);
   }
 
   log.info("Service is running. Press Ctrl+C to stop.");
@@ -144,6 +162,8 @@ export async function main() {
     stopTelegram();
     feishuHandle?.stop();
     stopFeishu();
+    wechatHandle?.stop();
+    stopWeChat();
     stopPermissionServer();
     sessionManager.destroy();
     cleanupAdapters();
