@@ -117,7 +117,8 @@ export function setupFeishuHandlers(
     _threadCtx?: { rootMessageId: string; threadId: string },
     replyToMessageId?: string
   ) {
-    log.info(`[handleAIRequest] START: userId=${userId}, chatId=${chatId}, prompt="${prompt.slice(0, 50)}..."`);
+    log.info(`[AI_REQUEST] userId=${userId}, chatId=${chatId}, promptLength=${prompt.length}`);
+    log.info(`[AI_REQUEST] Full prompt: "${prompt}"`);
     const toolAdapter = getAdapter(config.aiCommand);
     if (!toolAdapter) {
       log.error(`[handleAIRequest] No adapter found for: ${config.aiCommand}`);
@@ -267,7 +268,8 @@ export function setupFeishuHandlers(
       if (msgType === 'text') {
         const text = (content.text as string)?.trim() ?? '';
 
-        log.info(`Processing text message from ${senderId}: ${text}`);
+        log.info(`[MSG] Type=text, User=${senderId}, Length=${text.length}, Content="${text}"`);
+        log.info(`[MSG] Full content keys:`, Object.keys(content).join(', '));
 
         // Handle commands
         try {
@@ -286,6 +288,57 @@ export function setupFeishuHandlers(
         const convId = sessionManager.getConvId(senderId);
         const enqueueResult = requestQueue.enqueue(senderId, convId, text, async (prompt) => {
           log.info(`Executing AI request for: ${prompt}`);
+          await handleAIRequest(senderId, chatId, prompt, workDir, convId, undefined, messageId);
+        });
+
+        if (enqueueResult === 'rejected') {
+          sendTextReply(chatId, '请求队列已满，请稍后再试。').catch(() => {});
+        } else if (enqueueResult === 'queued') {
+          sendTextReply(chatId, '您的请求已排队等待。').catch(() => {});
+        }
+      } else if (msgType === 'post') {
+        // Feishu rich text/post messages - extract text content
+        const post = (content as { post?: { content?: Array<unknown> } })?.post;
+        let text = '';
+
+        if (post?.content && Array.isArray(post.content)) {
+          // Extract text from rich text structure
+          for (const section of post.content) {
+            if (section && typeof section === 'object' && 'text' in section) {
+              const tag = (section as { tag?: string })?.tag;
+              const t = (section as { text?: string })?.text ?? '';
+              if (tag === 'text' || tag === 'plain_text') {
+                text += t;
+              }
+            }
+          }
+        }
+
+        text = text.trim();
+        log.info(`[MSG] Type=post, User=${senderId}, Length=${text.length}, Content="${text}"`);
+
+        if (!text) {
+          log.warn('[MSG] Post message has no extractable text content');
+          return;
+        }
+
+        // Handle commands
+        try {
+          const handled = await commandHandler.dispatch(text, chatId, senderId, 'feishu', handleAIRequest);
+          if (handled) {
+            log.info(`Command handled for post message: ${text}`);
+            return;
+          }
+        } catch (err) {
+          log.error('Error in commandHandler.dispatch for post:', err);
+        }
+
+        // Handle AI request
+        log.info(`Enqueueing AI request for post message: ${text}`);
+        const workDir = sessionManager.getWorkDir(senderId);
+        const convId = sessionManager.getConvId(senderId);
+        const enqueueResult = requestQueue.enqueue(senderId, convId, text, async (prompt) => {
+          log.info(`Executing AI request for post: ${prompt}`);
           await handleAIRequest(senderId, chatId, prompt, workDir, convId, undefined, messageId);
         });
 
@@ -323,6 +376,9 @@ export function setupFeishuHandlers(
         } catch (err) {
           log.error('Error processing image message:', err);
         }
+      } else {
+        log.warn(`[MSG] Unsupported message type: ${msgType}, senderId=${senderId}`);
+        log.info(`[MSG] Content structure:`, JSON.stringify(content).slice(0, 500));
       }
     }
     } catch (err) {
