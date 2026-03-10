@@ -54,8 +54,18 @@ export async function initWeChat(
   eventHandler: (data: unknown) => Promise<void>,
   onStateChange?: (state: WeChatChannelState) => void,
 ): Promise<void> {
-  if (!config.wechatAppId || !config.wechatAppSecret) {
-    throw new Error('WeChat app_id and app_secret are required');
+  // AGP 协议使用 token + guid，标准协议使用 appId + appSecret
+  const hasAGPCreds = config.wechatToken && config.wechatGuid;
+  const hasStandardCreds = config.wechatAppId && config.wechatAppSecret;
+
+  if (!hasAGPCreds && !hasStandardCreds) {
+    throw new Error('WeChat credentials required: AGP (token + guid) or standard (appId + appSecret)');
+  }
+
+  if (hasAGPCreds) {
+    log.info('Using AGP protocol for WeChat');
+  } else {
+    log.info('Using standard OAuth protocol for WeChat');
   }
 
   messageHandler = eventHandler;

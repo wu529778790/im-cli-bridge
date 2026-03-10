@@ -116,20 +116,43 @@ export async function main() {
   let wechatHandle: ReturnType<typeof setupWeChatHandlers> | null = null;
   let weworkHandle: ReturnType<typeof setupWeWorkHandlers> | null = null;
 
+  // Track successfully initialized platforms
+  const successfulPlatforms: string[] = [];
+
   if (config.enabledPlatforms.includes("telegram")) {
-    await initTelegram(config, (bot) => {
-      telegramHandle = setupTelegramHandlers(bot, config, sessionManager);
-    });
+    try {
+      await initTelegram(config, (bot) => {
+        telegramHandle = setupTelegramHandlers(bot, config, sessionManager);
+      });
+      successfulPlatforms.push("telegram");
+    } catch (err) {
+      log.error("Failed to initialize Telegram:", err);
+    }
   }
 
   if (config.enabledPlatforms.includes("feishu")) {
-    feishuHandle = setupFeishuHandlers(config, sessionManager);
-    await initFeishu(config, feishuHandle.handleEvent);
+    try {
+      feishuHandle = setupFeishuHandlers(config, sessionManager);
+      await initFeishu(config, feishuHandle.handleEvent);
+      successfulPlatforms.push("feishu");
+    } catch (err) {
+      log.error("Failed to initialize Feishu:", err);
+    }
   }
 
   if (config.enabledPlatforms.includes("wechat")) {
-    wechatHandle = setupWeChatHandlers(config, sessionManager);
-    await initWeChat(config, wechatHandle.handleEvent);
+    try {
+      wechatHandle = setupWeChatHandlers(config, sessionManager);
+      await initWeChat(config, wechatHandle.handleEvent);
+      successfulPlatforms.push("wechat");
+    } catch (err) {
+      log.error("Failed to initialize WeChat:", err);
+    }
+  }
+
+  // Require at least one platform to start successfully
+  if (successfulPlatforms.length === 0) {
+    throw new Error("No platforms initialized successfully. Service cannot start.");
   }
 
   if (config.enabledPlatforms.includes("wework")) {
@@ -138,6 +161,7 @@ export async function main() {
   }
 
   log.info("Service is running. Press Ctrl+C to stop.");
+  log.info(`Successfully initialized platforms: ${successfulPlatforms.join(", ")}`);
 
   const startupMsg = [
     `🟢 open-im v${APP_VERSION} 服务已启动`,
@@ -145,11 +169,11 @@ export async function main() {
     `AI 工具: ${config.aiCommand}`,
     `工作目录: ${config.claudeWorkDir}`,
     `默认权限模式: ${defaultModeLabel} (${config.defaultPermissionMode})`,
-    `启用平台: ${config.enabledPlatforms.join(", ")}`,
+    `成功启动平台: ${successfulPlatforms.join(", ")}`,
   ].join("\n");
 
-  // Send notification to all enabled platforms
-  for (const platform of config.enabledPlatforms) {
+  // Send notification only to successfully initialized platforms
+  for (const platform of successfulPlatforms) {
     await sendLifecycleNotification(platform, startupMsg).catch(() => {});
   }
 
@@ -164,8 +188,8 @@ export async function main() {
     const m = Math.floor(uptimeSec / 60);
     const shutdownMsg = `🔴 open-im 服务正在关闭...\n运行时长: ${m}分钟`;
 
-    // Send notification to all enabled platforms
-    for (const platform of config.enabledPlatforms) {
+    // Send notification only to successfully initialized platforms
+    for (const platform of successfulPlatforms) {
       await sendLifecycleNotification(platform, shutdownMsg).catch(() => {});
     }
 
