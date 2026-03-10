@@ -87,8 +87,9 @@ open-im run
 
 1. 在 [飞书开放平台](https://open.feishu.cn/) 创建企业自建应用
 2. 开启「机器人」能力
-3. 配置事件订阅：启用 `im.message.receive_v1`，使用 **长连接** 模式（WebSocket）
-4. 将机器人添加到目标群聊或发起私聊
+3. 配置事件订阅：启用 `im.message.receive_v1`（接收消息），使用 **长连接** 模式（WebSocket）
+4. 若需在卡片上点击「允许/拒绝」处理权限请求，还需订阅 **卡片回传**（`card.action.trigger`）事件
+5. 将机器人添加到目标群聊或发起私聊
 
 ## 开发
 

@@ -139,7 +139,7 @@ ${formattedInput}
 export interface FeishuEventHandlerHandle {
   stop: () => void;
   getRunningTaskCount: () => number;
-  handleEvent: (data: unknown) => Promise<void>;
+  handleEvent: (data: unknown) => Promise<void | Record<string, unknown>>;
 }
 
 export function setupFeishuHandlers(
@@ -229,90 +229,115 @@ export function setupFeishuHandlers(
     );
   }
 
-  async function handleEvent(data: unknown): Promise<void> {
+  /**
+   * Parse permission button value from card action (兼容多种格式)
+   */
+  function parsePermissionActionValue(raw: unknown): { decision: 'allow' | 'deny'; requestId: string } | null {
+    if (!raw) return null;
+    let buttonValue: string | undefined;
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw) as { action?: string; value?: string };
+        if (parsed.action === 'permission' && parsed.value) buttonValue = parsed.value;
+        else if (raw.startsWith('allow_') || raw.startsWith('deny_')) buttonValue = raw;
+      } catch {
+        if (raw.startsWith('allow_') || raw.startsWith('deny_')) buttonValue = raw;
+      }
+    } else if (typeof raw === 'object' && raw !== null) {
+      const obj = raw as { action?: string; value?: string };
+      if (obj.action === 'permission' && obj.value) buttonValue = obj.value;
+    }
+    if (!buttonValue) return null;
+    if (buttonValue.startsWith('allow_')) {
+      return { decision: 'allow', requestId: buttonValue.slice(6) };
+    }
+    if (buttonValue.startsWith('deny_')) {
+      return { decision: 'deny', requestId: buttonValue.slice(5) };
+    }
+    return null;
+  }
+
+  /**
+   * Handle card button click (card.action.trigger) - 需在 3 秒内返回响应
+   */
+  async function handleCardAction(
+    data: unknown
+  ): Promise<{ toast?: { type: string; content: string } } | void> {
+    const event = data as {
+      action?: { value?: unknown };
+      context?: { open_chat_id?: string; chat_id?: string; open_id?: string };
+    };
+    const actionValue = event?.action?.value;
+    const parsed = parsePermissionActionValue(actionValue);
+    if (!parsed) return;
+
+    const { decision, requestId } = parsed;
+    const chatId =
+      event?.context?.open_chat_id ?? event?.context?.chat_id ?? event?.context?.open_id ?? '';
+
+    log.info(`[handleCardAction] Permission button: ${decision} for ${requestId}, chatId=${chatId}`);
+
+    const resolved = resolvePermissionById(requestId, decision);
+    const toastContent = resolved
+      ? decision === 'allow'
+        ? '✅ 权限已允许'
+        : '❌ 权限已拒绝'
+      : '⚠️ 权限请求已过期或不存在';
+
+    if (chatId) {
+      sendTextReply(chatId, toastContent).catch((err) => log.warn('Failed to send permission reply:', err));
+    }
+
+    return { toast: { type: resolved ? 'success' : 'warning', content: toastContent } };
+  }
+
+  async function handleEvent(data: unknown): Promise<void | Record<string, unknown>> {
     log.info('[handleEvent] Called with data:', JSON.stringify(data).slice(0, 500));
 
     try {
-      log.info('[handleEvent] Starting processing');
-      // Parse the event data
-    // Feishu event structure (long connection mode):
-    // {
-    //   "event_type": "im.message.receive_v1",
-    //   "event_id": "...",
-    //   "tenant_key": "...",
-    //   "app_id": "...",
-    //   "message": { "chat_id": "...", "content": "...", ... },
-    //   "sender": { "sender_id": { "open_id": "..." } }
-    //   "action": {  // For card button clicks
-    //     "action_id": "...",
-    //     "value": { "action": "permission", "value": "allow_xxx" }
-    //   }
-    // }
-    const event = data as {
-      event_type?: string;
-      action?: {
-        action_id?: string;
-        value?: Record<string, unknown>;
-      };
-      message?: {
-        chat_id?: string;
-        message_id?: string;
-        message_type?: string;
-        content?: string;
-        chat_type?: string;
-      };
-      sender?: {
-        sender_id?: {
-          open_id?: string;
+      const event = data as {
+        event_type?: string;
+        action?: { action_id?: string; value?: unknown };
+        message?: {
+          chat_id?: string;
+          message_id?: string;
+          message_type?: string;
+          content?: string;
+          chat_type?: string;
         };
+        sender?: { sender_id?: { open_id?: string } };
+        context?: { open_chat_id?: string; chat_id?: string; open_id?: string };
       };
-    };
 
-    const eventType = event?.event_type;
-    log.info('Feishu event type:', eventType);
+      const eventType = event?.event_type;
+      log.info('Feishu event type:', eventType);
 
-    // Handle message received events
-    if (eventType === 'im.message.receive_v1') {
-      log.info('[handleEvent] Processing im.message.receive_v1 event');
+      // 1. 卡片按钮点击 (card.action.trigger) - 需快速返回响应
+      if (eventType === 'card.action.trigger') {
+        const result = await handleCardAction(data);
+        return result ?? undefined;
+      }
 
-      // Check if this is a card button click event
-      // For interactive cards, the action is in a different location
-      if (event?.action) {
-        const action = event.action as {
-          action_id?: string;
-          value?: Record<string, unknown>;
-        };
-        log.info('[handleEvent] Card action detected:', action);
+      // 2. 消息接收 (im.message.receive_v1)
+      if (eventType === 'im.message.receive_v1') {
+        log.info('[handleEvent] Processing im.message.receive_v1 event');
 
-        if (action?.value) {
-          const actionValue = action.value as { action?: string; value?: string };
-          if (actionValue.action === 'permission' && actionValue.value) {
-            const buttonValue = actionValue.value;
-            let decision: 'allow' | 'deny' | null = null;
-            let requestId: string | null = null;
-
-            if (buttonValue.startsWith('allow_')) {
-              decision = 'allow';
-              requestId = buttonValue.slice(6);
-            } else if (buttonValue.startsWith('deny_')) {
-              decision = 'deny';
-              requestId = buttonValue.slice(5);
+        // 兼容：部分场景下卡片点击可能通过 im.message 携带 action
+        if (event?.action?.value) {
+          const parsed = parsePermissionActionValue(event.action.value);
+          if (parsed) {
+            const { decision, requestId } = parsed;
+            const chatId = event.message?.chat_id ?? '';
+            log.info(`[handleEvent] Permission (via msg): ${decision} for ${requestId}`);
+            const resolved = resolvePermissionById(requestId, decision);
+            if (resolved) {
+              await sendTextReply(chatId, decision === 'allow' ? '✅ 权限已允许' : '❌ 权限已拒绝');
+            } else {
+              await sendTextReply(chatId, '⚠️ 权限请求已过期或不存在');
             }
-
-            if (decision && requestId) {
-              log.info(`[handleEvent] Permission button clicked: ${decision} for ${requestId}`);
-              const resolved = resolvePermissionById(requestId, decision);
-              const chatId = event.message?.chat_id ?? '';
-              if (resolved) {
-                await sendTextReply(chatId, decision === 'allow' ? '✅ 权限已允许' : '❌ 权限已拒绝');
-              } else {
-                await sendTextReply(chatId, '⚠️ 权限请求已过期或不存在');
-              }
-              return;
-            }
+            return;
           }
         }
-      }
 
       const message = event?.message;
       if (!message) {
