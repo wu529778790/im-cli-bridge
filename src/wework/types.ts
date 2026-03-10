@@ -1,150 +1,176 @@
 /**
  * WeWork (企业微信/WeCom) Type Definitions
+ * 基于企业微信官方 AI_BOT WebSocket 协议
+ * 参考: @wecom/wecom-openclaw-plugin
  */
-
-// Message status for updates
-export type MessageStatus = 'thinking' | 'streaming' | 'done' | 'error';
 
 // Connection state for WebSocket
 export type WeWorkConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error';
 
-// WeWork API Token Response
-export interface WeWorkTokenResponse {
+// 企业微信 WebSocket 命令枚举
+// 参考: @wecom/aibot-node-sdk，官方推送消息的 cmd 为 aibot_msg_callback
+export const enum WeWorkCommand {
+  /** 认证订阅 */
+  SUBSCRIBE = 'aibot_subscribe',
+  /** 心跳 */
+  PING = 'ping',
+  /** 企业微信推送消息（官方协议） */
+  AIBOT_CALLBACK = 'aibot_msg_callback',
+  /** 回复消息（长连接模式必须用此命令，不能用 HTTP response_url） */
+  AIBOT_RESPOND_MSG = 'aibot_respond_msg',
+  /** AI bot 响应消息（旧） */
+  AIBOT_RESPONSE = 'aibot_response',
+}
+
+// WebSocket 请求消息基础格式
+export interface WeWorkRequest {
+  cmd: string;
+  headers: {
+    req_id: string;
+  };
+  body: unknown;
+}
+
+// WebSocket 响应消息格式
+export interface WeWorkResponse {
+  headers: {
+    req_id: string;
+  };
   errcode: number;
   errmsg: string;
-  access_token: string;
-  expires_in: number;
 }
 
-// Stored token with expiration
-export interface WeWorkToken {
-  accessToken: string;
-  expiresAt: number;
+// 企业微信认证请求
+export interface WeWorkSubscribeRequest extends WeWorkRequest {
+  cmd: WeWorkCommand.SUBSCRIBE;
+  body: {
+    secret: string;
+    bot_id: string;
+  };
 }
 
-// WeWork incoming message event
-export interface WeWorkMessageEvent {
-  ToUserName: string;
-  FromUserName: string;
-  CreateTime: number;
-  MsgType: string;
-  MsgId?: string;
-  AgentID?: number;
-  Content?: string;
-  // Additional fields for different message types
-  Event?: string;
-  EventKey?: string;
-  MediaId?: string;
-  ThumbMediaId?: string;
-  // Text message
-  Text?: { Content: string };
-  // Image message
-  Image?: { MediaId: string };
-  // File message
-  File?: { MediaId: string; Title: string; FileExt: string };
-  // Voice message
-  Voice?: { MediaId: string; Format: string };
-  // Video message
-  Video?: { MediaId: string; ThumbMediaId: string; Title: string };
+// 企业微信推送消息格式（cmd 为 aibot_msg_callback）
+export interface WeWorkCallbackMessage {
+  cmd: WeWorkCommand.AIBOT_CALLBACK;
+  headers: {
+    req_id: string;
+  };
+  body: {
+    msgid: string;
+    aibotid: string;
+    chatid: string;
+    chattype: 'single' | 'group';
+    from: {
+      userid: string;
+    };
+    response_url: string;
+    msgtype: 'text' | 'image' | 'voice' | 'video' | 'file' | 'stream' | 'mixed';
+    text?: {
+      content: string;
+    };
+    image?: {
+      /** 图片 URL（通过 URL 方式接收图片时） */
+      url?: string;
+      /** 图片 base64 数据（直接传输时） */
+      base64?: string;
+      md5?: string;
+    };
+    /** 图文混排消息 */
+    mixed?: {
+      msg_item: Array<{
+        msgtype: 'text' | 'image';
+        text?: {
+          content: string;
+        };
+        image?: {
+          url?: string;
+          base64?: string;
+          md5?: string;
+        };
+      }>;
+    };
+    quote?: {
+      msgtype: string;
+      text?: {
+        content: string;
+      };
+      image?: {
+        url?: string;
+        aeskey?: string;
+      };
+      file?: {
+        url?: string;
+        aeskey?: string;
+      };
+    };
+    stream?: {
+      id: string;
+    };
+  };
 }
 
-// WeWork send message API request
-export interface WeWorkSendMessageRequest {
-  touser?: string;
-  toparty?: string;
-  totag?: number;
-  msgtype: 'text' | 'image' | 'file' | 'voice' | 'video' | 'textcard' | 'news' | 'mpnews';
-  agentid: number;
-  text?: { content: string };
-  image?: { media_id: string };
-  file?: { media_id: string };
-  voice?: { media_id: string };
-  video?: { media_id: string; thumb_media_id: string; title: string; description?: string };
-  textcard?: { title: string; description: string; url?: string; btntxt?: string };
-  news?: { articles: Array<{ title: string; description: string; url: string; picurl?: string }> };
-  mpnews?: { articles: Array<{ title: string; thumb_media_id: string; author?: string; content_source_url?: string; digest?: string; show_cover_pic?: number }> };
-  safe?: 0 | 1;
+// 企业微信响应消息格式
+export interface WeWorkResponseMessage extends WeWorkRequest {
+  cmd: WeWorkCommand.AIBOT_RESPONSE;
+  body: {
+    msgtype: 'stream' | 'text' | 'markdown';
+    stream?: {
+      id: string;
+      finish: boolean;
+      content: string;
+      msg_item?: Array<{
+        msgtype: 'image' | 'file';
+        image?: {
+          base64: string;
+          md5: string;
+        };
+      }>;
+      feedback?: {
+        id: string;
+      };
+    };
+    text?: {
+      content: string;
+    };
+    markdown?: {
+      content: string;
+    };
+  };
 }
 
-// WeWork send message API response
-export interface WeWorkSendMessageResponse {
+// 消息状态（用于内部跟踪）
+export interface MessageState {
+  accumulatedText: string;
+  /** 流式回复的 streamId，用于保持同一个流式回复使用相同的 streamId */
+  streamId?: string;
+}
+
+// WebSocket 响应消息格式（用于接收我们发送的消息的响应）
+export interface WeWorkResponse {
+  headers: {
+    req_id: string;
+  };
   errcode: number;
   errmsg: string;
-  invaliduser?: string;
-  invalidparty?: string;
-  invalidtag?: string;
-  unlicenseduser?: string;
-  msgid?: string;
 }
 
-// WeWork media upload API response
-export interface WeWorkMediaUploadResponse {
-  errcode: number;
-  errmsg: string;
-  type: string;
-  media_id: string;
-  created_at: string;
+// HTTP 响应请求格式（通过 response_url 发送）
+export interface WeWorkHttpResponseBody {
+  msgtype: 'text' | 'markdown' | 'stream';
+  text?: {
+    content: string;
+  };
+  markdown?: {
+    content: string;
+  };
+  stream?: {
+    id: string;
+    finish: boolean;
+    content: string;
+  };
 }
 
-// WeWork callback event (for receiving messages)
-export interface WeWorkCallbackEvent {
-  ToUserName: string;
-  FromUserName: string;
-  CreateTime: number;
-  MsgType: string;
-  AgentID: number;
-  Event?: string;
-  EventKey?: string;
-  Content?: string;
-  MsgId?: string;
-  // Additional fields for different message types
-  MediaId?: string;
-  ThumbMediaId?: string;
-  // Text message
-  Text?: { Content: string };
-  // Image message
-  Image?: { MediaId: string };
-  // File message
-  File?: { MediaId: string; Title: string; FileExt: string };
-  // Voice message
-  Voice?: { MediaId: string; Format: string };
-  // Video message
-  Video?: { MediaId: string; ThumbMediaId: string; Title: string };
-}
-
-// WebSocket message envelope
-export interface WeWorkWebSocketMessage {
-  type: 'message' | 'event' | 'ping' | 'pong';
-  timestamp: number;
-  data: WeWorkCallbackEvent | unknown;
-}
-
-// User info in WeWork
-export interface WeWorkUserInfo {
-  userid: string;
-  name: string;
-  department: number[];
-  position?: string;
-  mobile?: string;
-  gender?: string;
-  email?: string;
-  avatar?: string;
-}
-
-// Department info in WeWork
-export interface WeWorkDepartmentInfo {
-  id: number;
-  name: string;
-  parentid: number;
-  order?: number;
-}
-
-// WeWork API error codes
-export enum WeWorkErrorCode {
-  OK = 0,
-  InvalidCredential = 40014,
-  InvalidCorpId = 40001,
-  InvalidAgentId = 40002,
-  InvalidSecret = 40003,
-  TokenExpired = 42001,
+export interface WeWorkHttpResponse {
+  msgtype: 'text' | 'markdown' | 'stream';
+  [key: string]: unknown;
 }

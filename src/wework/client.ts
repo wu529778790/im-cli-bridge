@@ -1,37 +1,30 @@
 /**
- * WeWork (企业微信) Client - API client and WebSocket connection management
+ * WeWork (企业微信/WeCom) Client
+ * 基于企业微信官方 AI_BOT WebSocket 协议
+ * WebSocket URL: wss://openws.work.weixin.qq.com
  *
- * 企业微信 API 参考：
- * - 获取 access_token: https://developer.work.weixin.qq.com/document/path/91039
- * - 发送消息: https://developer.work.weixin.qq.com/document/path/90236
- * - 接收消息: 使用回调模式或长连接模式
+ * 消息接收：通过 WebSocket (aibot_msg_callback)
+ * 消息发送：通过 WebSocket (aibot_respond_msg)，必须透传 req_id
+ * 注意：长连接模式下不能用 HTTP response_url，会报 40008 invalid message type
  */
 
 import { WebSocket } from 'ws';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { randomBytes } from 'node:crypto';
 import { createLogger } from '../logger.js';
 import type { Config } from '../config.js';
-import type {
-  WeWorkTokenResponse,
-  WeWorkToken,
+import {
   WeWorkConnectionState,
-  WeWorkSendMessageRequest,
-  WeWorkSendMessageResponse,
-  WeWorkCallbackEvent,
+  WeWorkCallbackMessage,
+  WeWorkCommand,
+  WeWorkResponseMessage,
+  WeWorkResponse,
+  WeWorkHttpResponseBody,
 } from './types.js';
 
 const log = createLogger('WeWork');
-const TOKEN_FILE = 'wework-token.json';
-
-// WeWork API endpoints
-const API_BASE_URL = 'https://qyapi.weixin.qq.com/cgi-bin';
-const GET_TOKEN_URL = `${API_BASE_URL}/gettoken`;
-const SEND_MESSAGE_URL = `${API_BASE_URL}/message/send`;
-
-// WebSocket endpoint (WeWork uses a callback URL for receiving messages)
-// Note: The actual WebSocket endpoint needs to be configured in WeWork admin console
-const DEFAULT_WEWORK_WS_URL = 'wss://qyapi.weixin.qq.com/cgi-bin/wxpush';
+const DEFAULT_WS_URL = 'wss://openws.work.weixin.qq.com';
+const HEARTBEAT_INTERVAL = 30000; // 30秒
+const MAX_RECONNECT_ATTEMPTS = 100;
 
 // Global state
 let ws: WebSocket | null = null;
@@ -39,17 +32,24 @@ let connectionState: WeWorkConnectionState = 'disconnected';
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let reconnectAttempts = 0;
-let currentToken: WeWorkToken | null = null;
-let tokenStoragePath: string | null = null;
-
-// Configuration
-let corpId: string;
-let agentId: string;
-let secret: string;
 
 // Event handlers
-let messageHandler: ((data: WeWorkCallbackEvent) => Promise<void>) | null = null;
+let messageHandler: ((data: WeWorkCallbackMessage) => Promise<void>) | null = null;
 let stateChangeHandler: ((state: WeWorkConnectionState) => void) | null = null;
+
+// Configuration
+let config: {
+  botId: string;
+  secret: string;
+  websocketUrl: string;
+} | null = null;
+
+/**
+ * Generate unique request ID
+ */
+function generateReqId(): string {
+  return `${Date.now()}-${randomBytes(8).toString('hex')}`;
+}
 
 /**
  * Get current connection state
@@ -59,87 +59,29 @@ export function getConnectionState(): WeWorkConnectionState {
 }
 
 /**
- * Get current WeWork token
+ * Send reply via WebSocket (aibot_respond_msg)
+ * 长连接模式下必须用此方式回复，透传 req_id
  */
-export function getCurrentToken(): WeWorkToken | null {
-  return currentToken;
-}
-
-/**
- * Get API access token, with auto-refresh if needed
- */
-export async function getAccessToken(): Promise<string> {
-  // Check if we have a valid token
-  if (currentToken && currentToken.expiresAt > Date.now() + 60000) {
-    return currentToken.accessToken;
+export function sendWebSocketReply(reqId: string, body: WeWorkHttpResponseBody): void {
+  if (!ws || connectionState !== 'connected') {
+    log.error('Cannot send reply: WebSocket not connected');
+    return;
+  }
+  if (!reqId) {
+    log.error('Cannot send reply: req_id is required');
+    return;
   }
 
-  // Fetch new token
-  await refreshAccessToken();
-  if (!currentToken) {
-    throw new Error('Failed to obtain access token');
-  }
-
-  return currentToken.accessToken;
-}
-
-/**
- * Refresh access token from WeWork API
- */
-async function refreshAccessToken(): Promise<void> {
-  const url = `${GET_TOKEN_URL}?corpid=${corpId}&corpsecret=${secret}`;
-
+  const message = {
+    cmd: WeWorkCommand.AIBOT_RESPOND_MSG,
+    headers: { req_id: reqId },
+    body,
+  };
   try {
-    const response = await fetch(url);
-    const data = (await response.json()) as WeWorkTokenResponse;
-
-    if (data.errcode === 0 && data.access_token) {
-      const expiresAt = Date.now() + (data.expires_in - 300) * 1000; // 5 min buffer
-      currentToken = {
-        accessToken: data.access_token,
-        expiresAt,
-      };
-      saveToken();
-      log.info('Access token refreshed successfully');
-    } else {
-      throw new Error(`Failed to get access token: ${data.errmsg} (${data.errcode})`);
-    }
+    ws.send(JSON.stringify(message));
+    log.debug(`[WeWork] Sent aibot_respond_msg: msgtype=${body.msgtype}`);
   } catch (err) {
-    log.error('Failed to refresh access token:', err);
-    throw err;
-  }
-}
-
-/**
- * Send message via WeWork API
- */
-export async function sendMessage(
-  request: WeWorkSendMessageRequest
-): Promise<WeWorkSendMessageResponse> {
-  const accessToken = await getAccessToken();
-  const url = `${SEND_MESSAGE_URL}?access_token=${accessToken}`;
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
-    });
-
-    const data = (await response.json()) as WeWorkSendMessageResponse;
-
-    if (data.errcode === 0) {
-      log.debug(`Message sent successfully: ${data.msgid}`);
-    } else {
-      log.warn(`Send message failed: ${data.errmsg} (${data.errcode})`);
-    }
-
-    return data;
-  } catch (err) {
-    log.error('Failed to send message:', err);
-    throw err;
+    log.error('Error sending WebSocket reply:', err);
   }
 }
 
@@ -147,38 +89,25 @@ export async function sendMessage(
  * Initialize WeWork client with WebSocket connection
  */
 export async function initWeWork(
-  config: Config,
-  eventHandler: (data: WeWorkCallbackEvent) => Promise<void>,
+  cfg: Config,
+  eventHandler: (data: WeWorkCallbackMessage) => Promise<void>,
   onStateChange?: (state: WeWorkConnectionState) => void,
 ): Promise<void> {
-  if (!config.weworkCorpId || !config.weworkAgentId || !config.weworkSecret) {
-    throw new Error('WeWork corp_id, agent_id, and secret are required');
+  if (!cfg.weworkCorpId || !cfg.weworkSecret) {
+    throw new Error('WeWork botId and secret are required');
   }
 
-  corpId = config.weworkCorpId;
-  agentId = config.weworkAgentId;
-  secret = config.weworkSecret;
+  config = {
+    botId: cfg.weworkCorpId, // CorpId 实际上就是 botId
+    secret: cfg.weworkSecret,
+    websocketUrl: cfg.weworkWsUrl || DEFAULT_WS_URL,
+  };
 
   messageHandler = eventHandler;
   stateChangeHandler = onStateChange ?? null;
 
-  // Set up token storage path
-  const baseDir = config.logDir ?? join(process.env.HOME ?? '', '.open-im');
-  tokenStoragePath = join(baseDir, 'data');
-  if (!existsSync(tokenStoragePath)) {
-    mkdirSync(tokenStoragePath, { recursive: true });
-  }
-
-  // Load existing token if available
-  await loadToken();
-
-  // Get initial access token
-  await getAccessToken();
-
-  // Connect to WebSocket for receiving messages
+  log.info(`Initializing WeWork client (botId: ${config.botId})`);
   await connectWebSocket();
-
-  log.info('WeWork client initialized');
 }
 
 /**
@@ -190,29 +119,40 @@ async function connectWebSocket(): Promise<void> {
     return;
   }
 
+  if (!config) {
+    throw new Error('WeWork config not initialized');
+  }
+
   updateState('connecting');
 
-  return new Promise((resolve, reject) => {
+  // Store config values locally to avoid null issues in Promise callback
+  const websocketUrl = config.websocketUrl || DEFAULT_WS_URL;
+
+  return new Promise<void>((resolve, reject) => {
     try {
-      // WeWork uses a specific WebSocket URL format
-      // The URL needs to be configured in the WeWork admin console
-      const wsUrl = `${DEFAULT_WEWORK_WS_URL}?corpid=${corpId}&agentid=${agentId}`;
+      ws = new WebSocket(websocketUrl);
 
-      ws = new WebSocket(wsUrl);
-
-      ws.on('open', () => {
+      ws.on('open', async () => {
         log.info('WeWork WebSocket connected');
         reconnectAttempts = 0;
         updateState('connected');
         startHeartbeat();
-        resolve();
+
+        // 发送认证订阅消息
+        try {
+          await sendSubscribe();
+          log.info('WeWork authentication successful');
+          resolve();
+        } catch (err) {
+          log.error('WeWork authentication failed:', err);
+          reject(err);
+        }
       });
 
       ws.on('message', async (data: Buffer) => {
         try {
-          const message = JSON.parse(data.toString());
-          log.debug('Received WebSocket message:', message);
-          await handleWebSocketMessage(message);
+          const message = JSON.parse(data.toString()) as WeWorkCallbackMessage | WeWorkResponse;
+          await handleMessage(message);
         } catch (err) {
           log.error('Error parsing WebSocket message:', err);
         }
@@ -239,32 +179,93 @@ async function connectWebSocket(): Promise<void> {
 }
 
 /**
+ * Send subscribe message for authentication
+ */
+async function sendSubscribe(): Promise<void> {
+  if (!config || !ws) {
+    throw new Error('WebSocket not connected');
+  }
+
+  const subscribeMessage = {
+    cmd: WeWorkCommand.SUBSCRIBE,
+    headers: {
+      req_id: generateReqId(),
+    },
+    body: {
+      secret: config.secret,
+      bot_id: config.botId,
+    },
+  };
+
+  ws.send(JSON.stringify(subscribeMessage));
+  log.debug('Sent subscribe message');
+}
+
+/**
  * Handle incoming WebSocket message
  */
-async function handleWebSocketMessage(message: unknown): Promise<void> {
-  if (!messageHandler) return;
+async function handleMessage(message: WeWorkCallbackMessage | WeWorkResponse): Promise<void> {
+  // 检查是否是响应消息（我们发送的消息的响应）
+  if ('errcode' in message) {
+    const response = message as { errcode: number; errmsg: string };
+    if (response.errcode !== 0) {
+      log.error(`WeWork error response: ${response.errcode} - ${response.errmsg}`);
+    } else {
+      log.debug('WeWork message sent successfully');
+    }
+    return;
+  }
+
+  // 处理回调消息
+  if ('cmd' in message && message.cmd === WeWorkCommand.AIBOT_CALLBACK) {
+    const callback = message as WeWorkCallbackMessage;
+    log.info(`[WeWork] Received message: msgtype=${callback.body.msgtype}, from=${callback.body.from.userid}, chatid=${callback.body.chatid}`);
+
+    if (messageHandler) {
+      try {
+        await messageHandler(callback);
+      } catch (err) {
+        log.error('Error in message handler:', err);
+      }
+    }
+  }
+}
+
+/**
+ * Send message to WeWork
+ */
+export function sendMessage(message: WeWorkResponseMessage): void {
+  if (!ws || connectionState !== 'connected') {
+    log.warn('Cannot send message: WebSocket not connected');
+    return;
+  }
 
   try {
-    // WeWork callback events have a specific structure
-    const event = message as WeWorkCallbackEvent;
-
-    // Handle different message types
-    if (event.MsgType === 'text' || event.MsgType === 'image' || event.MsgType === 'file') {
-      await messageHandler(event);
-    } else if (event.Event === 'subscribe') {
-      log.info('User subscribed:', event.FromUserName);
-    } else if (event.Event === 'unsubscribe') {
-      log.info('User unsubscribed:', event.FromUserName);
-    } else if (event.Event === 'enter_agent') {
-      log.info('User entered agent scope:', event.FromUserName);
-    } else if (event.Event === 'exit_agent') {
-      log.info('User left agent scope:', event.FromUserName);
-    } else {
-      log.debug('Unhandled event type:', event.Event || event.MsgType);
-    }
+    ws.send(JSON.stringify(message));
+    log.info(`[WeWork] Sent message: ${message.cmd}, msgtype=${message.body.msgtype}`);
   } catch (err) {
-    log.error('Error in message handler:', err);
+    log.error('Error sending message:', err);
   }
+}
+
+/**
+ * Send text message via WebSocket (requires req_id from callback)
+ */
+export function sendText(reqId: string, content: string): void {
+  sendWebSocketReply(reqId, {
+    msgtype: 'text',
+    text: { content },
+  });
+}
+
+/**
+ * Send stream message via WebSocket (requires req_id from callback)
+ */
+export function sendStream(reqId: string, streamId: string, content: string, finish: boolean): void {
+  sendWebSocketReply(reqId, {
+    msgtype: 'stream',
+    stream: { id: streamId, finish, content },
+  });
 }
 
 /**
@@ -285,13 +286,21 @@ function startHeartbeat(): void {
   stopHeartbeat();
   heartbeatTimer = setInterval(() => {
     if (connectionState === 'connected' && ws) {
+      const pingMessage = {
+        cmd: WeWorkCommand.PING,
+        headers: {
+          req_id: generateReqId(),
+        },
+        body: {},
+      };
       try {
-        ws.ping();
+        ws.send(JSON.stringify(pingMessage));
+        log.debug('Sent ping');
       } catch (err) {
-        log.debug('Failed to send ping:', err);
+        log.error('Error sending ping:', err);
       }
     }
-  }, 30000); // 30 seconds
+  }, HEARTBEAT_INTERVAL);
 }
 
 /**
@@ -308,63 +317,21 @@ function stopHeartbeat(): void {
  * Schedule reconnection attempt
  */
 function scheduleReconnect(): void {
-  const maxAttempts = 10;
-  if (reconnectAttempts >= maxAttempts) {
+  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
     log.error('Max reconnect attempts reached');
     return;
   }
 
-  const interval = 5000; // 5 seconds
+  const interval = 5000; // 5秒后重连
   reconnectTimer = setTimeout(async () => {
     reconnectAttempts++;
-    log.info(`Reconnecting... Attempt ${reconnectAttempts}/${maxAttempts}`);
+    log.info(`Reconnecting... Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
     try {
       await connectWebSocket();
     } catch (err) {
       log.error('Reconnection failed:', err);
     }
   }, interval);
-}
-
-/**
- * Load token from storage
- */
-async function loadToken(): Promise<void> {
-  if (!tokenStoragePath) return;
-
-  const tokenPath = join(tokenStoragePath, TOKEN_FILE);
-  if (existsSync(tokenPath)) {
-    try {
-      const data = readFileSync(tokenPath, 'utf-8');
-      currentToken = JSON.parse(data) as WeWorkToken;
-
-      // Check if token is expired
-      if (currentToken.expiresAt < Date.now()) {
-        log.info('Token expired, need to refresh');
-        currentToken = null;
-      } else {
-        log.info('Loaded existing token from storage');
-      }
-    } catch (err) {
-      log.error('Error loading token:', err);
-      currentToken = null;
-    }
-  }
-}
-
-/**
- * Save token to storage
- */
-function saveToken(): void {
-  if (!currentToken || !tokenStoragePath) return;
-
-  try {
-    const tokenPath = join(tokenStoragePath, TOKEN_FILE);
-    writeFileSync(tokenPath, JSON.stringify(currentToken, null, 2), 'utf-8');
-    log.info('Token saved to storage');
-  } catch (err) {
-    log.error('Error saving token:', err);
-  }
 }
 
 /**
@@ -382,11 +349,4 @@ export function stopWeWork(): void {
   }
   updateState('disconnected');
   log.info('WeWork client stopped');
-}
-
-/**
- * Get Agent ID for message sending
- */
-export function getAgentId(): string {
-  return agentId;
 }

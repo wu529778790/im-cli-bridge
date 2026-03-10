@@ -1,14 +1,33 @@
 /**
  * WeWork (企业微信) Message Sender - Send messages to WeWork
+ * 通过 WebSocket aibot_respond_msg 发送，需透传 req_id
  */
 
-import { sendMessage, getAgentId } from './client.js';
+import { sendText, sendStream, sendMessage } from './client.js';
 import { createLogger } from '../logger.js';
 import { splitLongContent } from '../shared/utils.js';
 import { MAX_WEWORK_MESSAGE_LENGTH } from '../constants.js';
-import type { MessageStatus, WeWorkSendMessageRequest } from './types.js';
+import { randomBytes } from 'node:crypto';
 
 const log = createLogger('WeWorkSender');
+
+/** 当前同步处理中的 req_id（仅用于 commandHandler 等同步调用） */
+let currentReqId: string | null = null;
+
+export function setCurrentReqId(reqId: string | null): void {
+  currentReqId = reqId;
+}
+
+function getReqId(explicitReqId?: string): string {
+  const id = explicitReqId ?? currentReqId;
+  if (!id) {
+    log.warn('No req_id - cannot send WeWork reply');
+    return '';
+  }
+  return id;
+}
+
+type MessageStatus = 'thinking' | 'streaming' | 'done' | 'error';
 
 const STATUS_CONFIG: Record<MessageStatus, { icon: string; title: string }> = {
   thinking: { icon: '🔵', title: '思考中' },
@@ -27,6 +46,20 @@ function getToolTitle(toolId: string, status: MessageStatus): string {
   const name = TOOL_DISPLAY_NAMES[toolId] ?? toolId;
   const statusText = STATUS_CONFIG[status].title;
   return status === 'done' ? name : `${name} - ${statusText}`;
+}
+
+/**
+ * Generate unique request ID
+ */
+function generateReqId(): string {
+  return `${Date.now()}-${randomBytes(8).toString('hex')}`;
+}
+
+/**
+ * Generate unique stream ID for WeWork streaming responses
+ */
+function generateStreamId(): string {
+  return `${Date.now()}-${randomBytes(8).toString('hex')}`;
 }
 
 /**
@@ -55,31 +88,37 @@ function formatWeWorkMessage(
 }
 
 /**
+ * Local tracking for stream states
+ * WeWork doesn't support message editing, so we track stream IDs locally
+ */
+const streamStates = new Map<string, { content: string; chatId: string }>();
+
+/**
  * Send thinking message to WeWork
- * Returns a message ID that can be used for updates
+ * Returns a stream ID that can be used for updates
+ * @param reqId - 消息回调的 req_id，用于 WebSocket 回复
  */
 export async function sendThinkingMessage(
   chatId: string,
   _replyToMessageId: string | undefined,
-  toolId = 'claude'
+  toolId = 'claude',
+  reqId?: string
 ): Promise<string> {
-  const messageId = generateMsgId();
+  const streamId = generateStreamId();
   const title = getToolTitle(toolId, 'thinking');
   const content = formatWeWorkMessage(title, '', 'thinking');
 
   try {
-    log.info(`Sending thinking message to user ${chatId}`);
+    log.info(`Sending thinking message to user ${chatId}, streamId=${streamId}`);
 
-    const request: WeWorkSendMessageRequest = {
-      touser: chatId,
-      msgtype: 'text',
-      agentid: parseInt(getAgentId(), 10),
-      text: { content },
-    };
+    // Store initial stream state
+    streamStates.set(streamId, { content: '', chatId });
 
-    await sendMessage(request);
-    log.info(`Thinking message sent: ${messageId}`);
-    return messageId;
+    // Send initial stream message (not finished)
+    sendStream(getReqId(reqId), streamId, content, false);
+
+    log.info(`Thinking message sent: ${streamId}`);
+    return streamId;
   } catch (err) {
     log.error('Failed to send thinking message:', err);
     throw err;
@@ -88,29 +127,28 @@ export async function sendThinkingMessage(
 
 /**
  * Update existing message in WeWork
- * Note: WeWork doesn't support message editing, so we send a new message
+ * Note: WeWork doesn't support message editing, so we send new stream messages
  */
 export async function updateMessage(
   chatId: string,
-  _messageId: string,
+  streamId: string,
   content: string,
   status: MessageStatus,
   note?: string,
-  toolId = 'claude'
+  toolId = 'claude',
+  reqId?: string
 ): Promise<void> {
   const title = getToolTitle(toolId, status);
   const message = formatWeWorkMessage(title, content, status, note);
 
   try {
-    const request: WeWorkSendMessageRequest = {
-      touser: chatId,
-      msgtype: 'text',
-      agentid: parseInt(getAgentId(), 10),
-      text: { content: message },
-    };
+    // Update stream state
+    streamStates.set(streamId, { content, chatId });
 
-    await sendMessage(request);
-    log.info(`Message updated: ${status}`);
+    // Send stream update (not finished yet)
+    sendStream(getReqId(reqId), streamId, message, false);
+
+    log.info(`Message updated: ${status}, streamId=${streamId}`);
   } catch (err) {
     log.error('Failed to update message:', err);
     throw err;
@@ -122,49 +160,56 @@ export async function updateMessage(
  */
 export async function sendFinalMessages(
   chatId: string,
-  _messageId: string,
+  streamId: string,
   fullContent: string,
   note: string,
-  toolId = 'claude'
+  toolId = 'claude',
+  reqId?: string
 ): Promise<void> {
   const title = getToolTitle(toolId, 'done');
   const parts = splitLongContent(fullContent, MAX_WEWORK_MESSAGE_LENGTH);
 
-  for (let i = 0; i < parts.length; i++) {
-    try {
-      const partContent = i === 0 ? parts[0] : `${parts[i]}\n\n_*(续 ${i + 1}/${parts.length})*_`;
-      const message = formatWeWorkMessage(title, partContent, 'done', i === parts.length - 1 ? note : undefined);
+  // Send final stream message to finish the stream
+  const finalMessage = formatWeWorkMessage(title, parts[0], 'done', parts.length > 1 ? `内容较长，已分段发送 (1/${parts.length})` : note);
 
-      const request: WeWorkSendMessageRequest = {
-        touser: chatId,
-        msgtype: 'text',
-        agentid: parseInt(getAgentId(), 10),
-        text: { content: message },
-      };
+  try {
+    sendStream(getReqId(reqId), streamId, finalMessage, true);
+    log.info(`Final stream message sent, streamId=${streamId}`);
 
-      await sendMessage(request);
-      log.info(`Final message part ${i + 1}/${parts.length} sent`);
-    } catch (err) {
-      log.error(`Failed to send part ${i + 1}:`, err);
+    // Clean up stream state
+    streamStates.delete(streamId);
+
+    // Send remaining parts as separate messages
+    for (let i = 1; i < parts.length; i++) {
+      try {
+        const partContent = `${parts[i]}\n\n_*(续 ${i + 1}/${parts.length})*_`;
+        const partMessage = formatWeWorkMessage(title, partContent, 'done', i === parts.length - 1 ? note : undefined);
+
+        sendText(getReqId(reqId), partMessage);
+        log.info(`Final message part ${i + 1}/${parts.length} sent`);
+      } catch (err) {
+        log.error(`Failed to send part ${i + 1}:`, err);
+      }
     }
+  } catch (err) {
+    log.error('Failed to send final messages:', err);
   }
 }
 
 /**
  * Send simple text reply to WeWork
+ * @param threadCtxOrReqId - 兼容 MessageSender 的 threadCtx；若为 string 则作为 reqId 使用
  */
-export async function sendTextReply(chatId: string, text: string): Promise<void> {
+export async function sendTextReply(
+  chatId: string,
+  text: string,
+  threadCtxOrReqId?: import('../shared/types.js').ThreadContext | string
+): Promise<void> {
   const message = formatWeWorkMessage('📢 open-im', text, 'done');
+  const reqId = typeof threadCtxOrReqId === 'string' ? threadCtxOrReqId : undefined;
 
   try {
-    const request: WeWorkSendMessageRequest = {
-      touser: chatId,
-      msgtype: 'text',
-      agentid: parseInt(getAgentId(), 10),
-      text: { content: message },
-    };
-
-    await sendMessage(request);
+    sendText(getReqId(reqId), message);
     log.info(`Text reply sent to user ${chatId}`);
   } catch (err) {
     log.error('Failed to send text reply:', err);
@@ -179,7 +224,8 @@ export async function sendPermissionCard(
   chatId: string,
   requestId: string,
   toolName: string,
-  toolInput: string
+  toolInput: string,
+  reqId?: string
 ): Promise<void> {
   const message = `🔐 **权限请求**
 
@@ -197,14 +243,7 @@ ${toolInput.length > 300 ? toolInput.slice(0, 300) + '...' : toolInput}
 **请求 ID:** \`${requestId.slice(-8)}\``;
 
   try {
-    const request: WeWorkSendMessageRequest = {
-      touser: chatId,
-      msgtype: 'text',
-      agentid: parseInt(getAgentId(), 10),
-      text: { content: message },
-    };
-
-    await sendMessage(request);
+    sendText(getReqId(reqId), message);
     log.info(`Permission card sent to user ${chatId}`);
   } catch (err) {
     log.error('Failed to send permission card:', err);
@@ -217,7 +256,8 @@ ${toolInput.length > 300 ? toolInput.slice(0, 300) + '...' : toolInput}
 export async function sendModeCard(
   chatId: string,
   _userId: string,
-  currentMode: string
+  currentMode: string,
+  reqId?: string
 ): Promise<void> {
   const { MODE_LABELS } = await import('../permission-mode/types.js');
   const message = `🔐 **权限模式**
@@ -231,14 +271,7 @@ export async function sendModeCard(
 • \`/mode yolo\` - 跳过所有权限`;
 
   try {
-    const request: WeWorkSendMessageRequest = {
-      touser: chatId,
-      msgtype: 'text',
-      agentid: parseInt(getAgentId(), 10),
-      text: { content: message },
-    };
-
-    await sendMessage(request);
+    sendText(getReqId(reqId), message);
     log.info(`Mode card sent to user ${chatId}`);
   } catch (err) {
     log.error('Failed to send mode card:', err);
@@ -267,13 +300,6 @@ export async function sendDirectorySelection(
 }
 
 /**
- * Generate unique message ID
- */
-function generateMsgId(): string {
-  return `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
-}
-
-/**
  * Start typing indicator (WeWork doesn't support this)
  */
 export function startTypingLoop(_chatId: string): () => void {
@@ -285,18 +311,11 @@ export function startTypingLoop(_chatId: string): () => void {
 /**
  * Send error message
  */
-export async function sendErrorMessage(chatId: string, error: string): Promise<void> {
+export async function sendErrorMessage(chatId: string, error: string, reqId?: string): Promise<void> {
   const message = formatWeWorkMessage('❌ 错误', error, 'error');
 
   try {
-    const request: WeWorkSendMessageRequest = {
-      touser: chatId,
-      msgtype: 'text',
-      agentid: parseInt(getAgentId(), 10),
-      text: { content: message },
-    };
-
-    await sendMessage(request);
+    sendText(getReqId(reqId), message);
     log.info(`Error message sent to user ${chatId}`);
   } catch (err) {
     log.error('Failed to send error message:', err);

@@ -26,7 +26,7 @@ interface ExistingConfig {
       wsUrl?: string;
       allowedUserIds?: string[];
     };
-    wework?: { enabled?: boolean; corpId?: string; agentId?: string; secret?: string; allowedUserIds?: string[] };
+    wework?: { enabled?: boolean; corpId?: string; secret?: string; allowedUserIds?: string[] };
   };
   claudeWorkDir?: string;
   claudeSkipPermissions?: boolean;
@@ -59,7 +59,7 @@ function getConfiguredPlatforms(existing: ExistingConfig | null): string[] {
       if (k === "feishu") return !!(p.appId && p.appSecret);
       // 微信支持 AGP 协议（token + guid + userId）或标准协议（appId + appSecret）
       if (k === "wechat") return !!(p.token && p.guid && p.userId) || !!(p.appId && p.appSecret);
-      if (k === "wework") return !!(p.corpId && p.agentId && p.secret);
+      if (k === "wework") return !!(p.corpId && p.secret);
       return false;
     })
     .map(({ label }) => label);
@@ -153,7 +153,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
   const hasFs = !!(existing?.platforms?.feishu?.appId && existing?.platforms?.feishu?.appSecret);
   const wc = existing?.platforms?.wechat;
   const hasWc = !!(wc?.token && wc?.guid && wc?.userId) || !!(wc?.appId && wc?.appSecret);
-  const hasWw = !!(existing?.platforms?.wework?.corpId && existing?.platforms?.wework?.agentId && existing?.platforms?.wework?.secret);
+  const hasWw = !!(existing?.platforms?.wework?.corpId && existing?.platforms?.wework?.secret);
 
   // 第一步：选择平台（在选项和提示中显示已配置项）
   const configuredHint =
@@ -182,7 +182,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
         },
         {
           title:
-            "企业微信 (WeCom/WeWork) - 需要 Corp ID、Agent ID 和 Secret" +
+            "企业微信 (WeCom/WeWork) - 需要 Bot ID 和 Secret" +
             (hasWw ? " ✓已配置" : ""),
           value: "wework",
         },
@@ -350,16 +350,9 @@ export async function runInteractiveSetup(): Promise<boolean> {
         {
           type: "text",
           name: "corpId",
-          message: "企业微信 Corp ID（从企业微信管理后台获取）",
+          message: "企业微信 Bot ID（从企业微信管理后台获取）",
           initial: existing?.platforms?.wework?.corpId ?? "",
-          validate: (v: string) => (v.trim() ? true : "Corp ID 不能为空"),
-        },
-        {
-          type: "text",
-          name: "agentId",
-          message: "企业微信 Agent ID（应用 ID，从企业微信管理后台获取）",
-          initial: existing?.platforms?.wework?.agentId ?? "",
-          validate: (v: string) => (v.trim() ? true : "Agent ID 不能为空"),
+          validate: (v: string) => (v.trim() ? true : "Bot ID 不能为空"),
         },
         {
           type: "text",
@@ -373,13 +366,11 @@ export async function runInteractiveSetup(): Promise<boolean> {
     );
 
     const wwCorpId = weworkResp.corpId?.trim() || existing?.platforms?.wework?.corpId;
-    const wwAgentId = weworkResp.agentId?.trim() || existing?.platforms?.wework?.agentId;
     const wwSecret = weworkResp.secret?.trim() || existing?.platforms?.wework?.secret;
-    if (wwCorpId && wwAgentId && wwSecret) {
+    if (wwCorpId && wwSecret) {
       (config.platforms as any).wework = {
         enabled: true,
         corpId: wwCorpId,
-        agentId: wwAgentId,
         secret: wwSecret,
       };
     } else if (platform === "wework") {
@@ -546,7 +537,6 @@ export async function runInteractiveSetup(): Promise<boolean> {
       ...(base?.platforms?.wework as object),
       enabled: true,
       corpId: (config.platforms as any).wework?.corpId,
-      agentId: (config.platforms as any).wework?.agentId,
       secret: (config.platforms as any).wework?.secret,
       allowedUserIds: weworkIds,
     };

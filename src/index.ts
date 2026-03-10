@@ -150,14 +150,19 @@ export async function main() {
     }
   }
 
+  if (config.enabledPlatforms.includes("wework")) {
+    try {
+      weworkHandle = setupWeWorkHandlers(config, sessionManager);
+      await initWeWork(config, weworkHandle.handleEvent);
+      successfulPlatforms.push("wework");
+    } catch (err) {
+      log.error("Failed to initialize WeWork:", err);
+    }
+  }
+
   // Require at least one platform to start successfully
   if (successfulPlatforms.length === 0) {
     throw new Error("No platforms initialized successfully. Service cannot start.");
-  }
-
-  if (config.enabledPlatforms.includes("wework")) {
-    weworkHandle = setupWeWorkHandlers(config, sessionManager);
-    await initWeWork(config, weworkHandle.handleEvent);
   }
 
   log.info("Service is running. Press Ctrl+C to stop.");

@@ -29,9 +29,9 @@ export interface Config {
   wechatGuid?: string;      // AGP 协议 guid
   wechatUserId?: string;    // AGP 协议 userId
   wechatWsUrl?: string;
-  weworkCorpId?: string;
-  weworkAgentId?: string;
-  weworkSecret?: string;
+  weworkCorpId?: string;  // 企业微信 Bot ID
+  weworkSecret?: string;   // 企业微信 Secret
+  weworkWsUrl?: string;    // 企业微信 WebSocket URL（可选，默认使用官方服务）
 
   // 全局白名单（旧版兼容）
   allowedUserIds: string[];
@@ -109,9 +109,9 @@ interface FilePlatformWechat {
 
 interface FilePlatformWework {
   enabled?: boolean;
-  corpId?: string;
-  agentId?: string;
+  corpId?: string;  // Bot ID
   secret?: string;
+  wsUrl?: string;
   allowedUserIds?: string[];
 }
 
@@ -160,7 +160,7 @@ export function needsSetup(): boolean {
   if (process.env.FEISHU_APP_ID && process.env.FEISHU_APP_SECRET) return false;
   if (process.env.WECHAT_APP_ID && process.env.WECHAT_APP_SECRET) return false;
   if (process.env.WECHAT_TOKEN && process.env.WECHAT_GUID && process.env.WECHAT_USER_ID) return false;
-  if (process.env.WEWORK_CORP_ID && process.env.WEWORK_AGENT_ID && process.env.WEWORK_SECRET) return false;
+  if (process.env.WEWORK_CORP_ID && process.env.WEWORK_SECRET) return false;
 
   const file = loadFileConfig();
   const tg = file.platforms?.telegram;
@@ -172,7 +172,8 @@ export function needsSetup(): boolean {
   const hasFeishu = !!(fs?.appId && fs?.appSecret);
   // 微信支持 AGP 协议（token + guid + userId）或标准协议（appId + appSecret）
   const hasWechat = !!(wc?.token && wc?.guid && wc?.userId) || !!(wc?.appId && wc?.appSecret);
-  const hasWework = !!(ww?.corpId && ww?.agentId && ww?.secret);
+  // 企业微信只需要 corpId 和 secret
+  const hasWework = !!(ww?.corpId && ww?.secret);
 
   return !hasTelegram && !hasFeishu && !hasWechat && !hasWework;
 }
@@ -232,12 +233,12 @@ export function loadConfig(): Config {
   const weworkCorpId =
     process.env.WEWORK_CORP_ID ??
     fileWework?.corpId;
-  const weworkAgentId =
-    process.env.WEWORK_AGENT_ID ??
-    fileWework?.agentId;
   const weworkSecret =
     process.env.WEWORK_SECRET ??
     fileWework?.secret;
+  const weworkWsUrl =
+    process.env.WEWORK_WS_URL ??
+    fileWework?.wsUrl;
 
   // 2. 计算启用平台
   const enabledPlatforms: Platform[] = [];
@@ -256,8 +257,9 @@ export function loadConfig(): Config {
   const hasWechatStandardCreds = !!(wechatAppId && wechatAppSecret);
   const wechatEnabled =
     (hasWechatAGPCreds || hasWechatStandardCreds) && (wechatEnabledFlag !== false);
+  // 企业微信只需要 corpId (botId) 和 secret
   const weworkEnabled =
-    !!(weworkCorpId && weworkAgentId && weworkSecret) && (weworkEnabledFlag !== false);
+    !!(weworkCorpId && weworkSecret) && (weworkEnabledFlag !== false);
 
   if (telegramEnabled) enabledPlatforms.push('telegram');
   if (feishuEnabled) enabledPlatforms.push('feishu');
@@ -431,8 +433,8 @@ export function loadConfig(): Config {
     wechatUserId: wechatUserId,
     wechatWsUrl: wechatWsUrl,
     weworkCorpId: weworkCorpId ?? '',
-    weworkAgentId: weworkAgentId ?? '',
     weworkSecret: weworkSecret ?? '',
+    weworkWsUrl: weworkWsUrl,
     allowedUserIds,
     telegramAllowedUserIds,
     feishuAllowedUserIds,
