@@ -154,13 +154,6 @@ async function cmdStop(): Promise<void> {
 }
 
 async function cmdInit(): Promise<void> {
-  if (!needsSetup()) {
-    console.log("检测到已存在配置文件。如需重新配置，请先删除配置文件：");
-    console.log(`  ${join(APP_HOME, "config.json")}`);
-    console.log("\n或直接编辑配置文件后重新运行。");
-    return;
-  }
-
   console.log("\n━━━ open-im 配置向导 ━━━\n");
   const saved = await runInteractiveSetup();
   if (saved) {
@@ -181,7 +174,7 @@ function showHelp(exitCode = 0): void {
 命令:
   start    后台运行服务
   stop     停止后台服务
-  init     初始化配置（不启动服务）
+  init     配置向导（首次或追加配置，会覆盖已有 config.json）
   dev      前台运行（调试模式），Ctrl+C 停止
 
 选项:
