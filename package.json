@@ -19,7 +19,8 @@
     "init": "tsx src/cli.ts init",
     "start": "node dist/cli.js start",
     "stop": "node dist/cli.js stop",
-    "test": "npm run build",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
@@ -54,9 +55,11 @@
     "@types/prompts": "^2.4.9",
     "@types/qrcode-terminal": "^0.12.2",
     "@types/ws": "^8.5.13",
+    "@vitest/coverage-v8": "4.0.18",
     "dotenv": "^16.0.0",
     "tsx": "^4.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "4.0.18"
   },
   "engines": {
     "node": ">=20"
