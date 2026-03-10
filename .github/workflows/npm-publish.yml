@@ -67,24 +67,70 @@ jobs:
       - name: Bump version (manual trigger only)
         if: github.event_name == 'workflow_dispatch'
         run: |
-          NPM_VER=$(npm view @wu529778790/open-im version 2>/dev/null) || NPM_VER="0.0.0"
           BUMP="${{ github.event.inputs.version_bump || 'patch' }}"
           TAG="${{ github.event.inputs.prerelease_tag || 'beta' }}"
 
-          # dev 分支或选择 prerelease 时发布预览版
-          if [[ "${{ github.ref_name }}" == "dev" ]] || [[ "$BUMP" == "prerelease" ]]; then
-            NEXT=$(npx -y semver@7 -i prerelease --preid=$TAG $NPM_VER)
-            IS_PRERELEASE=true
-          else
-            NEXT=$(npx -y semver@7 -i $BUMP $NPM_VER)
-            IS_PRERELEASE=false
-          fi
+          # 创建临时 Node 脚本
+          cat > /tmp/bump-version.js << 'EOF'
+          const { execSync } = require('child_process');
+          try { var semver = require('semver'); } catch { null; }
+          const bump = process.argv[1];
+          const tag = process.argv[2];
+          const isDev = process.argv[3] === 'true';
+          const isPrerelease = isDev || bump === 'prerelease';
 
-          # 直接修改 package.json，不使用 npm version（避免版本检查）
-          npm pkg set version=$NEXT
-          echo "Publishing version: $NEXT"
+          function semverInc(version, type, preid) {
+            const semver = require('semver');
+            return semver.inc(version, type, preid);
+          }
+
+          if (!isPrerelease) {
+            const npmVer = execSync('npm view @wu529778790/open-im version 2>/dev/null', { encoding: 'utf8' }).trim() || '0.0.0';
+            const next = semverInc(npmVer, bump);
+            console.log('VERSION=' + next);
+            console.log('IS_PRERELEASE=false');
+            console.log('PRERELEASE_TAG=');
+            return;
+          }
+
+          try {
+            const versions = JSON.parse(execSync('npm view @wu529778790/open-im versions --json', { encoding: 'utf8' }));
+            const semver = require('semver');
+            const npmVer = versions.sort(semver.compare).pop() || '0.0.0';
+            console.error('Latest npm version:', npmVer);
+
+            let next;
+            const prerelease = semver.prerelease(npmVer);
+
+            if (!prerelease || prerelease.length === 0) {
+              const base = semverInc(npmVer, 'patch');
+              next = `${base}-${tag}.0`;
+            } else if (npmVer.includes(`-${tag}.`)) {
+              next = semverInc(npmVer, 'prerelease', tag);
+            } else {
+              const base = npmVer.split('-')[0];
+              next = `${base}-${tag}.0`;
+            }
+
+            console.log('VERSION=' + next);
+            console.log('IS_PRERELEASE=true');
+            console.log('PRERELEASE_TAG=' + tag);
+          } catch (e) {
+            console.error('Error:', e.message);
+            console.log('VERSION=1.0.0-' + tag + '.0');
+            console.log('IS_PRERELEASE=true');
+            console.log('PRERELEASE_TAG=' + tag);
+          }
+          EOF
+
+          # 执行脚本并解析结果
+          RESULT=$(node /tmp/bump-version.js "$BUMP" "$TAG" "$([[ "${{ github.ref_name }}" == "dev" ]] && echo "true" || echo "false")" 2>&1)
+          eval "$(echo "$RESULT" | grep '^VERSION\|^IS_PRERELEASE\|^PRERELEASE_TAG')"
+
+          echo "Publishing version: $VERSION"
+          npm pkg set version=$VERSION
           echo "IS_PRERELEASE=$IS_PRERELEASE" >> $GITHUB_ENV
-          echo "PRERELEASE_TAG=$TAG" >> $GITHUB_ENV
+          echo "PRERELEASE_TAG=$PRERELEASE_TAG" >> $GITHUB_ENV
 
       - run: npm run build
 
