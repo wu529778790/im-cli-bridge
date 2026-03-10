@@ -48,20 +48,6 @@ jobs:
 
       - run: npm ci
 
-      - name: Detect prerelease version
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          if [[ "$VERSION" =~ -[a-zA-Z] ]]; then
-            # Extract prerelease tag (e.g., "beta" from "1.0.0-beta.1")
-            TAG=$(echo "$VERSION" | sed -n 's/.*-\([a-zA-Z]*\).*/\1/p')
-            echo "IS_PRERELEASE=true" >> $GITHUB_ENV
-            echo "PRERELEASE_TAG=$TAG" >> $GITHUB_ENV
-            echo "Detected prerelease version: $VERSION (tag: $TAG)"
-          else
-            echo "IS_PRERELEASE=false" >> $GITHUB_ENV
-            echo "Detected stable version: $VERSION"
-          fi
-
       - name: Bump version (manual trigger only)
         if: github.event_name == 'workflow_dispatch'
         shell: bash
@@ -169,10 +155,17 @@ jobs:
       - name: Publish to npm
         if: github.event.inputs.dry_run != 'true'
         run: |
+          VERSION=$(node -p "require('./package.json').version")
           TAG="${{ github.event.inputs.prerelease_tag || 'beta' }}"
-          if [[ "$IS_PRERELEASE" == "true" ]]; then
-            npm publish --access public --tag=$TAG
+
+          # 检查是否为 prerelease 版本
+          if [[ "$VERSION" =~ -[a-zA-Z] ]]; then
+            # 提取 prerelease tag（从版本号中）
+            VERSION_TAG=$(echo "$VERSION" | sed -n 's/.*-\([a-zA-Z]*\).*/\1/p')
+            echo "Publishing prerelease version $VERSION with tag $VERSION_TAG"
+            npm publish --access public --tag=$VERSION_TAG
           else
+            echo "Publishing stable version $VERSION"
             npm publish --access public
           fi
 
