@@ -11,29 +11,26 @@ npm run build
 # Development mode - run directly from source with tsx
 npm run dev
 
-# Run the compiled version
+# Run the compiled version (production)
 npm start
-
-# Setup/initialization
-npm run setup            # Run setup-only mode (after building)
+npm stop
 
 # CLI commands (after building)
-open-im start            # Start service in background
-open-im stop             # Stop background service
-open-im restart          # Restart service
-open-im run              # Run in foreground (default)
-open-im init             # Interactive configuration wizard
+open-im init            # Interactive configuration wizard (does not start service)
+open-im start           # Start service in background
+open-im stop            # Stop background service
+open-im dev             # Run in foreground (debug mode)
 ```
 
 ## Project Architecture
 
-This is a multi-platform IM bridge that connects Telegram and Feishu (Lark) to AI CLI tools like Claude Code, enabling mobile/remote access to AI coding assistance.
+This is a multi-platform IM bridge that connects Telegram, Feishu (Lark), and WeChat to AI CLI tools like Claude Code, enabling mobile/remote access to AI coding assistance.
 
 ### Core Architecture
 
 - **Entry Points**:
   - `src/index.ts` - Main service entry, handles lifecycle and platform initialization
-  - `src/cli.ts` - CLI interface for start/stop/restart/init commands, manages background daemon
+  - `src/cli.ts` - CLI interface for start/stop/init/dev commands, manages background daemon
   - `src/setup.ts` - Interactive configuration wizard using `prompts` library
 
 - **Platform Layer**:
@@ -45,6 +42,10 @@ This is a multi-platform IM bridge that connects Telegram and Feishu (Lark) to A
     - `client.ts` - Feishu client and WebSocket event handling
     - `event-handler.ts` - Message/command routing from Feishu
     - `message-sender.ts` - Sending responses back to Feishu
+  - `src/wechat/` - WeChat via AGP protocol
+    - `client.ts` - WeChat WebSocket client initialization
+    - `event-handler.ts` - Message/command routing from WeChat
+    - `message-sender.ts` - Sending responses back to WeChat
 
 - **AI Adapter Layer** (`src/adapters/`):
   - `tool-adapter.interface.ts` - Common interface for all AI tools
@@ -72,12 +73,12 @@ This is a multi-platform IM bridge that connects Telegram and Feishu (Lark) to A
 Config file: `~/.open-im/config.json`
 
 Config loading order (environment variables take precedence):
-1. Environment variables (TELEGRAM_BOT_TOKEN, FEISHU_APP_ID, etc.)
+1. Environment variables (TELEGRAM_BOT_TOKEN, FEISHU_APP_ID, WECHAT_APP_ID, etc.)
 2. File config (`~/.open-im/config.json`)
 3. Default values
 
 Key config options:
-- `enabledPlatforms` - Array of enabled platforms ('telegram' | 'feishu')
+- `enabledPlatforms` - Array of enabled platforms ('telegram' | 'feishu' | 'wechat')
 - `allowedUserIds` - Whitelist of user IDs (empty = all users)
 - `allowedBaseDirs` - Security: restrict which directories users can access
 - `aiCommand` - Which AI tool to use (claude/codex/cursor)
@@ -94,7 +95,7 @@ Key config options:
 - **ES Module + Node16** - TypeScript target ES2022, module Node16
 - **Node >= 20** - Minimum Node version requirement
 - **First-run setup** - `src/setup.ts` provides interactive configuration wizard; if stdin is not a TTY, prints manual setup instructions
-- **Multi-platform** - Both Telegram and Feishu can be enabled simultaneously; `enabledPlatforms` is dynamically determined based on available tokens
+- **Multi-platform** - Telegram, Feishu, and WeChat can be enabled simultaneously; `enabledPlatforms` is dynamically determined based on available tokens
 - **Permission Server** - `src/hook/permission-server.ts` handles auto-approving tool permissions when `claudeSkipPermissions` is enabled
 - **Request Queue** - `src/queue/request-queue.ts` handles concurrent message processing per user
 - **Access Control** - `src/access/access-control.ts` validates user IDs against whitelist
