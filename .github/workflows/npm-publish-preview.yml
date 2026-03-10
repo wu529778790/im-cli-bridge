@@ -1,0 +1,120 @@
+name: Publish Preview to npm
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+    inputs:
+      prerelease_type:
+        description: 'Prerelease type'
+        required: true
+        default: 'alpha'
+        type: choice
+        options:
+          - alpha
+          - beta
+          - rc
+      dry_run:
+        description: 'Dry run (不发布，仅打包)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - run: npm ci
+
+      - name: Get current version from package.json
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Determine prerelease version
+        id: prerelease
+        run: |
+          BASE_VERSION="${{ steps.version.outputs.version }}"
+          PRERELEASE_TYPE="${{ github.event.inputs.prerelease_type || 'alpha' }}"
+
+          # Get the latest prerelease version for this type
+          LATEST_PRERELEASE=$(npm view @wu529778790/open-im@next dist-tags --json 2>/dev/null | grep -o '"next":[^,]*' | cut -d'"' -f4 || echo "")
+
+          if [ -n "$LATEST_PRERELEASE" ]; then
+            # Extract prerelease number and increment
+            CURRENT_NUM=$(echo $LATEST_PRERELEASE | grep -oP "(?<=\-${PRERELEASE_TYPE}\.)\d+" || echo "0")
+            NEXT_NUM=$((CURRENT_NUM + 1))
+            PRERELEASE_VERSION="${BASE_VERSION}-${PRERELEASE_TYPE}.${NEXT_NUM}"
+          else
+            PRERELEASE_VERSION="${BASE_VERSION}-${PRERELEASE_TYPE}.1"
+          fi
+
+          echo "prerelease_version=$PRERELEASE_VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Publishing version: $PRERELEASE_VERSION"
+
+      - name: Build package
+        run: |
+          npm pkg set version=${{ steps.prerelease.outputs.prerelease_version }}
+          npm run build
+
+      - name: Test (continue on error)
+        run: npm test
+        continue-on-error: true
+
+      - name: Publish to npm with --tag next
+        if: github.event.inputs.dry_run != 'true'
+        run: |
+          echo "🚀 Publishing ${{ steps.prerelease.outputs.prerelease_version }} to @next tag"
+          npm publish --access public --tag next
+
+      - name: Dry run (pack only)
+        if: github.event.inputs.dry_run == 'true'
+        run: |
+          echo "📦 Dry run: packing ${{ steps.prerelease.outputs.prerelease_version }}"
+          npm pack
+
+      - name: Create GitHub Release (optional)
+        if: github.event.inputs.dry_run != 'true'
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.prerelease.outputs.prerelease_version }}
+          release_name: "Preview: ${{ steps.prerelease.outputs.prerelease_version }}"
+          body: |
+            ## 📦 Preview Release
+
+            **Version:** ${{ steps.prerelease.outputs.prerelease_version }}
+            **Branch:** dev
+            **Date:** ${{ github.event.head_commit.timestamp }}
+
+            ### 安装预览版本
+
+            \`\`\`bash
+            npm install @wu529778790/open-im@next
+            \`\`\`
+
+            ### ⚠️ 注意事项
+
+            - 这是一个预览版本，可能包含实验性功能
+            - 不建议在生产环境中使用
+
+            ---
+            [查看完整变更日志](https://github.com/wu529778790/open-im/compare/v${{ steps.version.outputs.version }}...v${{ steps.prerelease.outputs.prerelease_version }})
+          draft: false
+          prerelease: true

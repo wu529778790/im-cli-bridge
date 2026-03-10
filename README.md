@@ -17,9 +17,19 @@
 
 ## 安装
 
+### 正式版
+
 ```bash
 npm install @wu529778790/open-im -g
 ```
+
+### 预览版 (包含最新功能)
+
+```bash
+npm install @wu529778790/open-im@next -g
+```
+
+> 💡 `@next` 标签包含最新的预览版本（alpha/beta/rc），可能有实验性功能，不建议生产环境使用。
 
 ## ✨ 为什么选择 open-im
 
