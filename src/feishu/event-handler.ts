@@ -18,7 +18,6 @@ import { CommandHandler } from '../commands/handler.js';
 import { getAdapter } from '../adapters/registry.js';
 import { runAITask, type TaskRunState } from '../shared/ai-task.js';
 import { startTaskCleanup } from '../shared/task-cleanup.js';
-import { MessageDedup } from '../shared/message-dedup.js';
 import { THROTTLE_MS, IMAGE_DIR, MAX_FEISHU_MESSAGE_LENGTH } from '../constants.js';
 import { setActiveChatId } from '../shared/active-chats.js';
 import { splitLongContent } from '../shared/utils.js';
@@ -96,7 +95,6 @@ export function setupFeishuHandlers(
   const requestQueue = new RequestQueue();
   const runningTasks = new Map<string, TaskRunState>();
   const stopTaskCleanup = startTaskCleanup(runningTasks);
-  const dedup = new MessageDedup();
 
   const commandHandler = new CommandHandler({
     config,
@@ -246,13 +244,6 @@ export function setupFeishuHandlers(
 
       log.info(`Sender ID: ${senderId}`);
 
-      // Dedup check
-      const dedupKey = `${chatId}:${messageId}`;
-      if (dedup.isDuplicate(dedupKey)) {
-        log.info(`Duplicate message detected: ${dedupKey}`);
-        return;
-      }
-
       // Access control check
       if (!accessControl.isAllowed(senderId)) {
         log.warn(`Access denied for sender: ${senderId}`);
@@ -302,14 +293,35 @@ export function setupFeishuHandlers(
         let text = '';
 
         if (post?.content && Array.isArray(post.content)) {
+          // Log full structure for debugging
+          log.info(`[MSG] Post content structure:`, JSON.stringify(post.content).slice(0, 500));
+
           // Extract text from rich text structure
           for (const section of post.content) {
-            if (section && typeof section === 'object' && 'text' in section) {
-              const tag = (section as { tag?: string })?.tag;
+            if (!section || typeof section !== 'object') continue;
+
+            const tag = (section as { tag?: string })?.tag;
+
+            // Handle different content types
+            if (tag === 'text' || tag === 'plain_text') {
               const t = (section as { text?: string })?.text ?? '';
-              if (tag === 'text' || tag === 'plain_text') {
-                text += t;
+              text += t;
+            } else if (tag === 'heading' || tag === 'heading1' || tag === 'heading2' || tag === 'heading3') {
+              // Handle headings - might be nested structure
+              const headingText = (section as { text?: string | Array<unknown> })?.text;
+              if (typeof headingText === 'string') {
+                text += headingText;
+              } else if (Array.isArray(headingText)) {
+                // Nested text elements in heading
+                for (const item of headingText) {
+                  if (item && typeof item === 'object' && 'text' in item) {
+                    text += (item as { text?: string }).text ?? '';
+                  }
+                }
               }
+            } else {
+              // Log unhandled tags for debugging
+              log.info(`[MSG] Unhandled post tag: ${tag}, section:`, JSON.stringify(section).slice(0, 200));
             }
           }
         }

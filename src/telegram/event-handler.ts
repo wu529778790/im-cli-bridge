@@ -22,7 +22,6 @@ import { CommandHandler } from "../commands/handler.js";
 import { getAdapter } from "../adapters/registry.js";
 import { runAITask, type TaskRunState } from "../shared/ai-task.js";
 import { startTaskCleanup } from "../shared/task-cleanup.js";
-import { MessageDedup } from "../shared/message-dedup.js";
 import { TELEGRAM_THROTTLE_MS, IMAGE_DIR } from "../constants.js";
 import { setActiveChatId } from "../shared/active-chats.js";
 import { createLogger } from "../logger.js";
@@ -107,7 +106,6 @@ export function setupTelegramHandlers(
   const requestQueue = new RequestQueue();
   const runningTasks = new Map<string, TaskRunState>();
   const stopTaskCleanup = startTaskCleanup(runningTasks);
-  const dedup = new MessageDedup();
 
   const commandHandler = new CommandHandler({
     config,
@@ -436,8 +434,6 @@ export function setupTelegramHandlers(
     const messageId = String(ctx.message.message_id);
     let text = ctx.message.text.trim();
 
-    if (dedup.isDuplicate(`${chatId}:${messageId}`)) return;
-
     if (!accessControl.isAllowed(userId)) {
       await sendTextReply(chatId, "抱歉，您没有访问权限。\n您的 ID: " + userId);
       return;
@@ -488,7 +484,6 @@ export function setupTelegramHandlers(
     const userId = String(ctx.from!.id);
     const caption = ctx.message.caption?.trim() || "";
 
-    if (dedup.isDuplicate(`${chatId}:${ctx.message.message_id}`)) return;
     if (!accessControl.isAllowed(userId)) return;
 
     setActiveChatId("telegram", chatId);
