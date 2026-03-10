@@ -50,6 +50,20 @@ jobs:
 
       - run: npm ci
 
+      - name: Detect prerelease version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [[ "$VERSION" =~ -[a-zA-Z] ]]; then
+            # Extract prerelease tag (e.g., "beta" from "1.0.0-beta.1")
+            TAG=$(echo "$VERSION" | sed -n 's/.*-\([a-zA-Z]*\).*/\1/p')
+            echo "IS_PRERELEASE=true" >> $GITHUB_ENV
+            echo "PRERELEASE_TAG=$TAG" >> $GITHUB_ENV
+            echo "Detected prerelease version: $VERSION (tag: $TAG)"
+          else
+            echo "IS_PRERELEASE=false" >> $GITHUB_ENV
+            echo "Detected stable version: $VERSION"
+          fi
+
       - name: Bump version (manual trigger only)
         if: github.event_name == 'workflow_dispatch'
         run: |
@@ -60,13 +74,17 @@ jobs:
           # dev 分支或选择 prerelease 时发布预览版
           if [[ "${{ github.ref_name }}" == "dev" ]] || [[ "$BUMP" == "prerelease" ]]; then
             NEXT=$(npx -y semver@7 -i prerelease --preid=$TAG $NPM_VER)
+            IS_PRERELEASE=true
           else
             NEXT=$(npx -y semver@7 -i $BUMP $NPM_VER)
+            IS_PRERELEASE=false
           fi
 
           # 直接修改 package.json，不使用 npm version（避免版本检查）
           npm pkg set version=$NEXT
           echo "Publishing version: $NEXT"
+          echo "IS_PRERELEASE=$IS_PRERELEASE" >> $GITHUB_ENV
+          echo "PRERELEASE_TAG=$TAG" >> $GITHUB_ENV
 
       - run: npm run build
 
@@ -75,7 +93,12 @@ jobs:
 
       - name: Publish to npm
         if: github.event.inputs.dry_run != 'true'
-        run: npm publish --access public
+        run: |
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            npm publish --access public --tag=$PRERELEASE_TAG
+          else
+            npm publish --access public
+          fi
 
       - name: Dry run (no publish)
         if: github.event.inputs.dry_run == 'true'
