@@ -52,6 +52,8 @@ export interface Config {
   hookPort: number;
   logDir: string;
   logLevel: LogLevel;
+  /** 是否启用桥梁模式（持久化进程，提高速度和原生体验） */
+  useBridgeMode: boolean;
 
   platforms: {
     telegram?: {
@@ -141,6 +143,7 @@ interface FileConfig {
   hookPort?: number;
   logDir?: string;
   logLevel?: LogLevel;
+  useBridgeMode?: boolean;
 }
 
 const CONFIG_PATH = join(APP_HOME, 'config.json');
@@ -325,6 +328,11 @@ export function loadConfig(): Config {
       ? parseInt(process.env.HOOK_PORT, 10) || 35801
       : file.hookPort ?? 35801;
 
+  const useBridgeMode =
+    process.env.USE_BRIDGE_MODE !== undefined
+      ? process.env.USE_BRIDGE_MODE === 'true'
+      : file.useBridgeMode ?? false;
+
   // 6. 校验 Claude CLI
   if (aiCommand === 'claude') {
     if (isAbsolute(claudeCliPath) || claudeCliPath.includes('/') || claudeCliPath.includes('\\')) {
@@ -451,6 +459,7 @@ export function loadConfig(): Config {
     hookPort,
     logDir,
     logLevel,
+    useBridgeMode,
     platforms,
   };
 }

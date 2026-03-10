@@ -137,18 +137,29 @@ export function runAITask(
     };
 
     const mode = getPermissionMode(ctx.userId, config.defaultPermissionMode);
-    // 全部交给 Claude 自己处理：yolo 用 --dangerously-skip-permissions，其他用 --permission-mode
-    const skipPermissions = mode === 'yolo' || config.claudeSkipPermissions;
-    const permissionMode = !skipPermissions
-      ? (mode === 'ask'
-        ? 'default'
-        : mode === 'accept-edits'
-          ? 'acceptEdits'
-          : mode === 'plan'
-            ? 'plan'
-            : undefined)
-      : undefined;
     process.env.CC_IM_CHAT_ID = ctx.chatId;
+
+    // 构建运行选项
+    let skipPermissions: boolean | undefined;
+    let permissionMode: 'default' | 'acceptEdits' | 'plan' | undefined;
+
+    // 桥梁模式：让 Claude CLI 原生处理权限，不传递任何权限参数
+    if (config.useBridgeMode) {
+      log.info('Using bridge mode: Claude CLI will handle permissions natively');
+      // 不设置 skipPermissions 和 permissionMode
+    } else {
+      // 标准模式：传递权限模式参数
+      skipPermissions = mode === 'yolo' || config.claudeSkipPermissions;
+      permissionMode = !skipPermissions
+        ? (mode === 'ask'
+          ? 'default'
+          : mode === 'accept-edits'
+            ? 'acceptEdits'
+            : mode === 'plan'
+              ? 'plan'
+              : undefined)
+        : undefined;
+    }
 
     const handle = toolAdapter.run(
       prompt,
