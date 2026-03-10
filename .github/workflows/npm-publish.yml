@@ -72,6 +72,9 @@ jobs:
 
           echo "Inputs: BUMP=$BUMP, TAG=$TAG, IS_DEV=$IS_DEV"
 
+          # 安装 semver（如果还没有）
+          npm install --no-save semver
+
           # 创建 CommonJS 脚本（使用 .cjs 扩展名）
           cat > bump-version.cjs << 'NODEEOF'
           const { execSync } = require('child_process');
