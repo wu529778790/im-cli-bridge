@@ -1,14 +1,54 @@
 /**
- * 首次运行时的交互式配置引导
+ * 首次运行时的交互式配置引导（支持增量：保留已有平台配置）
  * 使用 prompts 库，兼容 tsx watch、IDE 终端等环境
  * Telegram Token 使用 readline 避免 Windows 终端 prompts 重绘问题
  */
 
 import prompts from "prompts";
 import { createInterface } from "node:readline";
-import { mkdirSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { APP_HOME } from "./constants.js";
+
+interface ExistingConfig {
+  platforms?: {
+    telegram?: { enabled?: boolean; botToken?: string; allowedUserIds?: string[]; proxy?: string };
+    feishu?: { enabled?: boolean; appId?: string; appSecret?: string; allowedUserIds?: string[] };
+    wechat?: { enabled?: boolean; appId?: string; appSecret?: string; wsUrl?: string; allowedUserIds?: string[] };
+  };
+  claudeWorkDir?: string;
+  claudeSkipPermissions?: boolean;
+  aiCommand?: string;
+}
+
+function loadExistingConfig(): ExistingConfig | null {
+  const configPath = join(APP_HOME, "config.json");
+  if (!existsSync(configPath)) return null;
+  try {
+    return JSON.parse(readFileSync(configPath, "utf-8")) as ExistingConfig;
+  } catch {
+    return null;
+  }
+}
+
+function getConfiguredPlatforms(existing: ExistingConfig | null): string[] {
+  if (!existing?.platforms) return [];
+  const names: { k: string; label: string }[] = [
+    { k: "telegram", label: "Telegram" },
+    { k: "feishu", label: "飞书" },
+    { k: "wechat", label: "微信" },
+  ];
+  return names
+    .filter(({ k }) => {
+      const p = (existing.platforms as Record<string, unknown>)?.[k] as Record<string, unknown> | undefined;
+      if (!p) return false;
+      if (k === "telegram") return !!p.botToken;
+      if (k === "feishu") return !!(p.appId && p.appSecret);
+      if (k === "wechat") return !!(p.appId && p.appSecret);
+      return false;
+    })
+    .map(({ label }) => label);
+}
 
 function question(prompt: string): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -71,8 +111,15 @@ export async function runInteractiveSetup(): Promise<boolean> {
     return false;
   }
 
-  console.log("\n━━━ open-im 首次配置 ━━━\n");
+  const existing = loadExistingConfig();
+  const configured = getConfiguredPlatforms(existing);
+
+  console.log("\n━━━ open-im 配置向导 ━━━\n");
   console.log("配置将保存到:", configPath);
+  if (configured.length > 0) {
+    console.log("当前已配置:", configured.join("、"));
+    console.log("（本次可追加或修改，未选中的平台配置将保留）");
+  }
   console.log("");
 
   const onCancel = () => {
@@ -80,12 +127,14 @@ export async function runInteractiveSetup(): Promise<boolean> {
     process.exit(0);
   };
 
-  // 第一步：选择平台
+  // 第一步：选择平台（在提示中显示已配置项）
+  const configuredHint =
+    configured.length > 0 ? `（当前已配置: ${configured.join("、")}）` : "";
   const platformResp = await prompts(
     {
       type: "select",
       name: "platform",
-      message: "选择要配置的平台（↑↓ 选择）",
+      message: `选择要配置的平台 ${configuredHint}（↑↓ 选择）`,
       choices: [
         { title: "Telegram - 需要 Bot Token", value: "telegram" },
         {
@@ -112,6 +161,9 @@ export async function runInteractiveSetup(): Promise<boolean> {
 
   // 第二步：选择要配置的多个平台（如果选择了 multi）
   let selectedPlatforms: string[] = [];
+  const hasTg = !!existing?.platforms?.telegram?.botToken;
+  const hasFs = !!(existing?.platforms?.feishu?.appId && existing?.platforms?.feishu?.appSecret);
+  const hasWc = !!(existing?.platforms?.wechat?.appId && existing?.platforms?.wechat?.appSecret);
   if (platform === "multi") {
     const multiResp = await prompts(
       {
@@ -119,9 +171,9 @@ export async function runInteractiveSetup(): Promise<boolean> {
         name: "platforms",
         message: "选择要配置的平台（空格选择，回车确认）",
         choices: [
-          { title: "Telegram", value: "telegram", selected: true },
-          { title: "飞书 (Feishu)", value: "feishu" },
-          { title: "微信 (WeChat)", value: "wechat" },
+          { title: "Telegram" + (hasTg ? " ✓已配置" : ""), value: "telegram", selected: hasTg },
+          { title: "飞书 (Feishu)" + (hasFs ? " ✓已配置" : ""), value: "feishu", selected: hasFs },
+          { title: "微信 (WeChat)" + (hasWc ? " ✓已配置" : ""), value: "wechat", selected: hasWc },
         ],
       },
       { onCancel },
@@ -137,9 +189,12 @@ export async function runInteractiveSetup(): Promise<boolean> {
 
   // 收集平台配置（Telegram 用 readline 避免 Windows 下 prompts 重绘/重复行问题）
   if (selectedPlatforms.includes("telegram")) {
-    const token = await question("Telegram Bot Token（从 @BotFather 获取）: ");
+    const hint = hasTg ? "（留空保留现有）" : "";
+    const token = await question(`Telegram Bot Token（从 @BotFather 获取）${hint}: `);
     if (token) {
       config.telegramBotToken = token;
+    } else if (hasTg) {
+      config.telegramBotToken = existing!.platforms!.telegram!.botToken;
     } else if (platform === "telegram") {
       console.log("Token 不能为空");
       return false;
@@ -153,24 +208,28 @@ export async function runInteractiveSetup(): Promise<boolean> {
           type: "text",
           name: "appId",
           message: "飞书 App ID（从飞书开放平台获取）",
+          initial: existing?.platforms?.feishu?.appId ?? "",
           validate: (v: string) => (v.trim() ? true : "App ID 不能为空"),
         },
         {
           type: "text",
           name: "appSecret",
           message: "飞书 App Secret（从飞书开放平台获取）",
+          initial: existing?.platforms?.feishu?.appSecret ?? "",
           validate: (v: string) => (v.trim() ? true : "App Secret 不能为空"),
         },
       ],
       { onCancel },
     );
 
-    if (feishuResp.appId && feishuResp.appSecret) {
+    const fsAppId = feishuResp.appId?.trim() || existing?.platforms?.feishu?.appId;
+    const fsAppSecret = feishuResp.appSecret?.trim() || existing?.platforms?.feishu?.appSecret;
+    if (fsAppId && fsAppSecret) {
       (config.platforms as any).feishu = {
         ...(config.platforms as any).feishu,
         enabled: true,
-        appId: feishuResp.appId.trim(),
-        appSecret: feishuResp.appSecret.trim(),
+        appId: fsAppId,
+        appSecret: fsAppSecret,
       };
     } else if (platform === "feishu") {
       return false;
@@ -184,37 +243,45 @@ export async function runInteractiveSetup(): Promise<boolean> {
           type: "text",
           name: "appId",
           message: "微信 App ID（从微信开放平台获取）",
+          initial: existing?.platforms?.wechat?.appId ?? "",
           validate: (v: string) => (v.trim() ? true : "App ID 不能为空"),
         },
         {
           type: "text",
           name: "appSecret",
           message: "微信 App Secret（从微信开放平台获取）",
+          initial: existing?.platforms?.wechat?.appSecret ?? "",
           validate: (v: string) => (v.trim() ? true : "App Secret 不能为空"),
         },
         {
           type: "text",
           name: "wsUrl",
           message: "AGP WebSocket URL（可选，留空使用默认）",
-          initial: "",
+          initial: existing?.platforms?.wechat?.wsUrl ?? "",
         },
       ],
       { onCancel },
     );
 
-    if (wechatResp.appId && wechatResp.appSecret) {
+    const wcAppId = wechatResp.appId?.trim() || existing?.platforms?.wechat?.appId;
+    const wcAppSecret = wechatResp.appSecret?.trim() || existing?.platforms?.wechat?.appSecret;
+    if (wcAppId && wcAppSecret) {
       (config.platforms as any).wechat = {
         enabled: true,
-        appId: wechatResp.appId.trim(),
-        appSecret: wechatResp.appSecret.trim(),
-        wsUrl: wechatResp.wsUrl?.trim() || undefined,
+        appId: wcAppId,
+        appSecret: wcAppSecret,
+        wsUrl: wechatResp.wsUrl?.trim() || existing?.platforms?.wechat?.wsUrl || undefined,
       };
     } else if (platform === "wechat") {
       return false;
     }
   }
 
-  // 通用配置
+  // 通用配置（使用已有值作为默认）
+  const tgIds = existing?.platforms?.telegram?.allowedUserIds?.join(", ") ?? "";
+  const fsIds = existing?.platforms?.feishu?.allowedUserIds?.join(", ") ?? "";
+  const wcIds = existing?.platforms?.wechat?.allowedUserIds?.join(", ") ?? "";
+  const aiIdx = ["claude", "codex", "cursor"].indexOf(existing?.aiCommand ?? "claude");
   const commonResp = await prompts(
     [
       {
@@ -222,21 +289,21 @@ export async function runInteractiveSetup(): Promise<boolean> {
         name: "telegramAllowedUserIds",
         message:
           "Telegram 白名单用户 ID（可选，逗号分隔，留空=所有人可访问）",
-        initial: "",
+        initial: tgIds,
       },
       {
         type: "text",
         name: "feishuAllowedUserIds",
         message:
           "飞书白名单用户 ID（可选，逗号分隔，留空=所有人可访问）",
-        initial: "",
+        initial: fsIds,
       },
       {
         type: "text",
         name: "wechatAllowedUserIds",
         message:
           "微信白名单用户 ID（可选，逗号分隔，留空=所有人可访问）",
-        initial: "",
+        initial: wcIds,
       },
       {
         type: "select",
@@ -247,13 +314,13 @@ export async function runInteractiveSetup(): Promise<boolean> {
           { title: "codex", value: "codex" },
           { title: "cursor", value: "cursor" },
         ],
-        initial: 0,
+        initial: aiIdx >= 0 ? aiIdx : 0,
       },
       {
         type: "text",
         name: "workDir",
         message: "工作目录",
-        initial: process.cwd(),
+        initial: existing?.claudeWorkDir ?? process.cwd(),
       },
     ],
     { onCancel },
@@ -272,55 +339,75 @@ export async function runInteractiveSetup(): Promise<boolean> {
   const feishuIds = parseIds(commonResp.feishuAllowedUserIds);
   const wechatIds = parseIds(commonResp.wechatAllowedUserIds);
 
+  // 增量合并：以已有配置为底，只覆盖本次选中的平台（不写入根级旧字段 telegramBotToken 等）
+  const base = existing
+    ? (JSON.parse(JSON.stringify(existing)) as ExistingConfig)
+    : null;
+  const { telegramBotToken: _, feishuAppId: __, feishuAppSecret: ___, ...baseRest } = (base ?? {}) as Record<string, unknown>;
+  const out: Record<string, unknown> = {
+    ...baseRest,
+    platforms: { ...(base?.platforms ?? {}) },
+    claudeWorkDir: (commonResp.workDir || process.cwd()).trim(),
+    claudeSkipPermissions: base?.claudeSkipPermissions ?? true,
+    aiCommand: commonResp.aiCommand ?? base?.aiCommand ?? "claude",
+  };
+
   if (selectedPlatforms.includes("telegram")) {
-    (config.platforms as any).telegram = {
-      ...(config.platforms as any).telegram,
+    (out.platforms as any).telegram = {
+      ...(base?.platforms?.telegram as object),
       enabled: true,
-      botToken: (config as any).telegramBotToken ?? undefined,
+      botToken: (config as any).telegramBotToken ?? base?.platforms?.telegram?.botToken,
       allowedUserIds: telegramIds,
+    };
+  } else if (base?.platforms?.telegram) {
+    (out.platforms as any).telegram = {
+      ...base.platforms.telegram,
+      allowedUserIds: telegramIds.length > 0 ? telegramIds : (base.platforms.telegram as any).allowedUserIds,
     };
   } else {
-    (config.platforms as any).telegram = {
-      enabled: false,
-      allowedUserIds: telegramIds,
-    };
+    (out.platforms as any).telegram = { enabled: false, allowedUserIds: telegramIds };
   }
 
   if (selectedPlatforms.includes("feishu")) {
-    (config.platforms as any).feishu = {
-      ...(config.platforms as any).feishu,
+    (out.platforms as any).feishu = {
+      ...(base?.platforms?.feishu as object),
       enabled: true,
+      appId: (config.platforms as any).feishu?.appId,
+      appSecret: (config.platforms as any).feishu?.appSecret,
       allowedUserIds: feishuIds,
+    };
+  } else if (base?.platforms?.feishu) {
+    (out.platforms as any).feishu = {
+      ...base.platforms.feishu,
+      allowedUserIds: feishuIds.length > 0 ? feishuIds : (base.platforms.feishu as any).allowedUserIds,
     };
   } else {
-    (config.platforms as any).feishu = {
-      enabled: false,
-      allowedUserIds: feishuIds,
-    };
+    (out.platforms as any).feishu = { enabled: false, allowedUserIds: feishuIds };
   }
 
   if (selectedPlatforms.includes("wechat")) {
-    (config.platforms as any).wechat = {
-      ...(config.platforms as any).wechat,
+    (out.platforms as any).wechat = {
+      ...(base?.platforms?.wechat as object),
       enabled: true,
+      appId: (config.platforms as any).wechat?.appId,
+      appSecret: (config.platforms as any).wechat?.appSecret,
+      wsUrl: (config.platforms as any).wechat?.wsUrl,
       allowedUserIds: wechatIds,
+    };
+  } else if (base?.platforms?.wechat) {
+    (out.platforms as any).wechat = {
+      ...base.platforms.wechat,
+      allowedUserIds: wechatIds.length > 0 ? wechatIds : (base.platforms.wechat as any).allowedUserIds,
     };
   } else {
-    (config.platforms as any).wechat = {
-      enabled: false,
-      allowedUserIds: wechatIds,
-    };
+    (out.platforms as any).wechat = { enabled: false, allowedUserIds: wechatIds };
   }
-
-  config.claudeWorkDir = (commonResp.workDir || process.cwd()).trim();
-  config.claudeSkipPermissions = true;
-  config.aiCommand = commonResp.aiCommand ?? "claude";
 
   const dir = dirname(configPath);
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }
-  writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+  writeFileSync(configPath, JSON.stringify(out, null, 2), "utf-8");
 
   console.log("\n✅ 配置已保存到", configPath);
   console.log("");

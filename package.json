@@ -16,6 +16,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
+    "init": "tsx src/cli.ts init",
     "start": "node dist/cli.js start",
     "stop": "node dist/cli.js stop",
     "test": "npm run build",
