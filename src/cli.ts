@@ -5,7 +5,7 @@ import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { main, needsSetup, runInteractiveSetup } from "./index.js";
-import { loadConfig, getPlatformsWithCredentials } from "./config.js";
+import { loadConfig } from "./config.js";
 import { runPlatformSelectionPrompt } from "./setup.js";
 import { APP_HOME, SHUTDOWN_PORT } from "./constants.js";
 
@@ -96,12 +96,9 @@ async function cmdStart(): Promise<void> {
     process.exit(1);
   }
 
-  // 多通道时在父进程（有 TTY）让用户选择，再启动子进程
+  // 有 TTY 时在父进程让用户选择要启用的平台，再启动子进程
   let config = loadConfig();
-  if (
-    getPlatformsWithCredentials(config).length > 1 &&
-    process.stdin.isTTY
-  ) {
+  if (process.stdin.isTTY) {
     const updated = await runPlatformSelectionPrompt(config);
     if (!updated) {
       console.log("已取消启动。");
