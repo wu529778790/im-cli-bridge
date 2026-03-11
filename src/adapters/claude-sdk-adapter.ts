@@ -142,11 +142,20 @@ export class ClaudeSDKAdapter implements ToolAdapter {
 
           if (isResult(msg)) {
             queryClosed = true;
-            const m = msg as { subtype?: string; result?: string; total_cost_usd?: number; duration_ms?: number; num_turns?: number };
+            const m = msg as { subtype?: string; result?: string; total_cost_usd?: number; duration_ms?: number; num_turns?: number; errors?: string[] };
             const success = m.subtype === 'success';
+            const errs = m.errors ?? [];
+            const noConvErr = errs.find((e) => e.includes('No conversation found with session ID'));
+            if (!success && noConvErr) {
+              log.warn(`SDK session invalid: ${noConvErr}`);
+              callbacks.onSessionInvalid?.();
+              callbacks.onError('会话已过期，请发送 /new 开始新会话');
+              return;
+            }
+            const resultText = m.result ?? '';
             const result: Parameters<RunCallbacks['onComplete']>[0] = {
               success,
-              result: m.result ?? '',
+              result: resultText,
               accumulated: success ? accumulated : '',
               cost: m.total_cost_usd ?? 0,
               durationMs: m.duration_ms ?? 0,
@@ -154,6 +163,17 @@ export class ClaudeSDKAdapter implements ToolAdapter {
               toolStats,
             };
             if (!result.accumulated && result.result) result.accumulated = result.result;
+            if (!result.accumulated && !result.result && accumulated) {
+              log.debug(`Result event had no text but accumulated=${accumulated.length} chars, using accumulated`);
+              result.accumulated = accumulated;
+              result.result = accumulated;
+            }
+            if (!result.accumulated && !result.result) {
+              const errMsg = errs[0] ?? '未知错误';
+              log.warn(`SDK result empty: subtype=${m.subtype}, errors=${JSON.stringify(errs)}`);
+              callbacks.onError(errMsg);
+              return;
+            }
             callbacks.onComplete(result);
             return;
           }
