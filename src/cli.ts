@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,6 +46,15 @@ function removePid(): void {
 
 function isRunning(pid: number): boolean {
   try {
+    // Windows 下使用 tasklist 检查进程是否存在
+    if (process.platform === 'win32') {
+      const result = execFileSync('tasklist', ['/FI', `PID eq ${pid}`, '/NH'], {
+        stdio: 'pipe',
+        windowsHide: true
+      }).toString();
+      return result.includes(String(pid));
+    }
+    // Unix 系统使用 kill 0 信号检查
     process.kill(pid, 0);
     return true;
   } catch {
@@ -170,19 +179,29 @@ async function cmdRestart(): Promise<void> {
   const wasRunning = pid && isRunning(pid);
 
   if (wasRunning) {
-    console.log(`正在停止 open-im (pid=${pid})...`);
+    console.log(`正在重启 open-im (当前 pid=${pid})...`);
+    console.log('  → 正在停止服务...');
     await cmdStop();
     // 等待进程完全停止
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 50; i++) {
       await new Promise((r) => setTimeout(r, 100));
-      if (!isRunning(pid)) break;
+      if (!isRunning(pid)) {
+        console.log('  → 服务已停止');
+        break;
+      }
     }
-    console.log("open-im 已停止");
+    // 额外等待一下，确保端口释放
+    await new Promise((r) => setTimeout(r, 500));
   } else {
-    console.log("open-im 未在后台运行");
+    if (pid) {
+      console.log(`检测到 PID 文件存在 (pid=${pid})，但进程未运行，清理后重启...`);
+    } else {
+      console.log('open-im 未在后台运行，直接启动...');
+    }
+    removePid();
   }
 
-  console.log("正在启动 open-im...");
+  console.log('  → 正在启动服务...');
   await cmdStart(true);  // 传递 true 跳过平台选择提示
 }
 
