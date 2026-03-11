@@ -5,6 +5,9 @@
  */
 
 import { spawn } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { createLogger } from '../logger.js';
 
@@ -110,6 +113,46 @@ function formatWindowsCommandName(command: string): string {
   return quoteForWindowsCmd(command);
 }
 
+function extractCodexJsFromCmdShim(cmdPath: string): string | null {
+  try {
+    const content = readFileSync(cmdPath, 'utf-8');
+    const match = content.match(/"%~dp0\\([^"\r\n]*codex\\bin\\codex\.js)"/i);
+    if (!match) return null;
+    const relativeJsPath = match[1].replace(/\\/g, '/');
+    return join(dirname(cmdPath), relativeJsPath);
+  } catch {
+    return null;
+  }
+}
+
+function resolveWindowsCodexLaunch(
+  cliPath: string,
+  args: string[],
+): { command: string; args: string[] } | null {
+  try {
+    const whereOutput = execFileSync('where', [cliPath], { stdio: 'pipe' })
+      .toString()
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    const cmdShimPath =
+      whereOutput.find((line) => /\.cmd$/i.test(line)) ?? null;
+
+    if (!cmdShimPath) return null;
+
+    const codexJsPath = extractCodexJsFromCmdShim(cmdShimPath);
+    if (!codexJsPath) return null;
+
+    return {
+      command: process.execPath,
+      args: [codexJsPath, ...args],
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function runCodex(
   cliPath: string,
   prompt: string,
@@ -148,15 +191,24 @@ export function runCodex(
   const isWinCmd =
     process.platform === 'win32' &&
     (/\.(cmd|bat)$/i.test(cliPath) || cliPath === 'codex');
-  const spawnCmd = isWinCmd ? 'cmd.exe' : cliPath;
-  const spawnArgs = isWinCmd
-    ? [
-        '/d',
-        '/s',
-        '/c',
-        `chcp 65001>nul && ${formatWindowsCommandName(cliPath)} ${args.map(quoteForWindowsCmd).join(' ')}`,
-      ]
-    : args;
+  const directWindowsLaunch = isWinCmd
+    ? resolveWindowsCodexLaunch(cliPath, args)
+    : null;
+  const spawnCmd = directWindowsLaunch
+    ? directWindowsLaunch.command
+    : isWinCmd
+      ? 'cmd.exe'
+      : cliPath;
+  const spawnArgs = directWindowsLaunch
+    ? directWindowsLaunch.args
+    : isWinCmd
+      ? [
+          '/d',
+          '/s',
+          '/c',
+          `chcp 65001>nul && ${formatWindowsCommandName(cliPath)} ${args.map(quoteForWindowsCmd).join(' ')}`,
+        ]
+      : args;
 
   const child = spawn(spawnCmd, spawnArgs, {
     cwd: workDir,
