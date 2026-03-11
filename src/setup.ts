@@ -138,6 +138,15 @@ function loadClaudeSettings(): Record<string, unknown> {
   }
 }
 
+/** 检查 ~/.claude/settings.json 中是否已有 API Key 或 Auth Token（env 内或顶层） */
+function hasClaudeCredsInSettings(): boolean {
+  const s = loadClaudeSettings();
+  const env = s?.env as Record<string, unknown> | undefined;
+  const fromEnv = !!(env?.ANTHROPIC_API_KEY || env?.ANTHROPIC_AUTH_TOKEN);
+  const fromTop = !!(s?.ANTHROPIC_API_KEY || s?.ANTHROPIC_AUTH_TOKEN);
+  return fromEnv || fromTop;
+}
+
 function printManualClaudeInstructions(): void {
   console.log("\n━━━ Claude API 配置 ━━━\n");
   console.log("当前环境不支持交互输入，请手动配置：");
@@ -580,13 +589,14 @@ export async function runInteractiveSetup(): Promise<boolean> {
     opusModel?: string;
   } = {};
   if (commonResp.aiCommand === "claude") {
-    // 检查是否已配置 API 密钥（环境变量或配置文件）
+    // 检查是否已配置 API 密钥（环境变量、open-im config、或 ~/.claude/settings.json）
     const hasExistingApiKey = !!(
       process.env.ANTHROPIC_API_KEY ||
       process.env.ANTHROPIC_AUTH_TOKEN ||
       process.env.CLAUDE_CODE_OAUTH_TOKEN ||
       existing?.env?.ANTHROPIC_API_KEY ||
-      existing?.env?.ANTHROPIC_AUTH_TOKEN
+      existing?.env?.ANTHROPIC_AUTH_TOKEN ||
+      hasClaudeCredsInSettings()
     );
 
     if (hasExistingApiKey) {
@@ -681,31 +691,40 @@ export async function runInteractiveSetup(): Promise<boolean> {
     : null;
   const { telegramBotToken: _, feishuAppId: __, feishuAppSecret: ___, ...baseRest } = (base ?? {}) as Record<string, unknown>;
 
-  // 构建 env 配置（用于 Claude API）
-  const envConfig: Record<string, string> = { ...(base?.env ?? {}) };
-  if (claudeApiConfig.apiKey) {
-    // 检测是 API_KEY 还是 AUTH_TOKEN（UUID 格式）
-    const apiKey = claudeApiConfig.apiKey.trim();
-    if (apiKey.startsWith('sk-')) {
-      envConfig.ANTHROPIC_API_KEY = apiKey;
-    } else {
-      envConfig.ANTHROPIC_AUTH_TOKEN = apiKey;
+  // Claude API 凭证不存入 config.json，仅从 ~/.claude/settings.json 或环境变量读取
+  const ANTHROPIC_KEYS = [
+    "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL",
+  ];
+  const envConfig: Record<string, string> = {};
+  for (const [k, v] of Object.entries(base?.env ?? {})) {
+    if (v != null && typeof v === "string" && !ANTHROPIC_KEYS.includes(k)) {
+      envConfig[k] = v;
     }
   }
-  if (claudeApiConfig.baseUrl) {
-    envConfig.ANTHROPIC_BASE_URL = claudeApiConfig.baseUrl.trim();
-  }
-  if (claudeApiConfig.model) {
-    envConfig.ANTHROPIC_MODEL = claudeApiConfig.model.trim();
-  }
-  if (claudeApiConfig.haikuModel) {
-    envConfig.ANTHROPIC_DEFAULT_HAIKU_MODEL = claudeApiConfig.haikuModel.trim();
-  }
-  if (claudeApiConfig.sonnetModel) {
-    envConfig.ANTHROPIC_DEFAULT_SONNET_MODEL = claudeApiConfig.sonnetModel.trim();
-  }
-  if (claudeApiConfig.opusModel) {
-    envConfig.ANTHROPIC_DEFAULT_OPUS_MODEL = claudeApiConfig.opusModel.trim();
+  // 若用户在向导中输入了 Claude 配置，写入 ~/.claude/settings.json（与 Claude Code 共用）
+  if (claudeApiConfig.apiKey || claudeApiConfig.baseUrl || claudeApiConfig.model) {
+    const claudeExisting = loadClaudeSettings();
+    const claudeEnv: Record<string, string> = { ...((claudeExisting.env ?? {}) as Record<string, string>) };
+    if (claudeApiConfig.apiKey?.trim()) {
+      const key = claudeApiConfig.apiKey.trim();
+      if (key.startsWith("sk-")) {
+        claudeEnv.ANTHROPIC_API_KEY = key;
+        delete claudeEnv.ANTHROPIC_AUTH_TOKEN;
+      } else {
+        claudeEnv.ANTHROPIC_AUTH_TOKEN = key;
+        delete claudeEnv.ANTHROPIC_API_KEY;
+      }
+    }
+    if (claudeApiConfig.baseUrl?.trim()) claudeEnv.ANTHROPIC_BASE_URL = claudeApiConfig.baseUrl.trim();
+    if (claudeApiConfig.model?.trim()) claudeEnv.ANTHROPIC_MODEL = claudeApiConfig.model.trim();
+    if (claudeApiConfig.haikuModel?.trim()) claudeEnv.ANTHROPIC_DEFAULT_HAIKU_MODEL = claudeApiConfig.haikuModel.trim();
+    if (claudeApiConfig.sonnetModel?.trim()) claudeEnv.ANTHROPIC_DEFAULT_SONNET_MODEL = claudeApiConfig.sonnetModel.trim();
+    if (claudeApiConfig.opusModel?.trim()) claudeEnv.ANTHROPIC_DEFAULT_OPUS_MODEL = claudeApiConfig.opusModel.trim();
+    const claudeDir = dirname(CLAUDE_SETTINGS_PATH);
+    if (!existsSync(claudeDir)) mkdirSync(claudeDir, { recursive: true });
+    writeFileSync(CLAUDE_SETTINGS_PATH, JSON.stringify({ ...claudeExisting, env: claudeEnv }, null, 2), "utf-8");
+    console.log("\n✓ Claude API 配置已保存到", CLAUDE_SETTINGS_PATH);
   }
 
   const out: Record<string, unknown> = {
