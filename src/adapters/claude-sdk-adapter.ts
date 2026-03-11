@@ -75,6 +75,15 @@ export class ClaudeSDKAdapter implements ToolAdapter {
 
     const runQuery = async () => {
       try {
+        // 调试：检查关键环境变量
+        const hasApiKey = !!process.env.ANTHROPIC_API_KEY;
+        const hasAuthToken = !!process.env.ANTHROPIC_AUTH_TOKEN;
+        const hasBaseUrl = !!process.env.ANTHROPIC_BASE_URL;
+
+        if (!hasApiKey && !hasAuthToken && !hasBaseUrl) {
+          log.warn('Claude SDK: No API credentials found in environment variables');
+        }
+
         const opts = {
           cwd: workDir,
           resume: sessionId,
@@ -168,8 +177,16 @@ export class ClaudeSDKAdapter implements ToolAdapter {
         }
       } catch (err) {
         if (abortController.signal.aborted) return;
-        const msg = err instanceof Error ? err.message : String(err);
+        const errorObj = err as Error;
+        const msg = errorObj.message || String(err);
+        const stack = errorObj.stack || '';
+
+        // 输出详细的错误信息用于调试
         log.error(`Claude SDK error: ${msg}`);
+        if (stack) {
+          log.error(`Error stack: ${stack}`);
+        }
+
         callbacks.onError(msg);
       }
     };
