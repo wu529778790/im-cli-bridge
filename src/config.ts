@@ -149,7 +149,6 @@ interface FileConfig {
 }
 
 const CONFIG_PATH = join(APP_HOME, 'config.json');
-const CLAUDE_SETTINGS_PATH = join(homedir(), '.claude', 'settings.json');
 
 function loadFileConfig(): FileConfig {
   try {
@@ -159,16 +158,34 @@ function loadFileConfig(): FileConfig {
   }
 }
 
-/** 从 ~/.claude/settings.json 加载 Claude API 凭证（Claude Code 共用配置） */
+/** 获取用户主目录（兼容不同运行环境，如 launchd、systemd 等） */
+function getClaudeConfigHome(): string {
+  return process.env.HOME || process.env.USERPROFILE || homedir();
+}
+
+/** 从 Claude Code 配置文件加载 env，支持多路径（与 Claude Code 共用） */
 function loadClaudeSettingsEnv(): Record<string, string> {
-  try {
-    const raw = JSON.parse(readFileSync(CLAUDE_SETTINGS_PATH, 'utf-8'));
-    const env = raw?.env;
-    if (env && typeof env === 'object') {
-      return env as Record<string, string>;
+  const home = getClaudeConfigHome();
+  const paths = [
+    join(home, '.claude', 'settings.json'),
+    join(home, '.claude.json'),
+  ];
+  for (const p of paths) {
+    try {
+      const raw = JSON.parse(readFileSync(p, 'utf-8'));
+      const env = raw?.env;
+      if (env && typeof env === 'object') {
+        const result: Record<string, string> = {};
+        for (const [k, v] of Object.entries(env)) {
+          if (v != null && typeof k === 'string') {
+            result[k] = String(v);
+          }
+        }
+        return result;
+      }
+    } catch {
+      /* 文件不存在或格式错误，尝试下一路径 */
     }
-  } catch {
-    /* 文件不存在或格式错误，忽略 */
   }
   return {};
 }
@@ -216,21 +233,18 @@ export function loadConfig(): Config {
   const file = loadFileConfig();
 
   // 将配置文件中的 env 设置到环境变量（优先级低于现有环境变量）
-  if (file.env) {
-    for (const [key, value] of Object.entries(file.env)) {
-      if (!(key in process.env)) {
-        process.env[key] = value;
+  const mergeEnv = (env: Record<string, unknown>) => {
+    for (const [key, value] of Object.entries(env)) {
+      if (!(key in process.env) && value != null && typeof key === 'string') {
+        process.env[key] = String(value);
       }
     }
-  }
+  };
+  if (file.env) mergeEnv(file.env as Record<string, unknown>);
 
-  // 从 ~/.claude/settings.json 合并 Claude API 凭证（Claude Code 共用，最低优先级）
+  // 从 Claude Code 配置合并 API 凭证（~/.claude/settings.json 或 ~/.claude.json，最低优先级）
   const claudeEnv = loadClaudeSettingsEnv();
-  for (const [key, value] of Object.entries(claudeEnv)) {
-    if (!(key in process.env)) {
-      process.env[key] = value;
-    }
-  }
+  mergeEnv(claudeEnv);
 
   const fileTelegram = file.platforms?.telegram;
   const fileFeishu = file.platforms?.feishu;
