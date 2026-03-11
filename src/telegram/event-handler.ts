@@ -454,7 +454,7 @@ export function setupTelegramHandlers(
     }
 
     setActiveChatId("telegram", chatId);
-    setChatUser(chatId, userId);
+    setChatUser(chatId, userId, "telegram");
 
     if (
       await commandHandler.dispatch(
@@ -502,7 +502,7 @@ export function setupTelegramHandlers(
     if (!accessControl.isAllowed(userId)) return;
 
     setActiveChatId("telegram", chatId);
-    setChatUser(chatId, userId);
+    setChatUser(chatId, userId, "telegram");
 
     const photos = ctx.message.photo;
     const largest = photos[photos.length - 1];

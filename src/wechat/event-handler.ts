@@ -186,7 +186,7 @@ export function setupWeChatHandlers(
     log.info(`Access granted for sender: ${userId}`);
 
     setActiveChatId('wechat', chatId);
-    setChatUser(chatId, userId);
+    setChatUser(chatId, userId, 'wechat');
 
     // Handle commands
     try {

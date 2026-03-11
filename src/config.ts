@@ -11,7 +11,7 @@ import { homedir } from 'node:os';
 import type { LogLevel } from './logger.js';
 import { APP_HOME } from './constants.js';
 
-export type Platform = 'feishu' | 'telegram' | 'wechat' | 'wework';
+export type Platform = 'dingtalk' | 'feishu' | 'telegram' | 'wechat' | 'wework';
 
 export type AiCommand = 'claude' | 'codex' | 'cursor';
 
@@ -33,6 +33,8 @@ export interface Config {
   weworkCorpId?: string;  // 企业微信 Bot ID
   weworkSecret?: string;   // 企业微信 Secret
   weworkWsUrl?: string;    // 企业微信 WebSocket URL（可选，默认使用官方服务）
+  dingtalkClientId?: string;
+  dingtalkClientSecret?: string;
 
   // 全局白名单（旧版兼容）
   allowedUserIds: string[];
@@ -41,6 +43,7 @@ export interface Config {
   feishuAllowedUserIds: string[];
   wechatAllowedUserIds: string[];
   weworkAllowedUserIds: string[];
+  dingtalkAllowedUserIds: string[];
 
   aiCommand: AiCommand;
   claudeCliPath: string;
@@ -84,6 +87,10 @@ export interface Config {
       enabled: boolean;
       allowedUserIds: string[];
     };
+    dingtalk?: {
+      enabled: boolean;
+      allowedUserIds: string[];
+    };
   };
 }
 
@@ -122,6 +129,13 @@ interface FilePlatformWework {
   allowedUserIds?: string[];
 }
 
+interface FilePlatformDingtalk {
+  enabled?: boolean;
+  clientId?: string;
+  clientSecret?: string;
+  allowedUserIds?: string[];
+}
+
 interface FileToolClaude {
   cliPath?: string;
   workDir?: string;
@@ -156,6 +170,7 @@ interface FileConfig {
     feishu?: FilePlatformFeishu;
     wechat?: FilePlatformWechat;
     wework?: FilePlatformWework;
+    dingtalk?: FilePlatformDingtalk;
   };
 
   env?: Record<string, string>;
@@ -336,12 +351,14 @@ export function needsSetup(): boolean {
   if (process.env.WECHAT_APP_ID && process.env.WECHAT_APP_SECRET) return false;
   if (process.env.WECHAT_TOKEN && process.env.WECHAT_GUID && process.env.WECHAT_USER_ID) return false;
   if (process.env.WEWORK_CORP_ID && process.env.WEWORK_SECRET) return false;
+  if (process.env.DINGTALK_CLIENT_ID && process.env.DINGTALK_CLIENT_SECRET) return false;
 
   const file = loadFileConfig();
   const tg = file.platforms?.telegram;
   const fs = file.platforms?.feishu;
   const wc = file.platforms?.wechat;
   const ww = file.platforms?.wework;
+  const dt = file.platforms?.dingtalk;
 
   const hasTelegram = !!tg?.botToken;
   const hasFeishu = !!(fs?.appId && fs?.appSecret);
@@ -349,8 +366,9 @@ export function needsSetup(): boolean {
   const hasWechat = !!(wc?.token && wc?.guid && wc?.userId) || !!(wc?.appId && wc?.appSecret);
   // 企业微信只需要 corpId 和 secret
   const hasWework = !!(ww?.corpId && ww?.secret);
+  const hasDingtalk = !!(dt?.clientId && dt?.clientSecret);
 
-  return !hasTelegram && !hasFeishu && !hasWechat && !hasWework;
+  return !hasTelegram && !hasFeishu && !hasWechat && !hasWework && !hasDingtalk;
 }
 
 function parseCommaSeparated(value: string): string[] {
@@ -378,6 +396,7 @@ export function loadConfig(): Config {
   const fileFeishu = file.platforms?.feishu;
   const fileWechat = file.platforms?.wechat;
   const fileWework = file.platforms?.wework;
+  const fileDingtalk = file.platforms?.dingtalk;
 
   // 1. 加载各平台凭证（env 优先，其次新结构，最后旧字段）
   const telegramBotToken =
@@ -429,6 +448,13 @@ export function loadConfig(): Config {
     process.env.WEWORK_WS_URL ??
     fileWework?.wsUrl;
 
+  const dingtalkClientId =
+    process.env.DINGTALK_CLIENT_ID ??
+    fileDingtalk?.clientId;
+  const dingtalkClientSecret =
+    process.env.DINGTALK_CLIENT_SECRET ??
+    fileDingtalk?.clientSecret;
+
   // 2. 计算启用平台
   const enabledPlatforms: Platform[] = [];
 
@@ -436,6 +462,7 @@ export function loadConfig(): Config {
   const feishuEnabledFlag = fileFeishu?.enabled;
   const wechatEnabledFlag = fileWechat?.enabled;
   const weworkEnabledFlag = fileWework?.enabled;
+  const dingtalkEnabledFlag = fileDingtalk?.enabled;
 
   const telegramEnabled =
     !!telegramBotToken && (telegramEnabledFlag !== false);
@@ -449,14 +476,17 @@ export function loadConfig(): Config {
   // 企业微信只需要 corpId (botId) 和 secret
   const weworkEnabled =
     !!(weworkCorpId && weworkSecret) && (weworkEnabledFlag !== false);
+  const dingtalkEnabled =
+    !!(dingtalkClientId && dingtalkClientSecret) && (dingtalkEnabledFlag !== false);
 
   if (telegramEnabled) enabledPlatforms.push('telegram');
   if (feishuEnabled) enabledPlatforms.push('feishu');
   if (wechatEnabled) enabledPlatforms.push('wechat');
   if (weworkEnabled) enabledPlatforms.push('wework');
+  if (dingtalkEnabled) enabledPlatforms.push('dingtalk');
 
   if (enabledPlatforms.length === 0) {
-    throw new Error('至少需要配置 Telegram、Feishu、WeChat 或 WeWork 其中一个平台（可以通过环境变量或 config.json）');
+    throw new Error('至少需要配置 Telegram、Feishu、WeChat、WeWork 或 DingTalk 其中一个平台（可以通过环境变量或 config.json）');
   }
 
   // 3. 全局白名单（旧字段，向后兼容，主要用于作为 per-platform 的兜底）
@@ -485,6 +515,11 @@ export function loadConfig(): Config {
     process.env.WEWORK_ALLOWED_USER_IDS !== undefined
       ? parseCommaSeparated(process.env.WEWORK_ALLOWED_USER_IDS)
       : fileWework?.allowedUserIds ?? allowedUserIds;
+
+  const dingtalkAllowedUserIds =
+    process.env.DINGTALK_ALLOWED_USER_IDS !== undefined
+      ? parseCommaSeparated(process.env.DINGTALK_ALLOWED_USER_IDS)
+      : fileDingtalk?.allowedUserIds ?? allowedUserIds;
 
   // 5. AI / 工作目录 / 安全配置（从 tools 读取）
   const aiCommand = (process.env.AI_COMMAND ?? file.aiCommand ?? 'claude') as AiCommand;
@@ -772,6 +807,15 @@ export function loadConfig(): Config {
           enabled: false,
           allowedUserIds: weworkAllowedUserIds,
         },
+    dingtalk: dingtalkEnabled
+      ? {
+          enabled: true,
+          allowedUserIds: dingtalkAllowedUserIds,
+        }
+      : {
+          enabled: false,
+          allowedUserIds: dingtalkAllowedUserIds,
+        },
   };
 
   return {
@@ -790,11 +834,14 @@ export function loadConfig(): Config {
     weworkCorpId: weworkCorpId ?? '',
     weworkSecret: weworkSecret ?? '',
     weworkWsUrl: weworkWsUrl,
+    dingtalkClientId: dingtalkClientId ?? '',
+    dingtalkClientSecret: dingtalkClientSecret ?? '',
     allowedUserIds,
     telegramAllowedUserIds,
     feishuAllowedUserIds,
     wechatAllowedUserIds,
     weworkAllowedUserIds,
+    dingtalkAllowedUserIds,
     aiCommand,
     claudeCliPath,
     cursorCliPath,
@@ -820,6 +867,7 @@ export function getPlatformsWithCredentials(config: Config): Platform[] {
   if (config.telegramBotToken) r.push('telegram');
   if (config.feishuAppId && config.feishuAppSecret) r.push('feishu');
   if (config.weworkCorpId && config.weworkSecret) r.push('wework');
+  if (config.dingtalkClientId && config.dingtalkClientSecret) r.push('dingtalk');
   const hasWechat =
     (config.wechatToken && config.wechatGuid && config.wechatUserId) ||
     (config.wechatAppId && config.wechatAppSecret);
