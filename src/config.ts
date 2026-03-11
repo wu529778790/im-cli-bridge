@@ -52,6 +52,8 @@ export interface Config {
   hookPort: number;
   logDir: string;
   logLevel: LogLevel;
+  /** 是否使用 Agent SDK（进程内执行，无 spawn 开销，响应更快） */
+  useSdkMode: boolean;
 
   platforms: {
     telegram?: {
@@ -141,6 +143,7 @@ interface FileConfig {
   hookPort?: number;
   logDir?: string;
   logLevel?: LogLevel;
+  useSdkMode?: boolean;
 }
 
 const CONFIG_PATH = join(APP_HOME, 'config.json');
@@ -325,8 +328,13 @@ export function loadConfig(): Config {
       ? parseInt(process.env.HOOK_PORT, 10) || 35801
       : file.hookPort ?? 35801;
 
-  // 6. 校验 Claude CLI
-  if (aiCommand === 'claude') {
+  const useSdkMode =
+    process.env.USE_SDK_MODE !== undefined
+      ? process.env.USE_SDK_MODE === 'true'
+      : file.useSdkMode ?? true;
+
+  // 6. 校验 Claude CLI（SDK 模式不需要 CLI）
+  if (aiCommand === 'claude' && !useSdkMode) {
     if (isAbsolute(claudeCliPath) || claudeCliPath.includes('/') || claudeCliPath.includes('\\')) {
       try {
         accessSync(claudeCliPath, constants.F_OK | constants.X_OK);
@@ -451,6 +459,7 @@ export function loadConfig(): Config {
     hookPort,
     logDir,
     logLevel,
+    useSdkMode,
     platforms,
   };
 }
