@@ -87,7 +87,7 @@ npm run dev        # 直接运行源码（tsx，无需 build）
 
 ### Claude API 配置
 
-使用 Claude 时，必须配置 API 密钥。支持以下几种方式：
+使用 Claude 时，需要配置 API 密钥。支持以下几种方式：
 
 **方式 1：环境变量（推荐）**
 ```bash
@@ -110,9 +110,9 @@ export ANTHROPIC_AUTH_TOKEN="your-auth-token"
 ```bash
 open-im init
 ```
-配置向导会引导你设置 API 密钥。
+配置向导会引导你设置 API 密钥（可留空，稍后手动配置）。
 
-#### 支持国产模型/自定义 API
+#### 支持国产模型/自定义 API（可选）
 
 如果使用国产模型（如 GLM-4）或自定义 API 端点，可配置：
 ```json
@@ -125,7 +125,10 @@ open-im init
 }
 ```
 
-或在配置向导中填写相应的自定义 Base URL 和模型名称。
+所有配置项均为可选：
+- **API Key**：必须配置（通过环境变量或配置文件），否则无法使用
+- **Base URL**：可选，留空使用官方 API
+- **Model**：可选，留空使用官方默认模型
 
 获取 API 密钥：
 - **官方**：https://console.anthropic.com/

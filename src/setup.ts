@@ -452,26 +452,31 @@ export async function runInteractiveSetup(): Promise<boolean> {
       process.env.CLAUDE_CODE_OAUTH_TOKEN
     );
 
+    console.log('');
+    console.log('━━━ Claude API 配置 ━━━');
+    console.log('提示：以下配置均为可选，留空将使用默认值');
+    console.log('');
+
     const apiResp = await prompts(
       [
         {
           type: "text",
           name: "apiKey",
           message: hasExistingApiKey
-            ? "Claude API Key（已通过环境变量配置，留空跳过）"
-            : "Claude API Key（从 https://console.anthropic.com/ 获取）",
+            ? "Claude API Key（已通过环境变量配置，回车跳过）"
+            : "Claude API Key（回车跳过，稍后手动配置）",
           initial: "",
         },
         {
           type: "text",
           name: "baseUrl",
-          message: "自定义 Base URL（可选，用于国产模型或代理，留空使用官方）",
+          message: "自定义 Base URL（回车跳过，使用官方 API）",
           initial: existing?.env?.ANTHROPIC_BASE_URL ?? "",
         },
         {
           type: "text",
           name: "model",
-          message: "默认模型（可选，如 glm-5）",
+          message: "默认模型名称（回车跳过，使用官方模型）",
           initial: existing?.env?.ANTHROPIC_MODEL ?? "",
         },
       ],
