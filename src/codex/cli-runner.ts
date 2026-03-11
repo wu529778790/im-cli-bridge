@@ -90,6 +90,26 @@ function buildCodexArgs(
     : ["exec", ...newSessionOptions, "--", prompt];
 }
 
+function quoteForWindowsCmd(arg: string): string {
+  // 普通 flag / sessionId / 无空格路径不需要加引号，否则引号可能被原样传给子进程。
+  if (/^[A-Za-z0-9_./:=+\\-]+$/.test(arg)) {
+    return arg;
+  }
+  const escaped = arg
+    .replace(/(\\*)"/g, '$1$1\\"')
+    .replace(/(\\+)$/g, '$1$1')
+    .replace(/%/g, '%%');
+  return `"${escaped}"`;
+}
+
+function formatWindowsCommandName(command: string): string {
+  // 裸命令名（如 codex）依赖 PATH 查找，不能再包双引号，否则 cmd 会按字面量查找。
+  if (/^[A-Za-z0-9_.-]+$/.test(command)) {
+    return command;
+  }
+  return quoteForWindowsCmd(command);
+}
+
 export function runCodex(
   cliPath: string,
   prompt: string,
@@ -115,6 +135,11 @@ export function runCodex(
     env.ALL_PROXY = options.proxy;
     env.all_proxy = options.proxy;
   }
+  if (process.platform === 'win32') {
+    // 强制子进程在 Windows 下使用 UTF-8，避免中文源码/命令输出乱码。
+    env.LANG = env.LANG || 'C.UTF-8';
+    env.LC_ALL = env.LC_ALL || 'C.UTF-8';
+  }
 
   const argsForLog = args.filter((a) => a !== prompt).join(' ');
   log.info(`Spawning Codex CLI: path=${cliPath}, cwd=${workDir}, session=${sessionId ?? 'new'}, args=${argsForLog}`);
@@ -124,7 +149,14 @@ export function runCodex(
     process.platform === 'win32' &&
     (/\.(cmd|bat)$/i.test(cliPath) || cliPath === 'codex');
   const spawnCmd = isWinCmd ? 'cmd.exe' : cliPath;
-  const spawnArgs = isWinCmd ? ['/c', cliPath, ...args] : args;
+  const spawnArgs = isWinCmd
+    ? [
+        '/d',
+        '/s',
+        '/c',
+        `chcp 65001>nul && ${formatWindowsCommandName(cliPath)} ${args.map(quoteForWindowsCmd).join(' ')}`,
+      ]
+    : args;
 
   const child = spawn(spawnCmd, spawnArgs, {
     cwd: workDir,
