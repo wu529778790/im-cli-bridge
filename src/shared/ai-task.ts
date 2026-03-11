@@ -176,6 +176,9 @@ export function runAITask(
           if (ctx.threadId) sessionManager.setSessionIdForThread(ctx.userId, ctx.threadId, id);
           else if (ctx.convId) sessionManager.setSessionIdForConv(ctx.userId, ctx.convId, id);
         },
+        onSessionInvalid: () => {
+          if (ctx.convId) sessionManager.clearSessionForConv(ctx.userId, ctx.convId);
+        },
         onThinking: (t) => {
           if (!firstContentLogged) {
             firstContentLogged = true;
@@ -218,9 +221,23 @@ export function runAITask(
             pendingUpdate = null;
           }
           const note = buildCompletionNote(result, sessionManager, ctx, mode);
-          const finalContent = result.accumulated || result.result || '(无输出)';
+          // 优先用 adapter 返回的 accumulated/result；若为空则用流式期间累积的 latestContent（SDK 有时 result 事件不携带文本）
+          const output =
+            result.accumulated ||
+            result.result ||
+            taskState.latestContent ||
+            '(无输出)';
+          if (!result.accumulated && !result.result && taskState.latestContent) {
+            log.warn(
+              `Empty AI output from adapter but had streamed content (${taskState.latestContent.length} chars), using latestContent. platform=${ctx.platform}, taskKey=${ctx.taskKey}`
+            );
+          } else if (!output || output === '(无输出)') {
+            log.warn(
+              `Empty AI output for user ${ctx.userId}, platform=${ctx.platform}, taskKey=${ctx.taskKey}`
+            );
+          }
           try {
-            await platformAdapter.sendComplete(finalContent, note, thinkingText || undefined);
+            await platformAdapter.sendComplete(output, note, thinkingText || undefined);
           } catch (err) {
             log.error('Failed to send complete:', err);
           }

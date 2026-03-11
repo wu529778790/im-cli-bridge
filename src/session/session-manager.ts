@@ -46,6 +46,17 @@ export class SessionManager {
     }
   }
 
+  /** 清除指定会话的 sessionId（用于 SDK 报 "No conversation found" 时） */
+  clearSessionForConv(userId: string, convId: string): void {
+    const s = this.sessions.get(userId);
+    if (s?.activeConvId === convId) {
+      s.sessionId = undefined;
+      this.save();
+    }
+    this.convSessionMap.delete(`${userId}:${convId}`);
+    log.info(`Cleared session for user ${userId}, convId=${convId}`);
+  }
+
   getSessionIdForThread(_userId: string, _threadId: string): string | undefined {
     return undefined;
   }

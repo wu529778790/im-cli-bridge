@@ -20,6 +20,8 @@ export interface RunCallbacks {
   onComplete: (result: ParsedResult) => void;
   onError: (error: string) => void;
   onSessionId?: (sessionId: string) => void;
+  /** SDK 报 "No conversation found" 时调用，用于清除无效 session */
+  onSessionInvalid?: () => void;
 }
 
 export interface RunOptions {
