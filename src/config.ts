@@ -603,7 +603,10 @@ export function loadConfig(): Config {
     } else {
       const checkCommand = process.platform === 'win32' ? 'where' : 'which';
       try {
-        execFileSync(checkCommand, [codexCliPath], { stdio: 'pipe' });
+        execFileSync(checkCommand, [codexCliPath], {
+          stdio: 'pipe',
+          windowsHide: process.platform === 'win32',
+        });
       } catch {
         const installGuide = [
           '',
@@ -642,7 +645,10 @@ export function loadConfig(): Config {
     } else {
       const checkCommand = process.platform === 'win32' ? 'where' : 'which';
       try {
-        execFileSync(checkCommand, [cursorCliPath], { stdio: 'pipe' });
+        execFileSync(checkCommand, [cursorCliPath], {
+          stdio: 'pipe',
+          windowsHide: process.platform === 'win32',
+        });
       } catch {
         const installGuide = [
         '',
@@ -682,7 +688,10 @@ export function loadConfig(): Config {
       // 检查命令是否存在（Windows 用 where，Unix 用 which）
       const checkCommand = process.platform === 'win32' ? 'where' : 'which';
       try {
-        execFileSync(checkCommand, [claudeCliPath], { stdio: 'pipe' });
+        execFileSync(checkCommand, [claudeCliPath], {
+          stdio: 'pipe',
+          windowsHide: process.platform === 'win32',
+        });
       } catch {
         const installGuide = [
           '',

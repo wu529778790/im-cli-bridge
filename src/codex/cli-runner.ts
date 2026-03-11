@@ -12,6 +12,7 @@ import { createInterface } from 'node:readline';
 import { createLogger } from '../logger.js';
 
 const log = createLogger('CodexCli');
+const windowsCodexLaunchCache = new Map<string, { command: string; args: string[] } | null>();
 
 export interface CodexRunCallbacks {
   onText: (accumulated: string) => void;
@@ -129,8 +130,16 @@ function resolveWindowsCodexLaunch(
   cliPath: string,
   args: string[],
 ): { command: string; args: string[] } | null {
+  if (windowsCodexLaunchCache.has(cliPath)) {
+    const cached = windowsCodexLaunchCache.get(cliPath);
+    return cached ? { command: cached.command, args: [...cached.args, ...args] } : null;
+  }
+
   try {
-    const whereOutput = execFileSync('where', [cliPath], { stdio: 'pipe' })
+    const whereOutput = execFileSync('where', [cliPath], {
+      stdio: 'pipe',
+      windowsHide: true,
+    })
       .toString()
       .split(/\r?\n/)
       .map((line) => line.trim())
@@ -139,16 +148,25 @@ function resolveWindowsCodexLaunch(
     const cmdShimPath =
       whereOutput.find((line) => /\.cmd$/i.test(line)) ?? null;
 
-    if (!cmdShimPath) return null;
+    if (!cmdShimPath) {
+      windowsCodexLaunchCache.set(cliPath, null);
+      return null;
+    }
 
     const codexJsPath = extractCodexJsFromCmdShim(cmdShimPath);
-    if (!codexJsPath) return null;
+    if (!codexJsPath) {
+      windowsCodexLaunchCache.set(cliPath, null);
+      return null;
+    }
 
-    return {
+    const resolved = {
       command: process.execPath,
-      args: [codexJsPath, ...args],
+      args: [codexJsPath],
     };
+    windowsCodexLaunchCache.set(cliPath, resolved);
+    return { command: resolved.command, args: [...resolved.args, ...args] };
   } catch {
+    windowsCodexLaunchCache.set(cliPath, null);
     return null;
   }
 }
