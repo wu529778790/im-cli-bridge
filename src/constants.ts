@@ -38,8 +38,10 @@ export const TERMINAL_ONLY_COMMANDS = new Set([
 ]);
 
 export const DEDUP_TTL_MS = 5 * 60 * 1000;
-/** 飞书流式更新节流：≥200ms 以满足单条消息 5 QPS 频控，避免触发 delete 回退（撤回提示） */
+/** 飞书 patch 节流（旧方案，5 QPS） */
 export const FEISHU_THROTTLE_MS = 200;
+/** CardKit 流式更新节流：80ms（约 12 次/秒，cardElement.content 专为打字机设计，支持更高频率） */
+export const CARDKIT_THROTTLE_MS = 80;
 /** Telegram 编辑消息节流：200ms（open-im 默认值） */
 export const TELEGRAM_THROTTLE_MS = 200;
 /** WeChat 流式更新节流：1000ms（AGP 协议建议值） */
@@ -47,5 +49,7 @@ export const WECHAT_THROTTLE_MS = 1000;
 export const WEWORK_THROTTLE_MS = 500;
 export const MAX_TELEGRAM_MESSAGE_LENGTH = 4000;
 export const MAX_FEISHU_MESSAGE_LENGTH = 4000;
+/** CardKit 流式内容最大长度（卡片上限约 30KB，留余量） */
+export const MAX_STREAMING_CONTENT_LENGTH = 25000;
 export const MAX_WECHAT_MESSAGE_LENGTH = 2048;
 export const MAX_WEWORK_MESSAGE_LENGTH = 2048;

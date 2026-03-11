@@ -226,22 +226,6 @@ export class SessionManager {
     }
   }
 
-  /**
-   * 清除所有会话的 sessionId（用于 restart 后 SDK 内部状态失效的情况）
-   */
-  clearAllSessionIds(): void {
-    for (const session of this.sessions.values()) {
-      session.sessionId = undefined;
-      if (session.threads) {
-        for (const t of Object.values(session.threads)) {
-          t.sessionId = undefined;
-        }
-      }
-    }
-    this.flushSync();
-    log.info('All sessionIds cleared for restart');
-  }
-
   private save(): void {
     if (this.saveTimer) return;
     this.saveTimer = setTimeout(() => {
