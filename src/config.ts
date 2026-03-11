@@ -45,6 +45,7 @@ export interface Config {
   aiCommand: AiCommand;
   claudeCliPath: string;
   cursorCliPath: string;
+  codexCliPath: string;
   claudeWorkDir: string;
   allowedBaseDirs: string[];
   claudeSkipPermissions: boolean;
@@ -471,6 +472,22 @@ export function loadConfig(): Config {
   const tcod = file.tools?.codex ?? {};
 
   const claudeCliPath = process.env.CLAUDE_CLI_PATH ?? tc.cliPath ?? 'claude';
+  let codexCliPath = process.env.CODEX_CLI_PATH ?? tcod.cliPath ?? 'codex';
+  if (process.platform === 'win32' && codexCliPath === 'codex') {
+    const npmPaths = [
+      join(process.env.APPDATA || '', 'npm', 'codex.cmd'),
+      join(process.env.LOCALAPPDATA || '', 'npm', 'codex.cmd'),
+    ];
+    for (const p of npmPaths) {
+      try {
+        accessSync(p, constants.F_OK);
+        codexCliPath = p;
+        break;
+      } catch {
+        /* 尝试下一个路径 */
+      }
+    }
+  }
   let cursorCliPath = process.env.CURSOR_CLI_PATH ?? tcur.cliPath ?? 'agent';
   if (process.platform === 'win32' && cursorCliPath === 'agent') {
     const winAgentPath = join(process.env.LOCALAPPDATA || '', 'cursor-agent', 'agent.cmd');
@@ -553,7 +570,46 @@ export function loadConfig(): Config {
     }
   }
 
-  // 7. 校验 Cursor CLI（使用 cursor 时）
+  // 7. 校验 Codex CLI（使用 codex 时）
+  if (aiCommand === 'codex') {
+    if (isAbsolute(codexCliPath) || codexCliPath.includes('/') || codexCliPath.includes('\\')) {
+      try {
+        accessSync(codexCliPath, constants.F_OK);
+      } catch {
+        throw new Error(`Codex CLI 不可执行: ${codexCliPath}`);
+      }
+    } else {
+      const checkCommand = process.platform === 'win32' ? 'where' : 'which';
+      try {
+        execFileSync(checkCommand, [codexCliPath], { stdio: 'pipe' });
+      } catch {
+        const installGuide = [
+          '',
+          '━━━ Codex CLI 未安装 ━━━',
+          '',
+          '使用 Codex 需要先安装 OpenAI Codex CLI。',
+          '',
+          '安装方法：',
+          '',
+          '  npm install -g @openai/codex',
+          '',
+          '或: brew install --cask codex',
+          '',
+          '安装后运行 codex login 登录，并用 codex exec --help 验证。',
+          '',
+        ].join('\n');
+        throw new Error(installGuide);
+      }
+    }
+    if (!process.env.OPENAI_API_KEY) {
+      console.warn(
+        '\n⚠ Codex 模式：未检测到 OPENAI_API_KEY。首次使用请先运行 codex login，\n' +
+        '  或在 ~/.open-im/config.json 的 env 中添加 "OPENAI_API_KEY": "你的 API Key"。\n'
+      );
+    }
+  }
+
+  // 8. 校验 Cursor CLI（使用 cursor 时）
   if (aiCommand === 'cursor') {
     if (isAbsolute(cursorCliPath) || cursorCliPath.includes('/') || cursorCliPath.includes('\\')) {
       try {
@@ -592,7 +648,7 @@ export function loadConfig(): Config {
     }
   }
 
-  // 8. 校验 Claude CLI（SDK 模式不需要 CLI）
+  // 9. 校验 Claude CLI（SDK 模式不需要 CLI）
   if (aiCommand === 'claude' && !useSdkMode) {
     if (isAbsolute(claudeCliPath) || claudeCliPath.includes('/') || claudeCliPath.includes('\\')) {
       try {
@@ -710,6 +766,7 @@ export function loadConfig(): Config {
     aiCommand,
     claudeCliPath,
     cursorCliPath,
+    codexCliPath,
     claudeWorkDir,
     allowedBaseDirs,
     claudeSkipPermissions,
