@@ -216,6 +216,35 @@ function migrateToNewConfigFormat(raw: Record<string, unknown>): Record<string, 
   return migrated;
 }
 
+/** 确保 cursor/codex 有 skipPermissions（缺失时从 claude 继承并写回） */
+function ensureToolsSkipPermissions(raw: Record<string, unknown>): boolean {
+  const tools = raw.tools as Record<string, unknown> | undefined;
+  if (!tools || typeof tools !== 'object') return false;
+  const tc = (tools.claude as Record<string, unknown>) || {};
+  const fallback = tc.skipPermissions ?? true;
+  let changed = false;
+  if (tools.cursor && typeof tools.cursor === 'object') {
+    const cur = tools.cursor as Record<string, unknown>;
+    if (cur.skipPermissions === undefined) {
+      cur.skipPermissions = fallback;
+      changed = true;
+    }
+  }
+  if (tools.codex && typeof tools.codex === 'object') {
+    const cod = tools.codex as Record<string, unknown>;
+    if (cod.skipPermissions === undefined) {
+      cod.skipPermissions = fallback;
+      changed = true;
+    }
+  }
+  if (changed) {
+    const dir = dirname(CONFIG_PATH);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(CONFIG_PATH, JSON.stringify(raw, null, 2), 'utf-8');
+  }
+  return changed;
+}
+
 function loadFileConfig(): FileConfig {
   try {
     const raw = JSON.parse(readFileSync(CONFIG_PATH, 'utf-8')) as Record<string, unknown>;
@@ -228,6 +257,7 @@ function loadFileConfig(): FileConfig {
       writeFileSync(CONFIG_PATH, JSON.stringify(migrated, null, 2), 'utf-8');
       return migrated as FileConfig;
     }
+    ensureToolsSkipPermissions(raw);
     return raw as FileConfig;
   } catch {
     return {};

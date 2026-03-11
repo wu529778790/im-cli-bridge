@@ -60,7 +60,7 @@ export function formatToolCallNotification(toolName: string, toolInput?: Record<
   const emoji = getToolEmoji(toolName);
   if (!toolInput) return `${emoji} ${toolName}`;
   let detail = '';
-  if (toolName === 'Bash' && toolInput.command) detail = ` → ${String(toolInput.command).slice(0, 60)}`;
+  if (toolName === 'Bash' && (toolInput.command ?? toolInput.cmd)) detail = ` → ${String(toolInput.command ?? toolInput.cmd).slice(0, 60)}`;
   if (toolName === 'Read' && toolInput.file_path) detail = ` → ${toolInput.file_path}`;
   if (toolName === 'Write' && toolInput.file_path) detail = ` → ${toolInput.file_path}`;
   return `${emoji} ${toolName}${detail}`;

@@ -56,7 +56,7 @@ function extractToolFromCursorEvent(event: Record<string, unknown>): { name: str
   if (key === 'readToolCall') name = 'Read';
   else if (key === 'writeToolCall') name = 'Write';
   else if (key === 'editToolCall') name = 'Edit';
-  else if (key === 'bashToolCall') name = 'Bash';
+  else if (key === 'bashToolCall' || key === 'shellToolCall') name = 'Bash';
   else if (key === 'grepToolCall') name = 'Grep';
   else if (key === 'globToolCall') name = 'Glob';
   else if (key === 'webSearchToolCall') name = 'WebSearch';
@@ -185,6 +185,7 @@ export function runCursor(
       return;
     }
 
+    log.debug(`[Cursor event] type=${event.type} subtype=${event.subtype}`);
     const type = event.type as string;
 
     if (type === 'system' && event.subtype === 'init') {
@@ -215,6 +216,23 @@ export function runCursor(
         if (tool) {
           toolStats[tool.name] = (toolStats[tool.name] || 0) + 1;
           callbacks.onToolUse?.(tool.name, tool.input);
+        }
+      } else if (subtype === 'completed') {
+        const toolCall = event.tool_call as Record<string, unknown> | undefined;
+        if (toolCall?.shellToolCall || toolCall?.bashToolCall) {
+          const shell = (toolCall.shellToolCall ?? toolCall.bashToolCall) as Record<string, unknown>;
+          const result = shell?.result as Record<string, unknown> | undefined;
+          const success = result?.success as { exitCode?: number; stdout?: string; stderr?: string } | undefined;
+          if (success) {
+            const out = success.stdout ?? success.stderr ?? '';
+            if (out) {
+              accumulated += (accumulated ? '\n\n' : '') + '```\n' + out + '\n```';
+              callbacks.onText(accumulated);
+            }
+            const exitMsg = `\n\n✓ 命令执行完成 (exit ${success.exitCode ?? 0})`;
+            accumulated += exitMsg;
+            callbacks.onText(accumulated);
+          }
         }
       }
       return;
