@@ -35,6 +35,8 @@ export interface CodexRunOptions {
   model?: string;
   chatId?: string;
   hookPort?: number;
+  /** HTTP/HTTPS 代理，用于访问 chatgpt.com */
+  proxy?: string;
 }
 
 export interface CodexRunHandle {
@@ -84,6 +86,10 @@ export function runCodex(
   }
   if (options?.chatId) env.CC_IM_CHAT_ID = options.chatId;
   if (options?.hookPort) env.CC_IM_HOOK_PORT = String(options.hookPort);
+  if (options?.proxy) {
+    env.HTTPS_PROXY = options.proxy;
+    env.HTTP_PROXY = options.proxy;
+  }
 
   const argsForLog = args.filter((a) => a !== prompt).join(' ');
   log.info(`Spawning Codex CLI: path=${cliPath}, cwd=${workDir}, session=${sessionId ?? 'new'}, args=${argsForLog}`);

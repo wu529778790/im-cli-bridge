@@ -276,6 +276,7 @@ export function runAITask(
         chatId: ctx.chatId,
         // SDK 模式下不使用 hookPort
         ...(config.useSdkMode ? {} : { hookPort: config.hookPort }),
+        ...(config.aiCommand === 'codex' && config.codexProxy ? { proxy: config.codexProxy } : {}),
       }
     );
 

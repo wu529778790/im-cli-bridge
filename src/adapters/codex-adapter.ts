@@ -26,6 +26,7 @@ export class CodexAdapter implements ToolAdapter {
       model: options?.model,
       chatId: options?.chatId,
       hookPort: options?.hookPort,
+      proxy: options?.proxy,
     };
 
     return runCodex(this.cliPath, prompt, sessionId, workDir, {

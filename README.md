@@ -56,6 +56,7 @@ open-im start
 | `CLAUDE_WORK_DIR` | 工作目录，默认当前目录 |
 | `ALLOWED_BASE_DIRS` | 允许访问的目录（逗号分隔） |
 | `CURSOR_API_KEY` | Cursor Agent API Key（使用 cursor 时必填，或先运行 agent login） |
+| `CODEX_PROXY` | Codex 访问 chatgpt.com 的代理（如 http://127.0.0.1:7890） |
 
 ### Claude API 配置
 
@@ -79,7 +80,7 @@ cat > ~/.open-im/config.json << 'EOF'
       "timeoutMs": 600000
     },
     "cursor": { "cliPath": "agent", "skipPermissions": true },
-    "codex": { "cliPath": "codex", "workDir": "YOUR_WORK_DIR", "skipPermissions": true }
+    "codex": { "cliPath": "codex", "workDir": "YOUR_WORK_DIR", "skipPermissions": true, "proxy": "http://127.0.0.1:7890" }
   },
   "platforms": {
     # 企业微信配置
@@ -167,3 +168,5 @@ EOF
 **企业微信收不到通知**：需先发一条消息给机器人，才能接收启动通知
 
 **Cursor 报 Authentication required**：需先认证。方式 1：在终端运行 `agent login`；方式 2：在 `~/.open-im/config.json` 的 `env` 中添加 `"CURSOR_API_KEY": "你的 API Key"`
+
+**Codex 报 stream disconnected / error sending request**：网络无法访问 chatgpt.com，需配置代理。在 `tools.codex` 中添加 `"proxy": "http://127.0.0.1:7890"`，或设置环境变量 `CODEX_PROXY`

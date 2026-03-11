@@ -46,6 +46,8 @@ export interface Config {
   claudeCliPath: string;
   cursorCliPath: string;
   codexCliPath: string;
+  /** Codex 访问 chatgpt.com 的代理（如 http://127.0.0.1:7890） */
+  codexProxy?: string;
   claudeWorkDir: string;
   allowedBaseDirs: string[];
   claudeSkipPermissions: boolean;
@@ -139,6 +141,8 @@ interface FileToolCodex {
   workDir?: string;
   /** 是否跳过权限确认（默认 true） */
   skipPermissions?: boolean;
+  /** HTTP/HTTPS 代理，用于访问 chatgpt.com（如 http://127.0.0.1:7890） */
+  proxy?: string;
 }
 
 interface FileConfig {
@@ -208,6 +212,7 @@ function migrateToNewConfigFormat(raw: Record<string, unknown>): Record<string, 
       cliPath: tcod.cliPath ?? 'codex',
       workDir: tcod.workDir ?? raw.claudeWorkDir ?? process.cwd(),
       skipPermissions: tcod.skipPermissions ?? raw.claudeSkipPermissions ?? true,
+      proxy: tcod.proxy,
     },
   };
 
@@ -472,6 +477,7 @@ export function loadConfig(): Config {
   const tcod = file.tools?.codex ?? {};
 
   const claudeCliPath = process.env.CLAUDE_CLI_PATH ?? tc.cliPath ?? 'claude';
+  const codexProxy = process.env.CODEX_PROXY ?? tcod.proxy;
   let codexCliPath = process.env.CODEX_CLI_PATH ?? tcod.cliPath ?? 'codex';
   if (process.platform === 'win32' && codexCliPath === 'codex') {
     const npmPaths = [
@@ -767,6 +773,7 @@ export function loadConfig(): Config {
     claudeCliPath,
     cursorCliPath,
     codexCliPath,
+    codexProxy,
     claudeWorkDir,
     allowedBaseDirs,
     claudeSkipPermissions,
