@@ -164,6 +164,26 @@ async function cmdStop(): Promise<void> {
   console.log(`open-im 已停止 (pid=${pid})`);
 }
 
+async function cmdRestart(): Promise<void> {
+  const pid = getPid();
+  const wasRunning = pid && isRunning(pid);
+
+  if (wasRunning) {
+    console.log(`正在停止 open-im (pid=${pid})...`);
+    await cmdStop();
+    // 等待进程完全停止
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      if (!pid || !isRunning(pid)) break;
+    }
+  } else {
+    console.log("open-im 未在后台运行");
+  }
+
+  console.log("正在启动 open-im...");
+  await cmdStart();
+}
+
 async function cmdInit(): Promise<void> {
   console.log("\n━━━ open-im 配置向导 ━━━\n");
   const saved = await runInteractiveSetup();
@@ -185,6 +205,7 @@ function showHelp(exitCode = 0): void {
 命令:
   start    后台运行服务
   stop     停止后台服务
+  restart  重启服务
   init     配置向导（首次或追加配置，会覆盖已有 config.json）
   dev      前台运行（调试模式），Ctrl+C 停止
 
@@ -203,6 +224,7 @@ const cmd = process.argv[2];
 const commands: Record<string, () => Promise<void>> = {
   start: cmdStart,
   stop: cmdStop,
+  restart: cmdRestart,
   init: cmdInit,
   dev: main,
 };
