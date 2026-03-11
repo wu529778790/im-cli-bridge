@@ -7,6 +7,7 @@ try {
 import { readFileSync, accessSync, constants } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, isAbsolute } from 'node:path';
+import { homedir } from 'node:os';
 import type { LogLevel } from './logger.js';
 import { APP_HOME } from './constants.js';
 
@@ -148,6 +149,7 @@ interface FileConfig {
 }
 
 const CONFIG_PATH = join(APP_HOME, 'config.json');
+const CLAUDE_SETTINGS_PATH = join(homedir(), '.claude', 'settings.json');
 
 function loadFileConfig(): FileConfig {
   try {
@@ -157,13 +159,27 @@ function loadFileConfig(): FileConfig {
   }
 }
 
+/** 从 ~/.claude/settings.json 加载 Claude API 凭证（Claude Code 共用配置） */
+function loadClaudeSettingsEnv(): Record<string, string> {
+  try {
+    const raw = JSON.parse(readFileSync(CLAUDE_SETTINGS_PATH, 'utf-8'));
+    const env = raw?.env;
+    if (env && typeof env === 'object') {
+      return env as Record<string, string>;
+    }
+  } catch {
+    /* 文件不存在或格式错误，忽略 */
+  }
+  return {};
+}
+
 /** 检查是否已配置 Claude API 凭证 */
 export function hasClaudeCredentials(): boolean {
   return !!(
     process.env.ANTHROPIC_API_KEY ||
     process.env.ANTHROPIC_AUTH_TOKEN ||
     process.env.CLAUDE_CODE_OAUTH_TOKEN ||
-    process.env.ANTHROPIC_BASE_URL // 使用自定义 API（如国产模型）时可能不需要标准凭证
+    process.env.ANTHROPIC_BASE_URL // 使用自定义 API（如第三方模型）时可能不需要标准凭证
   );
 }
 
@@ -205,6 +221,14 @@ export function loadConfig(): Config {
       if (!(key in process.env)) {
         process.env[key] = value;
       }
+    }
+  }
+
+  // 从 ~/.claude/settings.json 合并 Claude API 凭证（Claude Code 共用，最低优先级）
+  const claudeEnv = loadClaudeSettingsEnv();
+  for (const [key, value] of Object.entries(claudeEnv)) {
+    if (!(key in process.env)) {
+      process.env[key] = value;
     }
   }
 
@@ -357,48 +381,34 @@ export function loadConfig(): Config {
   );
 
   // 6. 校验 Claude API 凭证（SDK 模式需要）
+  // 支持：官方 API Key、Auth Token、或自定义 API（第三方模型等，BASE_URL + token）
   if (aiCommand === 'claude' && useSdkMode) {
-    const hasApiKey = !!(
+    const hasCreds = !!(
       process.env.ANTHROPIC_API_KEY ||
       process.env.ANTHROPIC_AUTH_TOKEN ||
-      process.env.CLAUDE_CODE_OAUTH_TOKEN
+      process.env.CLAUDE_CODE_OAUTH_TOKEN ||
+      process.env.ANTHROPIC_BASE_URL
     );
 
-    if (!hasApiKey) {
+    if (!hasCreds) {
       const errorMsg = [
         '',
-        '━━━ 未配置 Claude API 密钥 ━━━',
+        '━━━ 未配置 Claude API 凭证 ━━━',
         '',
-        '使用 Claude 需要配置 API 密钥，请选择以下方式之一：',
+        '使用 Claude 需要配置以下之一：',
+        '  - 官方 API：ANTHROPIC_API_KEY 或 ANTHROPIC_AUTH_TOKEN',
+        '  - 第三方/自定义 API：ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN + ANTHROPIC_MODEL',
         '',
-        '方式 1：设置环境变量（推荐）',
-        '  export ANTHROPIC_API_KEY="your-api-key"',
-        '  或',
-        '  export ANTHROPIC_AUTH_TOKEN="your-auth-token"',
+        '方式 1：环境变量',
+        '  export ANTHROPIC_API_KEY="sk-ant-..."',
+        '  或 export ANTHROPIC_AUTH_TOKEN="your-token"',
+        '  或 export ANTHROPIC_BASE_URL="https://your-api" ANTHROPIC_MODEL="glm-4.7"',
         '',
         '方式 2：运行配置向导',
         '  open-im init',
         '',
-        '方式 3：手动编辑配置文件',
-        '  编辑 ~/.open-im/config.json，添加：',
-        '  {',
-        '    "env": {',
-        '      "ANTHROPIC_API_KEY": "your-api-key"',
-        '    }',
-        '  }',
-        '',
-        '其他可选配置（使用国产模型或自定义 API 时）：',
-        '  {',
-        '    "env": {',
-        '      "ANTHROPIC_API_KEY": "your-api-key",',
-        '      "ANTHROPIC_BASE_URL": "https://your-api-endpoint",',
-        '      "ANTHROPIC_MODEL": "glm-4"',
-        '    }',
-        '  }',
-        '',
-        '获取 API 密钥：',
-        '  - 官方：https://console.anthropic.com/',
-        '  - 或运行: claude setup-token',
+        '方式 3：编辑 ~/.open-im/config.json 的 env 字段',
+        '  或 ~/.claude/settings.json（与 Claude Code 共用）',
         '',
       ].join('\n');
       throw new Error(errorMsg);

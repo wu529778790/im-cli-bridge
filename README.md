@@ -103,7 +103,7 @@ export ANTHROPIC_AUTH_TOKEN="your-token"
 ```
 运行 `claude setup-token` 生成 OAuth Token。
 
-**方式 3：自定义 API（国产模型/代理）**
+**方式 3：自定义 API（第三方模型/代理）**
 ```bash
 export ANTHROPIC_AUTH_TOKEN="your-token"
 export ANTHROPIC_BASE_URL="https://your-api-endpoint"
@@ -153,10 +153,10 @@ open-im init
 **配置说明**：
 - **API Key / Auth Token**：必填其一（使用官方 API 时）
   - `ANTHROPIC_API_KEY`：以 `sk-` 开头，从 Console 获取
-  - `ANTHROPIC_AUTH_TOKEN`：UUID 格式，运行 `claude setup-token` 生成，或使用国产模型提供的 token
+  - `ANTHROPIC_AUTH_TOKEN`：UUID 格式，运行 `claude setup-token` 生成，或使用第三方模型提供的 token
 - **Base URL**：可选
   - 留空使用官方 API
-  - 使用国产模型或代理时填写自定义端点
+  - 使用第三方模型或代理时填写自定义端点
 - **模型配置**：可选，留空使用默认模型
   - `ANTHROPIC_MODEL`：默认模型
   - `ANTHROPIC_DEFAULT_HAIKU_MODEL`：Haiku 层级模型
@@ -176,7 +176,7 @@ open-im init
 
 其他字段留空即可，系统会使用官方默认值。
 
-#### 使用国产模型/自定义 API
+#### 使用第三方模型/自定义 API
 
 ```json
 {

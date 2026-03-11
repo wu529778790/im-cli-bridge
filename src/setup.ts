@@ -8,6 +8,7 @@ import prompts from "prompts";
 import { createInterface } from "node:readline";
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { homedir } from "node:os";
 import { APP_HOME } from "./constants.js";
 import type { Config, Platform } from "./config.js";
 import { loadConfig, getPlatformsWithCredentials } from "./config.js";
@@ -124,6 +125,132 @@ function printManualInstructions(configPath: string): void {
     "或设置环境变量: TELEGRAM_BOT_TOKEN=xxx、FEISHU_APP_ID=xxx、WECHAT_APP_ID=xxx 或 WEWORK_CORP_ID=xxx 后再运行",
   );
   console.log("");
+}
+
+const CLAUDE_SETTINGS_PATH = join(homedir(), ".claude", "settings.json");
+
+function loadClaudeSettings(): Record<string, unknown> {
+  if (!existsSync(CLAUDE_SETTINGS_PATH)) return {};
+  try {
+    return JSON.parse(readFileSync(CLAUDE_SETTINGS_PATH, "utf-8")) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+function printManualClaudeInstructions(): void {
+  console.log("\n━━━ Claude API 配置 ━━━\n");
+  console.log("当前环境不支持交互输入，请手动配置：");
+  console.log("");
+  console.log("  1. 编辑 ~/.claude/settings.json（与 Claude Code 共用）");
+  console.log("  2. 添加 env 字段，例如：");
+  console.log("");
+  console.log('  { "env": { "ANTHROPIC_API_KEY": "sk-ant-..." } }');
+  console.log("");
+  console.log("  或使用第三方模型：");
+  console.log('  { "env": { "ANTHROPIC_AUTH_TOKEN": "xxx", "ANTHROPIC_BASE_URL": "https://...", "ANTHROPIC_MODEL": "glm-4.7" } }');
+  console.log("");
+}
+
+/**
+ * Claude API 专用配置向导，保存到 ~/.claude/settings.json（与 Claude Code 共用）
+ */
+export async function runClaudeApiSetup(): Promise<boolean> {
+  if (!process.stdin.isTTY) {
+    printManualClaudeInstructions();
+    return false;
+  }
+
+  const existing = loadClaudeSettings();
+  const existingEnv = (existing.env as Record<string, string>) || {};
+
+  console.log("\n━━━ Claude API 配置向导 ━━━\n");
+  console.log("配置将保存到 ~/.claude/settings.json（Claude Code 配置，与 Claude Code 共用）\n");
+
+  const onCancel = () => {
+    console.log("\n已取消配置。");
+    process.exit(0);
+  };
+
+  const apiTypeResp = await prompts(
+    {
+      type: "select",
+      name: "apiType",
+      message: "选择 API 类型",
+      choices: [
+        { title: "官方 API（Anthropic）", value: "official" },
+        { title: "第三方模型 / 自定义 API", value: "thirdparty" },
+      ],
+      initial: 0,
+    },
+    { onCancel },
+  );
+
+  if (!apiTypeResp.apiType) return false;
+
+  const env: Record<string, string> = { ...existingEnv };
+
+  if (apiTypeResp.apiType === "official") {
+    const keyTypeResp = await prompts(
+      {
+        type: "select",
+        name: "keyType",
+        message: "选择认证方式",
+        choices: [
+          { title: "API Key（sk-ant-...）", value: "apikey" },
+          { title: "Auth Token（claude setup-token 生成）", value: "token" },
+        ],
+        initial: 0,
+      },
+      { onCancel },
+    );
+    if (!keyTypeResp.keyType) return false;
+
+    if (keyTypeResp.keyType === "apikey") {
+      const key = await question("ANTHROPIC_API_KEY: ");
+      if (!key.trim()) {
+        console.log("API Key 不能为空");
+        return false;
+      }
+      env.ANTHROPIC_API_KEY = key.trim();
+      delete env.ANTHROPIC_AUTH_TOKEN;
+    } else {
+      const token = await question("ANTHROPIC_AUTH_TOKEN: ");
+      if (!token.trim()) {
+        console.log("Auth Token 不能为空");
+        return false;
+      }
+      env.ANTHROPIC_AUTH_TOKEN = token.trim();
+      delete env.ANTHROPIC_API_KEY;
+    }
+  } else {
+    const token = await question("ANTHROPIC_AUTH_TOKEN（第三方模型 Token）: ");
+    if (!token.trim()) {
+      console.log("Token 不能为空");
+      return false;
+    }
+    const baseUrl = await question("ANTHROPIC_BASE_URL（API 地址）: ");
+    if (!baseUrl.trim()) {
+      console.log("Base URL 不能为空");
+      return false;
+    }
+    const model = await question("ANTHROPIC_MODEL（模型名称，如 glm-4.7）: ");
+    if (!model.trim()) {
+      console.log("模型名称不能为空");
+      return false;
+    }
+    env.ANTHROPIC_AUTH_TOKEN = token.trim();
+    env.ANTHROPIC_BASE_URL = baseUrl.trim();
+    env.ANTHROPIC_MODEL = model.trim();
+    delete env.ANTHROPIC_API_KEY;
+  }
+
+  const dir = dirname(CLAUDE_SETTINGS_PATH);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  const merged = { ...existing, env };
+  writeFileSync(CLAUDE_SETTINGS_PATH, JSON.stringify(merged, null, 2), "utf-8");
+  console.log("\n✓ Claude API 配置已保存到", CLAUDE_SETTINGS_PATH);
+  return true;
 }
 
 export async function runInteractiveSetup(): Promise<boolean> {
