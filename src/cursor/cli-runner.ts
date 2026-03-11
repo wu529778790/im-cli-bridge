@@ -84,14 +84,18 @@ export function runCursor(
   callbacks: CursorRunCallbacks,
   options?: CursorRunOptions
 ): CursorRunHandle {
-  const args = ['-p', '--output-format', 'stream-json', '--stream-partial-output'];
+  const args = ['-p', '--output-format', 'stream-json', '--stream-partial-output',
+    '--sandbox', 'disabled',  // 禁用 sandbox，避免 Windows 下 shell 命令极慢或卡死
+  ];
 
-  if (options?.skipPermissions) {
-    args.push('--force');
-  } else if (options?.permissionMode === 'plan') {
+  // Cursor CLI 运行于 stream-json 非交互模式，stdin 设为 ignore。
+  // 若不加 --force，agent 遇到 shell/edit 权限时会等待 stdin 响应，
+  // 由于 stdin 永远为 EOF，任务会无限期挂起。
+  // plan 模式不执行操作，无需 --force；其余模式均加 --force 跳过交互式权限提示。
+  if (options?.permissionMode === 'plan') {
     args.push('--plan');
-  } else if (options?.permissionMode === 'acceptEdits') {
-    args.push('--trust');
+  } else {
+    args.push('--force');
   }
 
   if (options?.model) args.push('--model', options.model);
@@ -106,7 +110,8 @@ export function runCursor(
   if (options?.chatId) env.CC_IM_CHAT_ID = options.chatId;
   if (options?.hookPort) env.CC_IM_HOOK_PORT = String(options.hookPort);
 
-  log.info(`Spawning Cursor CLI: path=${cliPath}, cwd=${workDir}, session=${sessionId ?? 'new'}`);
+  const argsForLog = args.filter(a => a !== prompt).join(' ');
+  log.info(`Spawning Cursor CLI: path=${cliPath}, cwd=${workDir}, session=${sessionId ?? 'new'}, args=${argsForLog}`);
 
   // Windows: .cmd 需通过 cmd.exe 执行，否则 spawn 报 ENOENT
   const isCmd = process.platform === 'win32' && /\.cmd$/i.test(cliPath);
@@ -163,6 +168,8 @@ export function runCursor(
     if (stderrTail.length > MAX_STDERR_TAIL) {
       stderrTail = stderrTail.slice(-MAX_STDERR_TAIL);
     }
+    // 实时打印 stderr，方便诊断 Cursor CLI 问题
+    log.debug(`[stderr] ${text.trimEnd()}`);
   });
 
   const rl = createInterface({ input: child.stdout! });

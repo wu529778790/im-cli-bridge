@@ -136,6 +136,12 @@ export async function main() {
     config.allowedBaseDirs,
   );
 
+  // CLI 工具（Cursor/Codex）的 session 是进程级别的，服务重启后一定无效。
+  // 启动时清除所有 sessionId，防止 --resume 到上次被中断的任务（如未完成的 git commit）。
+  if (config.aiCommand !== 'claude') {
+    sessionManager.clearAllSessionIds();
+  }
+
   let telegramHandle: ReturnType<typeof setupTelegramHandlers> | null = null;
   let feishuHandle: ReturnType<typeof setupFeishuHandlers> | null = null;
   let wechatHandle: ReturnType<typeof setupWeChatHandlers> | null = null;

@@ -1,3 +1,15 @@
+/** AI 工具显示名称映射（aiCommand → 用户友好名称） */
+export const AI_TOOL_DISPLAY_NAMES: Record<string, string> = {
+  claude: 'Claude Code',
+  codex: 'Codex',
+  cursor: 'Cursor',
+};
+
+/** 获取 AI 工具的显示名称 */
+export function getAIToolDisplayName(aiCommand: string): string {
+  return AI_TOOL_DISPLAY_NAMES[aiCommand] ?? aiCommand;
+}
+
 const TOOL_EMOJIS: Record<string, string> = {
   Read: '📖', Write: '✏️', Edit: '📝', Bash: '💻', Glob: '🔍', Grep: '🔎',
   WebFetch: '🌐', WebSearch: '🔎', Task: '📋', TodoRead: '📌', TodoWrite: '✅',

@@ -6,6 +6,7 @@ import {
   splitLongContent,
   truncateText,
   preprocessMarkdownForTelegram,
+  getAIToolDisplayName,
 } from "../shared/utils.js";
 import { MAX_TELEGRAM_MESSAGE_LENGTH } from "../constants.js";
 import {
@@ -25,14 +26,8 @@ const STATUS_ICONS: Record<MessageStatus, string> = {
   error: "🔴",
 };
 
-const TOOL_DISPLAY_NAMES: Record<string, string> = {
-  claude: "claude-code",
-  codex: "codex",
-  cursor: "cursor",
-};
-
 function getToolTitle(toolId: string, status: MessageStatus): string {
-  const name = TOOL_DISPLAY_NAMES[toolId] ?? toolId;
+  const name = getAIToolDisplayName(toolId);
   if (status === "thinking") return `${name} - 思考中...`;
   if (status === "error") return `${name} - 错误`;
   return name;

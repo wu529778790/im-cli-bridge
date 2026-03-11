@@ -12,6 +12,7 @@ import {
   formatToolStats,
   formatToolCallNotification,
   getContextWarning,
+  getAIToolDisplayName,
 } from './utils.js';
 import { createLogger } from '../logger.js';
 
@@ -52,6 +53,8 @@ export interface TaskRunState {
   latestContent: string;
   settle: () => void;
   startedAt: number;
+  /** AI 工具标识，用于动态显示工具名称 */
+  toolId: string;
 }
 
 function buildCompletionNote(
@@ -180,7 +183,7 @@ export function runAITask(
           }
           wasThinking = true;
           thinkingText = t;
-          throttledUpdate(`💭 **思考中...**\n\n${t}`);
+          throttledUpdate(`💭 **${getAIToolDisplayName(config.aiCommand)} 思考中...**\n\n${t}`);
         },
         onText: (accumulated) => {
           if (!firstContentLogged) {
@@ -232,6 +235,13 @@ export function runAITask(
             pendingUpdate = null;
           }
           log.error(`Task error for user ${ctx.userId}: ${error}`);
+          // CLI 工具（cursor/codex）出错时清除 sessionId，
+          // 防止 resume 到中途被中断的会话（如未完成的 tool call 循环）
+          // Claude SDK 不需要，其 session 是对话上下文，出错仍可继续
+          if (config.aiCommand !== 'claude') {
+            sessionManager.newSession(ctx.userId);
+            log.info(`Session reset for user ${ctx.userId} due to ${config.aiCommand} task error`);
+          }
           try {
             await platformAdapter.sendError(error);
           } catch (err) {
@@ -252,7 +262,7 @@ export function runAITask(
       }
     );
 
-    taskState = { handle, latestContent: '', settle, startedAt: Date.now() };
+    taskState = { handle, latestContent: '', settle, startedAt: Date.now(), toolId: config.aiCommand };
     platformAdapter.onTaskReady(taskState);
   });
 }
