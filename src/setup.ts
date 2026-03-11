@@ -462,23 +462,8 @@ export async function runInteractiveSetup(): Promise<boolean> {
       existing?.env?.ANTHROPIC_AUTH_TOKEN
     );
 
-    // 如果已经配置过，询问是否要重新配置
-    let skipApiConfig = false;
     if (hasExistingApiKey) {
-      const reconfigResp = await prompts(
-        {
-          type: "confirm",
-          name: "reconfig",
-          message: "检测到已配置 Claude API，是否重新配置？",
-          initial: false,
-        },
-        { onCancel }
-      );
-      skipApiConfig = !reconfigResp.reconfig;
-    }
-
-    if (skipApiConfig) {
-      // 保留原有配置，不询问
+      // 已经配置过，直接保留原有配置，跳过询问
       if (existing?.env) {
         claudeApiConfig = {
           apiKey: existing.env.ANTHROPIC_API_KEY || existing.env.ANTHROPIC_AUTH_TOKEN,
@@ -490,6 +475,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
         };
       }
     } else {
+      // 没有配置过，引导用户配置
       console.log('');
       console.log('━━━ Claude API 配置 ━━━');
       console.log('提示：以下配置均为可选，留空将使用默认值');
@@ -500,40 +486,38 @@ export async function runInteractiveSetup(): Promise<boolean> {
         {
           type: "text",
           name: "apiKey",
-          message: hasExistingApiKey
-            ? "API Key / Auth Token（已配置，回车跳过）"
-            : "API Key / Auth Token（回车跳过，稍后配置）",
-          initial: existing?.env?.ANTHROPIC_API_KEY ?? existing?.env?.ANTHROPIC_AUTH_TOKEN ?? "",
+          message: "API Key / Auth Token（回车跳过，稍后手动配置）",
+          initial: "",
         },
         {
           type: "text",
           name: "baseUrl",
           message: "Base URL（回车跳过，使用官方 API）",
-          initial: existing?.env?.ANTHROPIC_BASE_URL ?? "",
+          initial: "",
         },
         {
           type: "text",
           name: "model",
           message: "默认模型（回车跳过）",
-          initial: existing?.env?.ANTHROPIC_MODEL ?? "",
+          initial: "",
         },
         {
           type: "text",
           name: "haikuModel",
           message: "Haiku 模型（回车跳过）",
-          initial: existing?.env?.ANTHROPIC_DEFAULT_HAIKU_MODEL ?? "",
+          initial: "",
         },
         {
           type: "text",
           name: "sonnetModel",
           message: "Sonnet 模型（回车跳过）",
-          initial: existing?.env?.ANTHROPIC_DEFAULT_SONNET_MODEL ?? "",
+          initial: "",
         },
         {
           type: "text",
           name: "opusModel",
           message: "Opus 模型（回车跳过）",
-          initial: existing?.env?.ANTHROPIC_DEFAULT_OPUS_MODEL ?? "",
+          initial: "",
         },
       ],
       { onCancel }
