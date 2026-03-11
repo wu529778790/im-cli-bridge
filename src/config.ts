@@ -162,7 +162,8 @@ export function hasClaudeCredentials(): boolean {
   return !!(
     process.env.ANTHROPIC_API_KEY ||
     process.env.ANTHROPIC_AUTH_TOKEN ||
-    process.env.CLAUDE_CODE_OAUTH_TOKEN
+    process.env.CLAUDE_CODE_OAUTH_TOKEN ||
+    process.env.ANTHROPIC_BASE_URL // 使用自定义 API（如国产模型）时可能不需要标准凭证
   );
 }
 

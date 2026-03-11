@@ -444,7 +444,14 @@ export async function runInteractiveSetup(): Promise<boolean> {
   const commonResp = await prompts(commonPrompts, { onCancel });
 
   // 如果选择 Claude，询问 API 配置
-  let claudeApiConfig: { apiKey?: string; baseUrl?: string; model?: string } = {};
+  let claudeApiConfig: {
+    apiKey?: string;
+    baseUrl?: string;
+    model?: string;
+    haikuModel?: string;
+    sonnetModel?: string;
+    opusModel?: string;
+  } = {};
   if (commonResp.aiCommand === "claude") {
     const hasExistingApiKey = !!(
       process.env.ANTHROPIC_API_KEY ||
@@ -463,21 +470,39 @@ export async function runInteractiveSetup(): Promise<boolean> {
           type: "text",
           name: "apiKey",
           message: hasExistingApiKey
-            ? "Claude API Key（已通过环境变量配置，回车跳过）"
-            : "Claude API Key（回车跳过，稍后手动配置）",
-          initial: "",
+            ? "API Key / Auth Token（已配置，回车跳过）"
+            : "API Key / Auth Token（回车跳过，稍后配置）",
+          initial: existing?.env?.ANTHROPIC_API_KEY ?? existing?.env?.ANTHROPIC_AUTH_TOKEN ?? "",
         },
         {
           type: "text",
           name: "baseUrl",
-          message: "自定义 Base URL（回车跳过，使用官方 API）",
+          message: "Base URL（回车跳过，使用官方 API）",
           initial: existing?.env?.ANTHROPIC_BASE_URL ?? "",
         },
         {
           type: "text",
           name: "model",
-          message: "默认模型名称（回车跳过，使用官方模型）",
+          message: "默认模型（回车跳过）",
           initial: existing?.env?.ANTHROPIC_MODEL ?? "",
+        },
+        {
+          type: "text",
+          name: "haikuModel",
+          message: "Haiku 模型（回车跳过）",
+          initial: existing?.env?.ANTHROPIC_DEFAULT_HAIKU_MODEL ?? "",
+        },
+        {
+          type: "text",
+          name: "sonnetModel",
+          message: "Sonnet 模型（回车跳过）",
+          initial: existing?.env?.ANTHROPIC_DEFAULT_SONNET_MODEL ?? "",
+        },
+        {
+          type: "text",
+          name: "opusModel",
+          message: "Opus 模型（回车跳过）",
+          initial: existing?.env?.ANTHROPIC_DEFAULT_OPUS_MODEL ?? "",
         },
       ],
       { onCancel }
@@ -516,13 +541,28 @@ export async function runInteractiveSetup(): Promise<boolean> {
   // 构建 env 配置（用于 Claude API）
   const envConfig: Record<string, string> = { ...(base?.env ?? {}) };
   if (claudeApiConfig.apiKey) {
-    envConfig.ANTHROPIC_API_KEY = claudeApiConfig.apiKey.trim();
+    // 检测是 API_KEY 还是 AUTH_TOKEN（UUID 格式）
+    const apiKey = claudeApiConfig.apiKey.trim();
+    if (apiKey.startsWith('sk-')) {
+      envConfig.ANTHROPIC_API_KEY = apiKey;
+    } else {
+      envConfig.ANTHROPIC_AUTH_TOKEN = apiKey;
+    }
   }
   if (claudeApiConfig.baseUrl) {
     envConfig.ANTHROPIC_BASE_URL = claudeApiConfig.baseUrl.trim();
   }
   if (claudeApiConfig.model) {
     envConfig.ANTHROPIC_MODEL = claudeApiConfig.model.trim();
+  }
+  if (claudeApiConfig.haikuModel) {
+    envConfig.ANTHROPIC_DEFAULT_HAIKU_MODEL = claudeApiConfig.haikuModel.trim();
+  }
+  if (claudeApiConfig.sonnetModel) {
+    envConfig.ANTHROPIC_DEFAULT_SONNET_MODEL = claudeApiConfig.sonnetModel.trim();
+  }
+  if (claudeApiConfig.opusModel) {
+    envConfig.ANTHROPIC_DEFAULT_OPUS_MODEL = claudeApiConfig.opusModel.trim();
   }
 
   const out: Record<string, unknown> = {

@@ -87,12 +87,34 @@ npm run dev        # 直接运行源码（tsx，无需 build）
 
 ### Claude API 配置
 
-使用 Claude 时，需要配置 API 密钥。支持以下几种方式：
+使用 Claude 时，需要配置 API 密钥。支持以下几种认证方式：
+
+#### 认证方式
+
+**方式 1：API Key（官方 API）**
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+```
+从 [Anthropic Console](https://console.anthropic.com/) 获取。
+
+**方式 2：Auth Token（官方 API）**
+```bash
+export ANTHROPIC_AUTH_TOKEN="your-token"
+```
+运行 `claude setup-token` 生成 OAuth Token。
+
+**方式 3：自定义 API（国产模型/代理）**
+```bash
+export ANTHROPIC_AUTH_TOKEN="your-token"
+export ANTHROPIC_BASE_URL="https://your-api-endpoint"
+```
+
+#### 配置方式
 
 **方式 1：环境变量（推荐）**
 ```bash
 export ANTHROPIC_API_KEY="your-api-key"
-# 或使用 Auth Token
+# 或
 export ANTHROPIC_AUTH_TOKEN="your-auth-token"
 ```
 
@@ -110,29 +132,64 @@ export ANTHROPIC_AUTH_TOKEN="your-auth-token"
 ```bash
 open-im init
 ```
-配置向导会引导你设置 API 密钥（可留空，稍后手动配置）。
+配置向导会引导你设置 API 密钥（可留空，稍后配置）。
 
-#### 支持国产模型/自定义 API（可选）
+#### 完整配置选项
 
-如果使用国产模型（如 GLM-4）或自定义 API 端点，可配置：
 ```json
 {
   "env": {
-    "ANTHROPIC_API_KEY": "your-api-key",
-    "ANTHROPIC_BASE_URL": "https://your-api-endpoint",
-    "ANTHROPIC_MODEL": "glm-4"
+    "ANTHROPIC_API_KEY": "sk-ant-...",
+    "ANTHROPIC_AUTH_TOKEN": "00c4a6c7-bdc3-42b7-ab30-1b0f224135a4",
+    "ANTHROPIC_BASE_URL": "https://ark.cn-beijing.volces.com/api/coding",
+    "ANTHROPIC_MODEL": "glm-4.7",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-4.7",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-4.7",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-4.7"
   }
 }
 ```
 
-所有配置项均为可选：
-- **API Key**：必须配置（通过环境变量或配置文件），否则无法使用
-- **Base URL**：可选，留空使用官方 API
-- **Model**：可选，留空使用官方默认模型
+**配置说明**：
+- **API Key / Auth Token**：必填其一（使用官方 API 时）
+  - `ANTHROPIC_API_KEY`：以 `sk-` 开头，从 Console 获取
+  - `ANTHROPIC_AUTH_TOKEN`：UUID 格式，运行 `claude setup-token` 生成，或使用国产模型提供的 token
+- **Base URL**：可选
+  - 留空使用官方 API
+  - 使用国产模型或代理时填写自定义端点
+- **模型配置**：可选，留空使用默认模型
+  - `ANTHROPIC_MODEL`：默认模型
+  - `ANTHROPIC_DEFAULT_HAIKU_MODEL`：Haiku 层级模型
+  - `ANTHROPIC_DEFAULT_SONNET_MODEL`：Sonnet 层级模型
+  - `ANTHROPIC_DEFAULT_OPUS_MODEL`：Opus 层级模型
 
-获取 API 密钥：
-- **官方**：https://console.anthropic.com/
-- **或运行**：`claude setup-token`
+#### 使用官方 API
+
+使用官方 API 时，只需配置 API Key 或 Auth Token：
+```json
+{
+  "env": {
+    "ANTHROPIC_API_KEY": "sk-ant-..."
+  }
+}
+```
+
+其他字段留空即可，系统会使用官方默认值。
+
+#### 使用国产模型/自定义 API
+
+```json
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "your-custom-token",
+    "ANTHROPIC_BASE_URL": "https://your-api-endpoint",
+    "ANTHROPIC_MODEL": "glm-4.7",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-4.7",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-4.7",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-4.7"
+  }
+}
+```
 
 ### 配置文件
 
