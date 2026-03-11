@@ -132,6 +132,7 @@ interface FileConfig {
     wework?: FilePlatformWework;
   };
 
+  env?: Record<string, string>;
   aiCommand?: string;
   claudeCliPath?: string;
   claudeWorkDir?: string;
@@ -154,6 +155,15 @@ function loadFileConfig(): FileConfig {
   } catch {
     return {};
   }
+}
+
+/** 检查是否已配置 Claude API 凭证 */
+export function hasClaudeCredentials(): boolean {
+  return !!(
+    process.env.ANTHROPIC_API_KEY ||
+    process.env.ANTHROPIC_AUTH_TOKEN ||
+    process.env.CLAUDE_CODE_OAUTH_TOKEN
+  );
 }
 
 /** 检测是否需要交互式配置（无 token 且无环境变量） */
@@ -187,6 +197,15 @@ function parseCommaSeparated(value: string): string[] {
 
 export function loadConfig(): Config {
   const file = loadFileConfig();
+
+  // 将配置文件中的 env 设置到环境变量（优先级低于现有环境变量）
+  if (file.env) {
+    for (const [key, value] of Object.entries(file.env)) {
+      if (!(key in process.env)) {
+        process.env[key] = value;
+      }
+    }
+  }
 
   const fileTelegram = file.platforms?.telegram;
   const fileFeishu = file.platforms?.feishu;
@@ -336,7 +355,47 @@ export function loadConfig(): Config {
       : file.useSdkMode ?? true
   );
 
-  // 6. 校验 Claude CLI（SDK 模式不需要 CLI）
+  // 6. 校验 Claude API 凭证（SDK 模式需要）
+  if (aiCommand === 'claude' && useSdkMode) {
+    const hasApiKey = !!(
+      process.env.ANTHROPIC_API_KEY ||
+      process.env.ANTHROPIC_AUTH_TOKEN ||
+      process.env.CLAUDE_CODE_OAUTH_TOKEN
+    );
+
+    if (!hasApiKey) {
+      const errorMsg = [
+        '',
+        '━━━ 未配置 Claude API 凭证 ━━━',
+        '',
+        '使用 Claude SDK 模式需要配置 API 密钥，请选择以下方式之一：',
+        '',
+        '方式 1：设置环境变量（推荐）',
+        '  export ANTHROPIC_API_KEY="your-api-key"',
+        '  或',
+        '  export ANTHROPIC_AUTH_TOKEN="your-auth-token"',
+        '',
+        '方式 2：运行配置向导',
+        '  open-im init',
+        '',
+        '方式 3：手动编辑配置文件',
+        '  编辑 ~/.open-im/config.json，添加：',
+        '  {',
+        '    "env": {',
+        '      "ANTHROPIC_API_KEY": "your-api-key"',
+        '    }',
+        '  }',
+        '',
+        '获取 API 密钥：',
+        '  - 官方：https://console.anthropic.com/',
+        '  - 或运行: claude setup-token',
+        '',
+      ].join('\n');
+      throw new Error(errorMsg);
+    }
+  }
+
+  // 7. 校验 Claude CLI（SDK 模式不需要 CLI）
   if (aiCommand === 'claude' && !useSdkMode) {
     if (isAbsolute(claudeCliPath) || claudeCliPath.includes('/') || claudeCliPath.includes('\\')) {
       try {

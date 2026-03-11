@@ -85,9 +85,51 @@ npm run dev        # 直接运行源码（tsx，无需 build）
 | `LOG_DIR` | 日志目录，默认 `~/.open-im/logs` |
 | `LOG_LEVEL` | 日志级别：INFO/DEBUG/WARN/ERROR |
 
-### Claude 认证
+### Claude API 配置
 
-使用 Claude 时，需设置 `ANTHROPIC_API_KEY`（从 [Console](https://console.anthropic.com/) 获取）或运行 `claude setup-token` 生成 `CLAUDE_CODE_OAUTH_TOKEN`。
+使用 Claude 时，必须配置 API 密钥。支持以下几种方式：
+
+**方式 1：环境变量（推荐）**
+```bash
+export ANTHROPIC_API_KEY="your-api-key"
+# 或使用 Auth Token
+export ANTHROPIC_AUTH_TOKEN="your-auth-token"
+```
+
+**方式 2：配置文件**
+在 `~/.open-im/config.json` 中添加：
+```json
+{
+  "env": {
+    "ANTHROPIC_API_KEY": "your-api-key"
+  }
+}
+```
+
+**方式 3：运行配置向导**
+```bash
+open-im init
+```
+配置向导会引导你设置 API 密钥。
+
+#### 支持国产模型/自定义 API
+
+如果使用国产模型（如 GLM-4）或自定义 API 端点，可配置：
+```json
+{
+  "env": {
+    "ANTHROPIC_API_KEY": "your-api-key",
+    "ANTHROPIC_BASE_URL": "https://your-api-endpoint",
+    "ANTHROPIC_MODEL": "glm-4"
+  }
+}
+```
+
+或在配置向导中填写相应的自定义 Base URL 和模型名称。
+
+获取 API 密钥：
+- **官方**：https://console.anthropic.com/
+- **或运行**：`claude setup-token`
 
 ### 配置文件
 

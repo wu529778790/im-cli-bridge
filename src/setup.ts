@@ -30,6 +30,7 @@ interface ExistingConfig {
     };
     wework?: { enabled?: boolean; corpId?: string; secret?: string; allowedUserIds?: string[] };
   };
+  env?: Record<string, string>;
   claudeWorkDir?: string;
   claudeSkipPermissions?: boolean;
   aiCommand?: string;
@@ -442,6 +443,43 @@ export async function runInteractiveSetup(): Promise<boolean> {
 
   const commonResp = await prompts(commonPrompts, { onCancel });
 
+  // 如果选择 Claude，询问 API 配置
+  let claudeApiConfig: { apiKey?: string; baseUrl?: string; model?: string } = {};
+  if (commonResp.aiCommand === "claude") {
+    const hasExistingApiKey = !!(
+      process.env.ANTHROPIC_API_KEY ||
+      process.env.ANTHROPIC_AUTH_TOKEN ||
+      process.env.CLAUDE_CODE_OAUTH_TOKEN
+    );
+
+    const apiResp = await prompts(
+      [
+        {
+          type: "text",
+          name: "apiKey",
+          message: hasExistingApiKey
+            ? "Claude API Key（已通过环境变量配置，留空跳过）"
+            : "Claude API Key（从 https://console.anthropic.com/ 获取）",
+          initial: "",
+        },
+        {
+          type: "text",
+          name: "baseUrl",
+          message: "自定义 Base URL（可选，用于国产模型或代理，留空使用官方）",
+          initial: existing?.env?.ANTHROPIC_BASE_URL ?? "",
+        },
+        {
+          type: "text",
+          name: "model",
+          message: "默认模型（可选，如 glm-5）",
+          initial: existing?.env?.ANTHROPIC_MODEL ?? "",
+        },
+      ],
+      { onCancel }
+    );
+    claudeApiConfig = apiResp;
+  }
+
   const parseIds = (value: string | undefined): string[] =>
     value
       ? value
@@ -469,9 +507,23 @@ export async function runInteractiveSetup(): Promise<boolean> {
     ? (JSON.parse(JSON.stringify(existing)) as ExistingConfig)
     : null;
   const { telegramBotToken: _, feishuAppId: __, feishuAppSecret: ___, ...baseRest } = (base ?? {}) as Record<string, unknown>;
+
+  // 构建 env 配置（用于 Claude API）
+  const envConfig: Record<string, string> = { ...(base?.env ?? {}) };
+  if (claudeApiConfig.apiKey) {
+    envConfig.ANTHROPIC_API_KEY = claudeApiConfig.apiKey.trim();
+  }
+  if (claudeApiConfig.baseUrl) {
+    envConfig.ANTHROPIC_BASE_URL = claudeApiConfig.baseUrl.trim();
+  }
+  if (claudeApiConfig.model) {
+    envConfig.ANTHROPIC_MODEL = claudeApiConfig.model.trim();
+  }
+
   const out: Record<string, unknown> = {
     ...baseRest,
     platforms: { ...(base?.platforms ?? {}) },
+    env: Object.keys(envConfig).length > 0 ? envConfig : undefined,
     claudeWorkDir: (commonResp.workDir || process.cwd()).trim(),
     claudeSkipPermissions: base?.claudeSkipPermissions ?? true,
     aiCommand: commonResp.aiCommand ?? base?.aiCommand ?? "claude",
