@@ -232,7 +232,11 @@ export class CommandHandler {
   }
 
   private getAiVersion(): Promise<string> {
-    const cmd = this.deps.config.aiCommand === 'cursor' ? this.deps.config.cursorCliPath : this.deps.config.claudeCliPath;
+    const cmd = this.deps.config.aiCommand === 'cursor'
+      ? this.deps.config.cursorCliPath
+      : this.deps.config.aiCommand === 'codex'
+        ? this.deps.config.codexCliPath
+        : this.deps.config.claudeCliPath;
     return new Promise((resolve) => {
       execFile(cmd, ['--version'], { timeout: 5000 }, (err, stdout) => {
         resolve(err ? '未知' : (stdout?.toString().trim() || '未知'));

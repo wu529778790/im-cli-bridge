@@ -26,6 +26,7 @@ export interface CodexRunCallbacks {
   }) => void;
   onError: (error: string) => void;
   onSessionId?: (sessionId: string) => void;
+  onSessionInvalid?: () => void;
 }
 
 export interface CodexRunOptions {
@@ -53,6 +54,42 @@ function parseCodexEvent(line: string): Record<string, unknown> | null {
   }
 }
 
+function buildCodexArgs(
+  prompt: string,
+  sessionId: string | undefined,
+  workDir: string,
+  options?: CodexRunOptions
+): string[] {
+  const commonOptions = ["--json", "--skip-git-repo-check"];
+  const newSessionOptions = [...commonOptions, "--cd", workDir];
+  const resumeOptions = [...commonOptions];
+  const canResume = Boolean(sessionId) && options?.permissionMode !== "plan";
+
+  if (options?.skipPermissions) {
+    newSessionOptions.push("--dangerously-bypass-approvals-and-sandbox");
+    resumeOptions.push("--dangerously-bypass-approvals-and-sandbox");
+  } else if (options?.permissionMode === "plan") {
+    // `codex exec resume` 当前不支持 `--sandbox` / `--cd`，plan 模式统一新开只读会话。
+    newSessionOptions.push("--sandbox", "read-only");
+  } else {
+    newSessionOptions.push("--full-auto");
+    resumeOptions.push("--full-auto");
+  }
+
+  if (options?.model) {
+    newSessionOptions.push("--model", options.model);
+    resumeOptions.push("--model", options.model);
+  }
+
+  if (sessionId && !canResume) {
+    log.warn("Codex plan mode does not support resume; starting a new read-only session");
+  }
+
+  return canResume
+    ? ["exec", "resume", ...resumeOptions, sessionId!, "--", prompt]
+    : ["exec", ...newSessionOptions, "--", prompt];
+}
+
 export function runCodex(
   cliPath: string,
   prompt: string,
@@ -62,23 +99,7 @@ export function runCodex(
   options?: CodexRunOptions
 ): CodexRunHandle {
   // codex exec --json 非交互模式
-  const args = ['exec', '--json', '--skip-git-repo-check'];
-
-  if (options?.skipPermissions) {
-    args.push('--dangerously-bypass-approvals-and-sandbox');
-  } else if (options?.permissionMode === 'plan') {
-    args.push('--sandbox', 'read-only');
-  } else {
-    args.push('--full-auto');
-  }
-
-  if (options?.model) args.push('--model', options.model);
-  args.push('--cd', workDir);
-
-  if (sessionId) {
-    args.push('resume', sessionId);
-  }
-  args.push('--', prompt);
+  const args = buildCodexArgs(prompt, sessionId, workDir, options);
 
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) {
@@ -89,6 +110,10 @@ export function runCodex(
   if (options?.proxy) {
     env.HTTPS_PROXY = options.proxy;
     env.HTTP_PROXY = options.proxy;
+    env.https_proxy = options.proxy;
+    env.http_proxy = options.proxy;
+    env.ALL_PROXY = options.proxy;
+    env.all_proxy = options.proxy;
   }
 
   const argsForLog = args.filter((a) => a !== prompt).join(' ');
@@ -297,6 +322,14 @@ export function runCodex(
               `\n\n... (省略 ${stderrTotal - MAX_STDERR_HEAD - MAX_STDERR_TAIL} 字节) ...\n\n` +
               stderrTail;
           }
+        }
+        if (
+          sessionId &&
+          (errMsg.includes("No session found") ||
+            errMsg.includes("No conversation found") ||
+            errMsg.includes("Unable to find session"))
+        ) {
+          callbacks.onSessionInvalid?.();
         }
         callbacks.onError(errMsg || `Codex CLI exited with code ${exitCode}`);
       } else {

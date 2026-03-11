@@ -94,16 +94,18 @@ export function getContextWarning(totalTurns: number): string | null {
 
 /**
  * 预处理 Markdown 内容，将其转换为 Telegram 友好的格式
- * Telegram Markdown 不支持标题（#），需要转换为粗体
+ * Telegram 对 _ * [ ] ` 敏感，未配对会导致 "can't parse entities"。
+ * 策略：保护 ``` 代码块，对非代码块中的特殊字符全部转义，确保不解析失败。
  */
 export function preprocessMarkdownForTelegram(content: string): string {
-  return content
-    // 转换 Markdown 标题为粗体（支持 1-6 级标题）
-    .replace(/^#{1,6}\s+(.+)$/gm, '**$1**')
-    // 转换加粗（如果使用 __ 形式）
-    .replace(/__(.+?)__/g, '**$1**')
-    // 转换斜体（如果使用 _ 形式且不是 __）
-    .replace(/(?<!_)_(?!_)(.+?)(?!_)_(?!_)/g, '*$1*')
-    // 确保 ``` 代码块正确
-    .replace(/```(\w*)\n([\s\S]+?)```/g, '```$1\n$2```');
+  const parts = content.split(/(```[\s\S]*?```)/g);
+  return parts
+    .map((part) => {
+      if (part.startsWith('```') && part.endsWith('```')) {
+        return part; // 代码块保持原样，Telegram 不解析其内容
+      }
+      // 非代码块：转义 _ * [ ] ` 避免解析错误（AI 输出中常见 file_name、*ptr 等）
+      return part.replace(/([_*\[\]`])/g, '\\$1');
+    })
+    .join('');
 }

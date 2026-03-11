@@ -36,7 +36,7 @@ interface ExistingConfig {
   tools?: {
     claude?: { cliPath?: string; workDir?: string; skipPermissions?: boolean; timeoutMs?: number; model?: string };
     cursor?: { cliPath?: string; skipPermissions?: boolean };
-    codex?: { cliPath?: string; workDir?: string; skipPermissions?: boolean };
+    codex?: { cliPath?: string; workDir?: string; skipPermissions?: boolean; proxy?: string };
   };
 }
 
@@ -100,7 +100,7 @@ function printManualInstructions(configPath: string): void {
       "timeoutMs": 600000
     },
     "cursor": { "cliPath": "agent", "skipPermissions": true },
-    "codex": { "cliPath": "codex", "workDir": "${process.cwd().replace(/\\/g, "/")}", "skipPermissions": true }
+    "codex": { "cliPath": "codex", "workDir": "${process.cwd().replace(/\\/g, "/")}", "skipPermissions": true, "proxy": "http://127.0.0.1:7890" }
   },
   "platforms": {
     "telegram": {
@@ -588,6 +588,18 @@ export async function runInteractiveSetup(): Promise<boolean> {
   );
 
   const commonResp = await prompts(commonPrompts, { onCancel });
+  const codexProxyResp =
+    commonResp.aiCommand === "codex"
+      ? await prompts(
+          {
+            type: "text",
+            name: "codexProxy",
+            message: "Codex 代理（可选，如 http://127.0.0.1:7890）",
+            initial: existing?.tools?.codex?.proxy ?? "",
+          },
+          { onCancel }
+        )
+      : {};
 
   // 如果选择 Claude，询问 API 配置
   let claudeApiConfig: {
@@ -773,8 +785,12 @@ export async function runInteractiveSetup(): Promise<boolean> {
       codex: {
         ...baseTools.codex,
         cliPath: baseTools.codex?.cliPath ?? "codex",
-        workDir: baseTools.codex?.workDir ?? workDir,
+        workDir: workDir,
         skipPermissions: baseTools.codex?.skipPermissions ?? baseTools.claude?.skipPermissions ?? true,
+        proxy:
+          commonResp.aiCommand === "codex"
+            ? (codexProxyResp as { codexProxy?: string }).codexProxy?.trim() || undefined
+            : baseTools.codex?.proxy,
       },
     },
   };

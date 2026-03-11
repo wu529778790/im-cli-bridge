@@ -155,17 +155,20 @@ export function runAITask(
     let skipPermissions: boolean | undefined;
     let permissionMode: 'default' | 'acceptEdits' | 'plan' | undefined;
 
-    // 标准模式 / SDK 模式：传递权限模式参数
-    skipPermissions = mode === 'yolo' || config.claudeSkipPermissions;
-    permissionMode = !skipPermissions
+    // `plan` 必须保持只读语义，不能被全局 skipPermissions 覆盖。
+    if (mode === 'plan') {
+      skipPermissions = false;
+      permissionMode = 'plan';
+    } else {
+      skipPermissions = mode === 'yolo' || config.claudeSkipPermissions;
+      permissionMode = !skipPermissions
         ? (mode === 'ask'
           ? 'default'
           : mode === 'accept-edits'
             ? 'acceptEdits'
-            : mode === 'plan'
-              ? 'plan'
-              : undefined)
+            : undefined)
         : undefined;
+    }
 
     const handle = toolAdapter.run(
       prompt,
