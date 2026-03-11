@@ -140,13 +140,30 @@ export async function initWeWork(
   stateChangeHandler = onStateChange ?? null;
 
   log.info(`Initializing WeWork client (botId: ${config.botId})`);
-  await connectWebSocket();
+  // 首次连接支持重试：单独启用企微时偶发 TLS 连接失败，加飞书后因初始化顺序有“预热”效果则稳定
+  const maxAttempts = 3;
+  const retryDelayMs = 1500;
+  let lastErr: Error | null = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await connectWebSocket(true); // true = 初始连接，close 时不 scheduleReconnect
+      return;
+    } catch (err) {
+      lastErr = err instanceof Error ? err : new Error(String(err));
+      if (attempt < maxAttempts) {
+        log.warn(`WeWork connection attempt ${attempt}/${maxAttempts} failed (${lastErr.message}), retrying in ${retryDelayMs}ms...`);
+        await new Promise((r) => setTimeout(r, retryDelayMs));
+      }
+    }
+  }
+  throw lastErr ?? new Error('WeWork connection failed');
 }
 
 /**
  * Connect to WeWork WebSocket server
+ * @param isInitialConnect - 初始连接时为 true，close 时不 scheduleReconnect（由 initWeWork 重试）
  */
-async function connectWebSocket(): Promise<void> {
+async function connectWebSocket(isInitialConnect = false): Promise<void> {
   if (connectionState === 'connecting') {
     log.warn('WebSocket connection already in progress');
     return;
@@ -156,9 +173,19 @@ async function connectWebSocket(): Promise<void> {
     throw new Error('WeWork config not initialized');
   }
 
+  // 重试前清理旧连接
+  if (ws) {
+    try {
+      ws.removeAllListeners();
+      ws.close();
+    } catch {
+      /* ignore */
+    }
+    ws = null;
+  }
+
   updateState('connecting');
 
-  // Store config values locally to avoid null issues in Promise callback
   const websocketUrl = config.websocketUrl || DEFAULT_WS_URL;
 
   return new Promise<void>((resolve, reject) => {
@@ -200,7 +227,9 @@ async function connectWebSocket(): Promise<void> {
         log.info('WeWork WebSocket closed');
         stopHeartbeat();
         updateState('disconnected');
-        scheduleReconnect();
+        if (!isInitialConnect) {
+          scheduleReconnect();
+        }
       });
     } catch (err) {
       log.error('Error creating WebSocket connection:', err);
@@ -383,7 +412,7 @@ function scheduleReconnect(): void {
     reconnectAttempts++;
     log.info(`Reconnecting... Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
     try {
-      await connectWebSocket();
+      await connectWebSocket(false); // 非初始连接，close 时继续 scheduleReconnect
     } catch (err) {
       log.error('Reconnection failed:', err);
     }
