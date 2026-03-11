@@ -84,7 +84,7 @@ async function validateOrSetup(): Promise<boolean> {
 // 命令处理
 // ============================================================================
 
-async function cmdStart(): Promise<void> {
+async function cmdStart(skipPlatformPrompt = false): Promise<void> {
   const pid = getPid();
   if (pid && isRunning(pid)) {
     console.log(`open-im 已在后台运行 (pid=${pid})`);
@@ -97,8 +97,9 @@ async function cmdStart(): Promise<void> {
   }
 
   // 有 TTY 时在父进程让用户选择要启用的平台，再启动子进程
+  // skipPlatformPrompt 为 true 时跳过提示（用于 restart 命令）
   let config = loadConfig();
-  if (process.stdin.isTTY) {
+  if (process.stdin.isTTY && !skipPlatformPrompt) {
     const updated = await runPlatformSelectionPrompt(config);
     if (!updated) {
       console.log("已取消启动。");
@@ -174,14 +175,15 @@ async function cmdRestart(): Promise<void> {
     // 等待进程完全停止
     for (let i = 0; i < 30; i++) {
       await new Promise((r) => setTimeout(r, 100));
-      if (!pid || !isRunning(pid)) break;
+      if (!isRunning(pid)) break;
     }
+    console.log("open-im 已停止");
   } else {
     console.log("open-im 未在后台运行");
   }
 
   console.log("正在启动 open-im...");
-  await cmdStart();
+  await cmdStart(true);  // 传递 true 跳过平台选择提示
 }
 
 async function cmdInit(): Promise<void> {
