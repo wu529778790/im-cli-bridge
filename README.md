@@ -50,13 +50,6 @@ open-im start   # 后台运行
 | `open-im stop` | 停止后台服务 |
 | `open-im dev` | 前台运行（调试模式），Ctrl+C 停止 |
 
-## 开发
-
-```bash
-npm run build      # 构建编译
-npm run dev        # 直接运行源码（tsx，无需 build）
-```
-
 ## 会话说明
 
 **会话上下文存储在本地**（`~/.open-im/data/sessions.json`），与 IM 聊天记录无关。每用户在本地维护独立的 session 和 Claude 会话 ID，`/new` 可重置当前会话。
