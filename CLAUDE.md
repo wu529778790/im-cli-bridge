@@ -87,9 +87,9 @@ Key config options:
 - `allowedUserIds` - Whitelist of user IDs (empty = all users)
 - `allowedBaseDirs` - Security: restrict which directories users can access
 - `aiCommand` - Which AI tool to use (claude/codex/cursor)
-- `claudeCliPath` - Path to Claude CLI executable
-- `claudeWorkDir` - Default working directory
-- `claudeSkipPermissions` - Auto-approve tool permissions (default: true)
+- `tools.claude.cliPath` - Path to Claude CLI executable
+- `tools.claude.workDir` - Default working directory
+- `tools.claude.skipPermissions` - Auto-approve tool permissions (default: true)
 - `claudeTimeoutMs` - Claude CLI timeout (default: 600000)
 - `logDir` - Log directory (default: `~/.open-im/logs`)
 - `logLevel` - Log level (INFO/DEBUG/WARN/ERROR)

@@ -4,9 +4,9 @@ try {
   /* dotenv optional */
 }
 
-import { readFileSync, accessSync, constants } from 'node:fs';
+import { readFileSync, writeFileSync, accessSync, constants, existsSync, mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { join, isAbsolute } from 'node:path';
+import { join, dirname, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
 import type { LogLevel } from './logger.js';
 import { APP_HOME } from './constants.js';
@@ -119,14 +119,29 @@ interface FilePlatformWework {
   allowedUserIds?: string[];
 }
 
+interface FileToolClaude {
+  cliPath?: string;
+  workDir?: string;
+  skipPermissions?: boolean;
+  timeoutMs?: number;
+  model?: string;
+}
+
+interface FileToolCursor {
+  cliPath?: string;
+}
+
+interface FileToolCodex {
+  cliPath?: string;
+  workDir?: string;
+}
+
 interface FileConfig {
-  // 旧版扁平字段（兼容）
   telegramBotToken?: string;
   feishuAppId?: string;
   feishuAppSecret?: string;
   allowedUserIds?: string[];
 
-  // 新版分块字段
   platforms?: {
     telegram?: FilePlatformTelegram;
     feishu?: FilePlatformFeishu;
@@ -136,14 +151,13 @@ interface FileConfig {
 
   env?: Record<string, string>;
   aiCommand?: string;
-  claudeCliPath?: string;
-  cursorCliPath?: string;
-  claudeWorkDir?: string;
+  tools?: {
+    claude?: FileToolClaude;
+    cursor?: FileToolCursor;
+    codex?: FileToolCodex;
+  };
   allowedBaseDirs?: string[];
-  claudeSkipPermissions?: boolean;
   defaultPermissionMode?: 'ask' | 'accept-edits' | 'plan' | 'yolo';
-  claudeTimeoutMs?: number;
-  claudeModel?: string;
   hookPort?: number;
   logDir?: string;
   logLevel?: LogLevel;
@@ -152,9 +166,63 @@ interface FileConfig {
 
 const CONFIG_PATH = join(APP_HOME, 'config.json');
 
+const OLD_ROOT_KEYS = [
+  'claudeWorkDir', 'claudeSkipPermissions', 'claudeCliPath', 'cursorCliPath',
+  'claudeTimeoutMs', 'claudeModel',
+] as const;
+
+function hasOldConfigFormat(raw: Record<string, unknown>): boolean {
+  const hasOld = OLD_ROOT_KEYS.some((k) => raw[k] !== undefined && raw[k] !== null);
+  const hasNew = raw.tools && typeof raw.tools === 'object' && (raw.tools as Record<string, unknown>).claude;
+  return !!hasOld && !hasNew;
+}
+
+function migrateToNewConfigFormat(raw: Record<string, unknown>): Record<string, unknown> {
+  const tools = (raw.tools as Record<string, unknown>) || {};
+  const tc = (tools.claude as Record<string, unknown>) || {};
+  const tcur = (tools.cursor as Record<string, unknown>) || {};
+  const tcod = (tools.codex as Record<string, unknown>) || {};
+
+  const migrated: Record<string, unknown> = { ...raw };
+  migrated.tools = {
+    claude: {
+      ...tc,
+      cliPath: tc.cliPath ?? raw.claudeCliPath ?? 'claude',
+      workDir: tc.workDir ?? raw.claudeWorkDir ?? process.cwd(),
+      skipPermissions: tc.skipPermissions ?? raw.claudeSkipPermissions ?? true,
+      timeoutMs: tc.timeoutMs ?? raw.claudeTimeoutMs ?? 600000,
+      model: tc.model ?? raw.claudeModel,
+    },
+    cursor: {
+      ...tcur,
+      cliPath: tcur.cliPath ?? raw.cursorCliPath ?? 'agent',
+    },
+    codex: {
+      ...tcod,
+      cliPath: tcod.cliPath ?? 'codex',
+      workDir: tcod.workDir ?? raw.claudeWorkDir ?? process.cwd(),
+    },
+  };
+
+  for (const k of OLD_ROOT_KEYS) {
+    delete migrated[k];
+  }
+  return migrated;
+}
+
 function loadFileConfig(): FileConfig {
   try {
-    return JSON.parse(readFileSync(CONFIG_PATH, 'utf-8'));
+    const raw = JSON.parse(readFileSync(CONFIG_PATH, 'utf-8')) as Record<string, unknown>;
+    if (!raw || typeof raw !== 'object') return {};
+
+    if (hasOldConfigFormat(raw)) {
+      const migrated = migrateToNewConfigFormat(raw);
+      const dir = dirname(CONFIG_PATH);
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      writeFileSync(CONFIG_PATH, JSON.stringify(migrated, null, 2), 'utf-8');
+      return migrated as FileConfig;
+    }
+    return raw as FileConfig;
   } catch {
     return {};
   }
@@ -360,21 +428,23 @@ export function loadConfig(): Config {
       ? parseCommaSeparated(process.env.WEWORK_ALLOWED_USER_IDS)
       : fileWework?.allowedUserIds ?? allowedUserIds;
 
-  // 5. AI / 工作目录 / 安全配置
+  // 5. AI / 工作目录 / 安全配置（从 tools 读取）
   const aiCommand = (process.env.AI_COMMAND ?? file.aiCommand ?? 'claude') as AiCommand;
-  const claudeCliPath = process.env.CLAUDE_CLI_PATH ?? file.claudeCliPath ?? 'claude';
-  let cursorCliPath = process.env.CURSOR_CLI_PATH ?? file.cursorCliPath ?? 'agent';
-  // Windows: spawn 无法解析 .cmd，需使用完整路径（Cursor 默认安装在 %LOCALAPPDATA%\cursor-agent\agent.cmd）
+  const tc = file.tools?.claude ?? {};
+  const tcur = file.tools?.cursor ?? {};
+
+  const claudeCliPath = process.env.CLAUDE_CLI_PATH ?? tc.cliPath ?? 'claude';
+  let cursorCliPath = process.env.CURSOR_CLI_PATH ?? tcur.cliPath ?? 'agent';
   if (process.platform === 'win32' && cursorCliPath === 'agent') {
     const winAgentPath = join(process.env.LOCALAPPDATA || '', 'cursor-agent', 'agent.cmd');
     try {
       accessSync(winAgentPath, constants.F_OK);
       cursorCliPath = winAgentPath;
     } catch {
-      /* 使用默认 agent，由后续 where 校验 */
+      /* 使用默认 agent */
     }
   }
-  const claudeWorkDir = process.env.CLAUDE_WORK_DIR ?? file.claudeWorkDir ?? process.cwd();
+  const claudeWorkDir = process.env.CLAUDE_WORK_DIR ?? tc.workDir ?? process.cwd();
 
   const allowedBaseDirs =
     process.env.ALLOWED_BASE_DIRS !== undefined
@@ -385,14 +455,14 @@ export function loadConfig(): Config {
   const claudeSkipPermissions =
     process.env.CLAUDE_SKIP_PERMISSIONS !== undefined
       ? process.env.CLAUDE_SKIP_PERMISSIONS === 'true'
-      : file.claudeSkipPermissions ?? true;
+      : tc.skipPermissions ?? true;
 
   const defaultPermissionMode = (file.defaultPermissionMode ?? 'ask') as 'ask' | 'accept-edits' | 'plan' | 'yolo';
 
   const claudeTimeoutMs =
     process.env.CLAUDE_TIMEOUT_MS !== undefined
       ? parseInt(process.env.CLAUDE_TIMEOUT_MS, 10) || 600000
-      : file.claudeTimeoutMs ?? 600000;
+      : tc.timeoutMs ?? 600000;
 
   const hookPort =
     process.env.HOOK_PORT !== undefined
@@ -604,7 +674,7 @@ export function loadConfig(): Config {
     claudeSkipPermissions,
     defaultPermissionMode,
     claudeTimeoutMs,
-    claudeModel: process.env.CLAUDE_MODEL ?? file.claudeModel,
+    claudeModel: process.env.CLAUDE_MODEL ?? tc.model,
     hookPort,
     logDir,
     logLevel,

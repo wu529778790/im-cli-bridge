@@ -70,13 +70,17 @@ open-im init
 # 方式 2：编辑配置文件
 cat > ~/.open-im/config.json << 'EOF'
 {
-  # 工作目录 默认当前目录
-  "claudeWorkDir": "YOUR_WORK_DIR",
-  # 是否跳过权限确认 默认 true
-  "claudeSkipPermissions": true,
-  # 使用的 AI 命令 默认 claude
   "aiCommand": "claude",
-  # 平台配置
+  "tools": {
+    "claude": {
+      "cliPath": "claude",
+      "workDir": "YOUR_WORK_DIR",
+      "skipPermissions": true,
+      "timeoutMs": 600000
+    },
+    "cursor": { "cliPath": "agent" },
+    "codex": { "cliPath": "codex", "workDir": "YOUR_WORK_DIR" }
+  },
   "platforms": {
     # 企业微信配置
     "wework": {

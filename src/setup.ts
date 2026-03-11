@@ -32,9 +32,12 @@ interface ExistingConfig {
     wework?: { enabled?: boolean; corpId?: string; secret?: string; allowedUserIds?: string[] };
   };
   env?: Record<string, string>;
-  claudeWorkDir?: string;
-  claudeSkipPermissions?: boolean;
   aiCommand?: string;
+  tools?: {
+    claude?: { cliPath?: string; workDir?: string; skipPermissions?: boolean; timeoutMs?: number; model?: string };
+    cursor?: { cliPath?: string };
+    codex?: { cliPath?: string; workDir?: string };
+  };
 }
 
 function loadExistingConfig(): ExistingConfig | null {
@@ -88,6 +91,17 @@ function printManualInstructions(configPath: string): void {
   console.log("  3. 填入以下内容（替换为你的 Token/App ID 和用户 ID）：");
   console.log("");
   console.log(`{
+  "aiCommand": "claude",
+  "tools": {
+    "claude": {
+      "cliPath": "claude",
+      "workDir": "${process.cwd().replace(/\\/g, "/")}",
+      "skipPermissions": true,
+      "timeoutMs": 600000
+    },
+    "cursor": { "cliPath": "agent" },
+    "codex": { "cliPath": "codex", "workDir": "${process.cwd().replace(/\\/g, "/")}" }
+  },
   "platforms": {
     "telegram": {
       "enabled": true,
@@ -103,7 +117,6 @@ function printManualInstructions(configPath: string): void {
     "wework": {
       "enabled": false,
       "corpId": "你的企业微信 Corp ID（可选）",
-      "agentId": "你的企业微信 Agent ID（可选）",
       "secret": "你的企业微信 Secret（可选）",
       "allowedUserIds": ["允许访问的企业微信用户 ID（可选）"]
     },
@@ -111,13 +124,10 @@ function printManualInstructions(configPath: string): void {
       "enabled": false,
       "appId": "你的微信 App ID（可选，测试中）",
       "appSecret": "你的微信 App Secret（可选）",
-      "wsUrl": "AGP WebSocket URL（可选，默认使用官方服务）",
+      "wsUrl": "AGP WebSocket URL（可选）",
       "allowedUserIds": ["允许访问的微信用户 ID（可选）"]
     }
-  },
-  "claudeWorkDir": "${process.cwd().replace(/\\/g, "/")}",
-  "claudeSkipPermissions": true,
-  "aiCommand": "claude"
+  }
 }`);
   console.log("");
   console.log("提示：至少需要配置 Telegram、Feishu、WeChat 或 WeWork 其中一个平台");
@@ -573,7 +583,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
       type: "text",
       name: "workDir",
       message: "工作目录",
-      initial: existing?.claudeWorkDir ?? process.cwd(),
+      initial: existing?.tools?.claude?.workDir ?? process.cwd(),
     },
   );
 
@@ -689,7 +699,18 @@ export async function runInteractiveSetup(): Promise<boolean> {
   const base = existing
     ? (JSON.parse(JSON.stringify(existing)) as ExistingConfig)
     : null;
-  const { telegramBotToken: _, feishuAppId: __, feishuAppSecret: ___, ...baseRest } = (base ?? {}) as Record<string, unknown>;
+  const {
+    telegramBotToken: _,
+    feishuAppId: __,
+    feishuAppSecret: ___,
+    claudeWorkDir: _cwd,
+    claudeSkipPermissions: _csp,
+    claudeCliPath: _ccp,
+    cursorCliPath: _curp,
+    claudeTimeoutMs: _ctm,
+    claudeModel: _cm,
+    ...baseRest
+  } = (base ?? {}) as Record<string, unknown>;
 
   // Claude API 凭证不存入 config.json，仅从 ~/.claude/settings.json 或环境变量读取
   const ANTHROPIC_KEYS = [
@@ -727,13 +748,33 @@ export async function runInteractiveSetup(): Promise<boolean> {
     console.log("\n✓ Claude API 配置已保存到", CLAUDE_SETTINGS_PATH);
   }
 
+  const workDir = (commonResp.workDir || process.cwd()).trim();
+  const aiCmd = commonResp.aiCommand ?? base?.aiCommand ?? "claude";
+  const baseTools = base?.tools ?? {};
+
   const out: Record<string, unknown> = {
     ...baseRest,
     platforms: { ...(base?.platforms ?? {}) },
     env: Object.keys(envConfig).length > 0 ? envConfig : undefined,
-    claudeWorkDir: (commonResp.workDir || process.cwd()).trim(),
-    claudeSkipPermissions: base?.claudeSkipPermissions ?? true,
-    aiCommand: commonResp.aiCommand ?? base?.aiCommand ?? "claude",
+    aiCommand: aiCmd,
+    tools: {
+      claude: {
+        ...baseTools.claude,
+        cliPath: baseTools.claude?.cliPath ?? "claude",
+        workDir,
+        skipPermissions: baseTools.claude?.skipPermissions ?? true,
+        timeoutMs: baseTools.claude?.timeoutMs ?? 600000,
+      },
+      cursor: {
+        ...baseTools.cursor,
+        cliPath: baseTools.cursor?.cliPath ?? "agent",
+      },
+      codex: {
+        ...baseTools.codex,
+        cliPath: baseTools.codex?.cliPath ?? "codex",
+        workDir: baseTools.codex?.workDir ?? workDir,
+      },
+    },
   };
 
   if (selectedPlatforms.includes("telegram")) {
