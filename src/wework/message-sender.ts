@@ -219,10 +219,13 @@ export async function sendTextReply(
   threadCtxOrReqId?: import('../shared/types.js').ThreadContext | string
 ): Promise<void> {
   const message = formatWeWorkMessage('📢 open-im', text, 'done');
-  const reqId = typeof threadCtxOrReqId === 'string' ? threadCtxOrReqId : undefined;
+  // 显式传递的 reqId（用于兼容 MessageSender 接口）
+  const explicitReqId = typeof threadCtxOrReqId === 'string' ? threadCtxOrReqId : undefined;
+  // 回退到当前请求的 reqId（在 handleEvent 中通过 setCurrentReqId 设置）
+  const effectiveReqId = explicitReqId ?? currentReqId;
 
   try {
-    sendText(getReqId(reqId), message);
+    sendText(getReqId(effectiveReqId ?? undefined), message);
     log.info(`Text reply sent to user ${chatId}`);
   } catch (err) {
     log.error('Failed to send text reply:', err);

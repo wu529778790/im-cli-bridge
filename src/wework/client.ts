@@ -335,11 +335,14 @@ export function sendMessage(message: WeWorkResponseMessage): void {
 
 /**
  * Send text message via WebSocket (requires req_id from callback)
+ * 企业微信 aibot_respond_msg 仅支持 stream 和 template_card，不支持 text/markdown
+ * 使用 stream 格式，finish=true 表示一次性回复
  */
 export function sendText(reqId: string, content: string): void {
+  const streamId = `${Date.now()}-${randomBytes(8).toString('hex')}`;
   sendWebSocketReply(reqId, {
-    msgtype: 'text',
-    text: { content },
+    msgtype: 'stream',
+    stream: { id: streamId, finish: true, content },
   });
 }
 

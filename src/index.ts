@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { writeFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { loadConfig, needsSetup } from "./config.js";
-import { runInteractiveSetup, runPlatformSelectionPrompt } from "./setup.js";
+import { runInteractiveSetup, runPlatformSelectionPrompt, runClaudeApiSetup } from "./setup.js";
 
 // 导出供 cli.ts 使用
 export { needsSetup, runInteractiveSetup };
@@ -87,7 +87,24 @@ export async function main() {
     if (!saved) process.exit(1);
   }
 
-  let config = loadConfig();
+  const CLAUDE_API_CRED_ERROR = "未配置 Claude API 凭证";
+  let config: ReturnType<typeof loadConfig>;
+  try {
+    config = loadConfig();
+  } catch (err) {
+    if (
+      err instanceof Error &&
+      err.message.includes(CLAUDE_API_CRED_ERROR) &&
+      process.stdin.isTTY
+    ) {
+      console.log("\n检测到未配置 Claude API 凭证，启动配置向导...\n");
+      const saved = await runClaudeApiSetup();
+      if (!saved) process.exit(1);
+      config = loadConfig();
+    } else {
+      throw err;
+    }
+  }
 
   // 有 TTY 时让用户选择要启用的平台（无论单通道还是多通道）
   if (process.stdin.isTTY) {

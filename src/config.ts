@@ -7,6 +7,7 @@ try {
 import { readFileSync, accessSync, constants } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, isAbsolute } from 'node:path';
+import { homedir } from 'node:os';
 import type { LogLevel } from './logger.js';
 import { APP_HOME } from './constants.js';
 
@@ -52,6 +53,8 @@ export interface Config {
   hookPort: number;
   logDir: string;
   logLevel: LogLevel;
+  /** 是否使用 Agent SDK（进程内执行，无 spawn 开销，响应更快） */
+  useSdkMode: boolean;
 
   platforms: {
     telegram?: {
@@ -130,6 +133,7 @@ interface FileConfig {
     wework?: FilePlatformWework;
   };
 
+  env?: Record<string, string>;
   aiCommand?: string;
   claudeCliPath?: string;
   claudeWorkDir?: string;
@@ -141,9 +145,11 @@ interface FileConfig {
   hookPort?: number;
   logDir?: string;
   logLevel?: LogLevel;
+  useSdkMode?: boolean;
 }
 
 const CONFIG_PATH = join(APP_HOME, 'config.json');
+const CLAUDE_SETTINGS_PATH = join(homedir(), '.claude', 'settings.json');
 
 function loadFileConfig(): FileConfig {
   try {
@@ -151,6 +157,30 @@ function loadFileConfig(): FileConfig {
   } catch {
     return {};
   }
+}
+
+/** 从 ~/.claude/settings.json 加载 Claude API 凭证（Claude Code 共用配置） */
+function loadClaudeSettingsEnv(): Record<string, string> {
+  try {
+    const raw = JSON.parse(readFileSync(CLAUDE_SETTINGS_PATH, 'utf-8'));
+    const env = raw?.env;
+    if (env && typeof env === 'object') {
+      return env as Record<string, string>;
+    }
+  } catch {
+    /* 文件不存在或格式错误，忽略 */
+  }
+  return {};
+}
+
+/** 检查是否已配置 Claude API 凭证 */
+export function hasClaudeCredentials(): boolean {
+  return !!(
+    process.env.ANTHROPIC_API_KEY ||
+    process.env.ANTHROPIC_AUTH_TOKEN ||
+    process.env.CLAUDE_CODE_OAUTH_TOKEN ||
+    process.env.ANTHROPIC_BASE_URL // 使用自定义 API（如第三方模型）时可能不需要标准凭证
+  );
 }
 
 /** 检测是否需要交互式配置（无 token 且无环境变量） */
@@ -184,6 +214,23 @@ function parseCommaSeparated(value: string): string[] {
 
 export function loadConfig(): Config {
   const file = loadFileConfig();
+
+  // 将配置文件中的 env 设置到环境变量（优先级低于现有环境变量）
+  if (file.env) {
+    for (const [key, value] of Object.entries(file.env)) {
+      if (!(key in process.env)) {
+        process.env[key] = value;
+      }
+    }
+  }
+
+  // 从 ~/.claude/settings.json 合并 Claude API 凭证（Claude Code 共用，最低优先级）
+  const claudeEnv = loadClaudeSettingsEnv();
+  for (const [key, value] of Object.entries(claudeEnv)) {
+    if (!(key in process.env)) {
+      process.env[key] = value;
+    }
+  }
 
   const fileTelegram = file.platforms?.telegram;
   const fileFeishu = file.platforms?.feishu;
@@ -325,8 +372,51 @@ export function loadConfig(): Config {
       ? parseInt(process.env.HOOK_PORT, 10) || 35801
       : file.hookPort ?? 35801;
 
-  // 6. 校验 Claude CLI
-  if (aiCommand === 'claude') {
+  // 当使用 Claude 时，强制使用 SDK 模式（更快，无需安装 CLI）
+  // 使用其他工具（codex/cursor）时，才根据配置决定
+  const useSdkMode = aiCommand === 'claude' || (
+    process.env.USE_SDK_MODE !== undefined
+      ? process.env.USE_SDK_MODE === 'true'
+      : file.useSdkMode ?? true
+  );
+
+  // 6. 校验 Claude API 凭证（SDK 模式需要）
+  // 支持：官方 API Key、Auth Token、或自定义 API（第三方模型等，BASE_URL + token）
+  if (aiCommand === 'claude' && useSdkMode) {
+    const hasCreds = !!(
+      process.env.ANTHROPIC_API_KEY ||
+      process.env.ANTHROPIC_AUTH_TOKEN ||
+      process.env.CLAUDE_CODE_OAUTH_TOKEN ||
+      process.env.ANTHROPIC_BASE_URL
+    );
+
+    if (!hasCreds) {
+      const errorMsg = [
+        '',
+        '━━━ 未配置 Claude API 凭证 ━━━',
+        '',
+        '使用 Claude 需要配置以下之一：',
+        '  - 官方 API：ANTHROPIC_API_KEY 或 ANTHROPIC_AUTH_TOKEN',
+        '  - 第三方/自定义 API：ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN + ANTHROPIC_MODEL',
+        '',
+        '方式 1：环境变量',
+        '  export ANTHROPIC_API_KEY="sk-ant-..."',
+        '  或 export ANTHROPIC_AUTH_TOKEN="your-token"',
+        '  或 export ANTHROPIC_BASE_URL="https://your-api" ANTHROPIC_MODEL="glm-4.7"',
+        '',
+        '方式 2：运行配置向导',
+        '  open-im init',
+        '',
+        '方式 3：编辑 ~/.open-im/config.json 的 env 字段',
+        '  或 ~/.claude/settings.json（与 Claude Code 共用）',
+        '',
+      ].join('\n');
+      throw new Error(errorMsg);
+    }
+  }
+
+  // 7. 校验 Claude CLI（SDK 模式不需要 CLI）
+  if (aiCommand === 'claude' && !useSdkMode) {
     if (isAbsolute(claudeCliPath) || claudeCliPath.includes('/') || claudeCliPath.includes('\\')) {
       try {
         accessSync(claudeCliPath, constants.F_OK | constants.X_OK);
@@ -451,6 +541,7 @@ export function loadConfig(): Config {
     hookPort,
     logDir,
     logLevel,
+    useSdkMode,
     platforms,
   };
 }
