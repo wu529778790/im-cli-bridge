@@ -453,18 +453,49 @@ export async function runInteractiveSetup(): Promise<boolean> {
     opusModel?: string;
   } = {};
   if (commonResp.aiCommand === "claude") {
+    // 检查是否已配置 API 密钥（环境变量或配置文件）
     const hasExistingApiKey = !!(
       process.env.ANTHROPIC_API_KEY ||
       process.env.ANTHROPIC_AUTH_TOKEN ||
-      process.env.CLAUDE_CODE_OAUTH_TOKEN
+      process.env.CLAUDE_CODE_OAUTH_TOKEN ||
+      existing?.env?.ANTHROPIC_API_KEY ||
+      existing?.env?.ANTHROPIC_AUTH_TOKEN
     );
 
-    console.log('');
-    console.log('━━━ Claude API 配置 ━━━');
-    console.log('提示：以下配置均为可选，留空将使用默认值');
-    console.log('');
+    // 如果已经配置过，询问是否要重新配置
+    let skipApiConfig = false;
+    if (hasExistingApiKey) {
+      const reconfigResp = await prompts(
+        {
+          type: "confirm",
+          name: "reconfig",
+          message: "检测到已配置 Claude API，是否重新配置？",
+          initial: false,
+        },
+        { onCancel }
+      );
+      skipApiConfig = !reconfigResp.reconfig;
+    }
 
-    const apiResp = await prompts(
+    if (skipApiConfig) {
+      // 保留原有配置，不询问
+      if (existing?.env) {
+        claudeApiConfig = {
+          apiKey: existing.env.ANTHROPIC_API_KEY || existing.env.ANTHROPIC_AUTH_TOKEN,
+          baseUrl: existing.env.ANTHROPIC_BASE_URL,
+          model: existing.env.ANTHROPIC_MODEL,
+          haikuModel: existing.env.ANTHROPIC_DEFAULT_HAIKU_MODEL,
+          sonnetModel: existing.env.ANTHROPIC_DEFAULT_SONNET_MODEL,
+          opusModel: existing.env.ANTHROPIC_DEFAULT_OPUS_MODEL,
+        };
+      }
+    } else {
+      console.log('');
+      console.log('━━━ Claude API 配置 ━━━');
+      console.log('提示：以下配置均为可选，留空将使用默认值');
+      console.log('');
+
+      const apiResp = await prompts(
       [
         {
           type: "text",
@@ -508,6 +539,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
       { onCancel }
     );
     claudeApiConfig = apiResp;
+    }
   }
 
   const parseIds = (value: string | undefined): string[] =>
