@@ -95,11 +95,17 @@ async function validateOrSetup(): Promise<boolean> {
 
 async function cmdStart(skipPlatformPrompt = false): Promise<void> {
   const pid = getPid();
-  if (pid && isRunning(pid)) {
+
+  // 如果是 restart 调用，先确保旧进程完全清理
+  if (skipPlatformPrompt && pid) {
+    // 强制清理，即使进程看起来在运行
+    removePid();
+  } else if (pid && isRunning(pid)) {
     console.log(`open-im 已在后台运行 (pid=${pid})`);
     return;
+  } else {
+    removePid();  // 清理可能存在的陈旧 PID 文件
   }
-  removePid();
 
   if (!(await validateOrSetup())) {
     process.exit(1);
@@ -190,8 +196,9 @@ async function cmdRestart(): Promise<void> {
         break;
       }
     }
-    // 额外等待一下，确保端口释放
-    await new Promise((r) => setTimeout(r, 500));
+    // 额外等待一下，确保所有资源（端口、文件句柄等）完全释放
+    console.log('  → 等待资源释放...');
+    await new Promise((r) => setTimeout(r, 1000));
   } else {
     if (pid) {
       console.log(`检测到 PID 文件存在 (pid=${pid})，但进程未运行，清理后重启...`);
