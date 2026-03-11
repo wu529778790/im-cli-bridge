@@ -328,10 +328,13 @@ export function loadConfig(): Config {
       ? parseInt(process.env.HOOK_PORT, 10) || 35801
       : file.hookPort ?? 35801;
 
-  const useSdkMode =
+  // 当使用 Claude 时，强制使用 SDK 模式（更快，无需安装 CLI）
+  // 使用其他工具（codex/cursor）时，才根据配置决定
+  const useSdkMode = aiCommand === 'claude' || (
     process.env.USE_SDK_MODE !== undefined
       ? process.env.USE_SDK_MODE === 'true'
-      : file.useSdkMode ?? true;
+      : file.useSdkMode ?? true
+  );
 
   // 6. 校验 Claude CLI（SDK 模式不需要 CLI）
   if (aiCommand === 'claude' && !useSdkMode) {

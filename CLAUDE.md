@@ -93,7 +93,7 @@ Key config options:
 - `claudeTimeoutMs` - Claude CLI timeout (default: 600000)
 - `logDir` - Log directory (default: `~/.open-im/logs`)
 - `logLevel` - Log level (INFO/DEBUG/WARN/ERROR)
-- `useSdkMode` - Use Agent SDK (default: true, faster; set false for CLI mode; requires ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN)
+- `useSdkMode` - For non-Claude tools only; Claude always uses SDK mode (faster, no CLI required)
 
 ### Important Design Decisions
 

@@ -33,7 +33,6 @@ interface ExistingConfig {
   claudeWorkDir?: string;
   claudeSkipPermissions?: boolean;
   aiCommand?: string;
-  useSdkMode?: boolean;
 }
 
 function loadExistingConfig(): ExistingConfig | null {
@@ -476,7 +475,6 @@ export async function runInteractiveSetup(): Promise<boolean> {
     claudeWorkDir: (commonResp.workDir || process.cwd()).trim(),
     claudeSkipPermissions: base?.claudeSkipPermissions ?? true,
     aiCommand: commonResp.aiCommand ?? base?.aiCommand ?? "claude",
-    useSdkMode: base?.useSdkMode ?? true,
   };
 
   if (selectedPlatforms.includes("telegram")) {

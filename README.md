@@ -84,22 +84,10 @@ npm run dev        # 直接运行源码（tsx，无需 build）
 | `ALLOWED_BASE_DIRS` | 允许访问的目录（逗号分隔） |
 | `LOG_DIR` | 日志目录，默认 `~/.open-im/logs` |
 | `LOG_LEVEL` | 日志级别：INFO/DEBUG/WARN/ERROR |
-| `USE_SDK_MODE` | 默认 `true`（SDK 模式，更快）；设为 `false` 使用 CLI 模式 |
 
-### SDK 模式（默认，更快）
+### Claude 认证
 
-默认使用 Agent SDK 模式，进程内执行，每次对话不再 spawn 新进程，响应更快。若需改用 CLI 模式，可配置：
-
-```json
-{
-  "useSdkMode": false,
-  "aiCommand": "claude"
-}
-```
-
-或环境变量：`USE_SDK_MODE=false`
-
-**认证**：需设置 `ANTHROPIC_API_KEY`（从 [Console](https://console.anthropic.com/) 获取）或运行 `claude setup-token` 生成 `CLAUDE_CODE_OAUTH_TOKEN`。SDK 模式无需安装 Claude CLI。
+使用 Claude 时，需设置 `ANTHROPIC_API_KEY`（从 [Console](https://console.anthropic.com/) 获取）或运行 `claude setup-token` 生成 `CLAUDE_CODE_OAUTH_TOKEN`。
 
 ### 配置文件
 
