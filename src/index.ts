@@ -180,9 +180,9 @@ export async function main() {
   );
 
   // CLI 工具（Cursor/Codex）的 session 是进程级别的，服务重启后一定无效。
-  // 启动时清除所有 sessionId，防止 --resume 到上次被中断的任务（如未完成的 git commit）。
+  // 启动时仅清除 CLI 工具自己的 sessionId，保留 Claude 的持久上下文。
   if (config.aiCommand !== 'claude') {
-    sessionManager.clearAllSessionIds();
+    sessionManager.clearAllCliSessionIds();
   }
 
   let telegramHandle: ReturnType<typeof setupTelegramHandlers> | null = null;

@@ -8,13 +8,16 @@ import { APP_HOME } from '../constants.js';
 const log = createLogger('Session');
 const SESSIONS_FILE = join(APP_HOME, 'data', 'sessions.json');
 
+type ToolId = 'claude' | 'codex' | 'cursor';
+type ToolSessionIds = Partial<Record<ToolId, string>>;
+
 interface UserSession {
-  sessionId?: string;
+  sessionIds?: ToolSessionIds;
   workDir: string;
   activeConvId?: string;
   totalTurns?: number;
   claudeModel?: string;
-  threads?: Record<string, { sessionId?: string; totalTurns?: number; claudeModel?: string }>;
+  threads?: Record<string, { sessionIds?: ToolSessionIds; totalTurns?: number; claudeModel?: string }>;
 }
 
 export class SessionManager {
@@ -30,43 +33,44 @@ export class SessionManager {
     this.load();
   }
 
-  getSessionIdForConv(userId: string, convId: string): string | undefined {
+  getSessionIdForConv(userId: string, convId: string, toolId: ToolId): string | undefined {
     const s = this.sessions.get(userId);
-    if (s?.activeConvId === convId) return s.sessionId;
-    return this.convSessionMap.get(`${userId}:${convId}`);
+    if (s?.activeConvId === convId) return this.getToolSessionId(s, toolId);
+    return this.convSessionMap.get(this.getConvSessionKey(userId, convId, toolId));
   }
 
-  setSessionIdForConv(userId: string, convId: string, sessionId: string): void {
+  setSessionIdForConv(userId: string, convId: string, toolId: ToolId, sessionId: string): void {
     const s = this.sessions.get(userId);
     if (s?.activeConvId === convId) {
-      s.sessionId = sessionId;
+      this.setToolSessionId(s, toolId, sessionId);
       this.save();
     } else {
-      this.convSessionMap.set(`${userId}:${convId}`, sessionId);
+      this.convSessionMap.set(this.getConvSessionKey(userId, convId, toolId), sessionId);
     }
   }
 
   /** 清除指定会话的 sessionId（用于 SDK 报 "No conversation found" 时） */
-  clearSessionForConv(userId: string, convId: string): void {
+  clearSessionForConv(userId: string, convId: string, toolId: ToolId): void {
     const s = this.sessions.get(userId);
     if (s?.activeConvId === convId) {
-      s.sessionId = undefined;
+      this.clearToolSessionId(s, toolId);
       this.save();
     }
-    this.convSessionMap.delete(`${userId}:${convId}`);
-    log.info(`Cleared session for user ${userId}, convId=${convId}`);
+    this.convSessionMap.delete(this.getConvSessionKey(userId, convId, toolId));
+    log.info(`Cleared ${toolId} session for user ${userId}, convId=${convId}`);
   }
 
-  getSessionIdForThread(_userId: string, _threadId: string): string | undefined {
+  getSessionIdForThread(_userId: string, _threadId: string, _toolId: ToolId): string | undefined {
     return undefined;
   }
 
-  setSessionIdForThread(userId: string, threadId: string, sessionId: string): void {
+  setSessionIdForThread(userId: string, threadId: string, toolId: ToolId, sessionId: string): void {
     const s = this.sessions.get(userId);
     if (s && !s.threads) s.threads = {};
     const t = s?.threads?.[threadId];
     if (t) {
-      t.sessionId = sessionId;
+      if (!t.sessionIds) t.sessionIds = {};
+      t.sessionIds[toolId] = sessionId;
       this.save();
     }
   }
@@ -100,15 +104,12 @@ export class SessionManager {
     const s = this.sessions.get(userId);
     if (s) {
       const oldConvId = s.activeConvId;
-      if (s.activeConvId && s.sessionId) {
-        this.convSessionMap.set(`${userId}:${s.activeConvId}`, s.sessionId);
-      }
+      this.persistActiveConvSessions(userId, s);
       s.workDir = realPath;
-      s.sessionId = undefined;
+      s.sessionIds = {};
       s.activeConvId = randomBytes(4).toString('hex');
-      // 清除旧的 convSessionMap 中的映射
       if (oldConvId) {
-        this.convSessionMap.delete(`${userId}:${oldConvId}`);
+        this.clearConvSessionMappings(userId, oldConvId);
       }
     } else {
       this.sessions.set(userId, {
@@ -126,48 +127,72 @@ export class SessionManager {
    * 适用于 CLI 工具（Cursor/Codex），其 session 是进程级别的，
    * 服务重启后旧的 session 一定无效，若不清除会导致 --resume 到中断任务。
    */
-  clearAllSessionIds(): void {
+  clearAllCliSessionIds(): void {
     let changed = false;
     for (const [, s] of this.sessions) {
-      if (s.sessionId !== undefined) {
-        s.sessionId = undefined;
-        changed = true;
+      for (const toolId of ['codex', 'cursor'] as const) {
+        if (this.getToolSessionId(s, toolId) !== undefined) {
+          this.clearToolSessionId(s, toolId);
+          changed = true;
+        }
       }
       if (s.threads) {
         for (const t of Object.values(s.threads)) {
-          if (t.sessionId !== undefined) {
-            t.sessionId = undefined;
-            changed = true;
+          for (const toolId of ['codex', 'cursor'] as const) {
+            if (t.sessionIds?.[toolId] !== undefined) {
+              delete t.sessionIds[toolId];
+              changed = true;
+            }
           }
         }
       }
     }
+    for (const key of [...this.convSessionMap.keys()]) {
+      if (key.endsWith(':codex') || key.endsWith(':cursor')) {
+        this.convSessionMap.delete(key);
+        changed = true;
+      }
+    }
     if (changed) {
       this.flushSync();
-      log.info('Cleared all CLI session IDs on startup');
+      log.info('Cleared CLI session IDs for codex/cursor on startup');
     }
   }
 
   newSession(userId: string): boolean {
     const s = this.sessions.get(userId);
     if (s) {
-      const oldSessionId = s.sessionId;
+      const oldSessionIds = { ...(s.sessionIds ?? {}) };
       const oldConvId = s.activeConvId;
-      if (s.activeConvId && s.sessionId) {
-        this.convSessionMap.set(`${userId}:${s.activeConvId}`, s.sessionId);
-      }
-      s.sessionId = undefined;
+      this.persistActiveConvSessions(userId, s);
+      s.sessionIds = {};
       s.activeConvId = randomBytes(4).toString('hex');
       s.totalTurns = 0;
-      // 清除旧的 convSessionMap 中的映射，防止恢复旧的 sessionId
       if (oldConvId) {
-        this.convSessionMap.delete(`${userId}:${oldConvId}`);
+        this.clearConvSessionMappings(userId, oldConvId);
       }
       this.flushSync();
-      log.info(`New session for user ${userId}: oldConvId=${oldConvId}, oldSessionId=${oldSessionId}, newConvId=${s.activeConvId}, sessionId=undefined`);
+      log.info(
+        `New session for user ${userId}: oldConvId=${oldConvId}, oldSessionIds=${JSON.stringify(oldSessionIds)}, newConvId=${s.activeConvId}, sessionIds={}`
+      );
       return true;
     }
     return false;
+  }
+
+  clearActiveToolSession(userId: string, toolId: ToolId): boolean {
+    const s = this.sessions.get(userId);
+    if (!s) return false;
+
+    const activeConvId = s.activeConvId;
+    const hadSession = this.getToolSessionId(s, toolId) !== undefined;
+    this.clearToolSessionId(s, toolId);
+    if (activeConvId) {
+      this.convSessionMap.delete(this.getConvSessionKey(userId, activeConvId, toolId));
+    }
+    this.flushSync();
+    log.info(`Cleared active ${toolId} session for user ${userId}, convId=${activeConvId ?? 'none'}`);
+    return hadSession;
   }
 
   addTurns(userId: string, turns: number): number {
@@ -259,6 +284,20 @@ export class SessionManager {
         for (const [k, v] of Object.entries(data)) {
           if (v && typeof v.workDir === 'string') {
             if (!v.activeConvId) v.activeConvId = randomBytes(4).toString('hex');
+            if (!v.sessionIds) v.sessionIds = {};
+            if ('sessionId' in (v as object)) {
+              log.warn(`Legacy shared sessionId found for user ${k}; clearing it to avoid cross-tool resume conflicts`);
+            }
+            delete (v as UserSession & { sessionId?: string }).sessionId;
+            if (v.threads) {
+              for (const thread of Object.values(v.threads)) {
+                if (!thread.sessionIds) thread.sessionIds = {};
+                if ('sessionId' in (thread as object)) {
+                  log.warn(`Legacy thread sessionId found for user ${k}; clearing it during session migration`);
+                }
+                delete (thread as { sessionId?: string }).sessionId;
+              }
+            }
             this.sessions.set(k, v);
           }
         }
@@ -301,6 +340,39 @@ export class SessionManager {
       writeFileSync(SESSIONS_FILE, JSON.stringify(obj, null, 2), 'utf-8');
     } catch (err) {
       log.error('Failed to save sessions:', err);
+    }
+  }
+
+  private getConvSessionKey(userId: string, convId: string, toolId: ToolId): string {
+    return `${userId}:${convId}:${toolId}`;
+  }
+
+  private getToolSessionId(session: UserSession, toolId: ToolId): string | undefined {
+    return session.sessionIds?.[toolId];
+  }
+
+  private setToolSessionId(session: UserSession, toolId: ToolId, sessionId: string): void {
+    if (!session.sessionIds) session.sessionIds = {};
+    session.sessionIds[toolId] = sessionId;
+  }
+
+  private clearToolSessionId(session: UserSession, toolId: ToolId): void {
+    if (!session.sessionIds) return;
+    delete session.sessionIds[toolId];
+  }
+
+  private persistActiveConvSessions(userId: string, session: UserSession): void {
+    if (!session.activeConvId || !session.sessionIds) return;
+    for (const [toolId, sessionId] of Object.entries(session.sessionIds)) {
+      if (sessionId) {
+        this.convSessionMap.set(this.getConvSessionKey(userId, session.activeConvId, toolId as ToolId), sessionId);
+      }
+    }
+  }
+
+  private clearConvSessionMappings(userId: string, convId: string): void {
+    for (const toolId of ['claude', 'codex', 'cursor'] as const) {
+      this.convSessionMap.delete(this.getConvSessionKey(userId, convId, toolId));
     }
   }
 }

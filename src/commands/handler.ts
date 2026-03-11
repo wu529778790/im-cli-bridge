@@ -169,7 +169,7 @@ export class CommandHandler {
     const version = await this.getAiVersion();
     const workDir = this.deps.sessionManager.getWorkDir(userId);
     const convId = this.deps.sessionManager.getConvId(userId);
-    const sessionId = this.deps.sessionManager.getSessionIdForConv(userId, convId);
+    const sessionId = this.deps.sessionManager.getSessionIdForConv(userId, convId, this.deps.config.aiCommand);
     const lines = [
       '📊 状态:',
       '',

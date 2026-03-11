@@ -176,11 +176,11 @@ export function runAITask(
       ctx.workDir,
       {
         onSessionId: (id) => {
-          if (ctx.threadId) sessionManager.setSessionIdForThread(ctx.userId, ctx.threadId, id);
-          else if (ctx.convId) sessionManager.setSessionIdForConv(ctx.userId, ctx.convId, id);
+          if (ctx.threadId) sessionManager.setSessionIdForThread(ctx.userId, ctx.threadId, config.aiCommand, id);
+          else if (ctx.convId) sessionManager.setSessionIdForConv(ctx.userId, ctx.convId, config.aiCommand, id);
         },
         onSessionInvalid: () => {
-          if (ctx.convId) sessionManager.clearSessionForConv(ctx.userId, ctx.convId);
+          if (ctx.convId) sessionManager.clearSessionForConv(ctx.userId, ctx.convId, config.aiCommand);
         },
         onThinking: (t) => {
           if (!firstContentLogged) {
@@ -257,9 +257,12 @@ export function runAITask(
           log.error(`Task error for user ${ctx.userId}: ${error}`);
           // CLI 工具（cursor/codex）出错时清除 sessionId，
           // 防止 resume 到中途被中断的会话（如未完成的 tool call 循环）
-          // Claude SDK 不需要，其 session 是对话上下文，出错仍可继续
+          // Claude SDK 不需要，其 session 是对话上下文，出错仍可继续。
+          // 这里只清当前任务所属会话里的当前工具 session，避免误伤其它 AI 工具
+          // 或用户在 /new、/cd 后已经切出的新会话。
           if (config.aiCommand !== 'claude') {
-            sessionManager.newSession(ctx.userId);
+            if (ctx.convId) sessionManager.clearSessionForConv(ctx.userId, ctx.convId, config.aiCommand);
+            else sessionManager.clearActiveToolSession(ctx.userId, config.aiCommand);
             log.info(`Session reset for user ${ctx.userId} due to ${config.aiCommand} task error`);
           }
           try {
