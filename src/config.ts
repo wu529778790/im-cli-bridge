@@ -174,6 +174,11 @@ interface FileConfig {
 }
 
 const CONFIG_PATH = join(APP_HOME, 'config.json');
+const CODEX_AUTH_PATHS = [
+  join(homedir(), '.codex', 'auth.json'),
+  join(homedir(), '.config', 'codex', 'auth.json'),
+  join(homedir(), 'AppData', 'Roaming', 'codex', 'auth.json'),
+];
 
 const OLD_ROOT_KEYS = [
   'claudeWorkDir', 'claudeSkipPermissions', 'claudeCliPath', 'cursorCliPath',
@@ -184,6 +189,17 @@ function hasOldConfigFormat(raw: Record<string, unknown>): boolean {
   const hasOld = OLD_ROOT_KEYS.some((k) => raw[k] !== undefined && raw[k] !== null);
   const hasNew = raw.tools && typeof raw.tools === 'object' && (raw.tools as Record<string, unknown>).claude;
   return !!hasOld && !hasNew;
+}
+
+function hasCodexAuth(): boolean {
+  if (process.env.OPENAI_API_KEY) return true;
+  return CODEX_AUTH_PATHS.some((p) => {
+    try {
+      return existsSync(p) && readFileSync(p, 'utf-8').trim().length > 0;
+    } catch {
+      return false;
+    }
+  });
 }
 
 function migrateToNewConfigFormat(raw: Record<string, unknown>): Record<string, unknown> {
@@ -607,9 +623,9 @@ export function loadConfig(): Config {
         throw new Error(installGuide);
       }
     }
-    if (!process.env.OPENAI_API_KEY) {
+    if (!hasCodexAuth()) {
       console.warn(
-        '\n⚠ Codex 模式：未检测到 OPENAI_API_KEY。首次使用请先运行 codex login，\n' +
+        '\n⚠ Codex 模式：未检测到 OPENAI_API_KEY 或 Codex 登录态。首次使用请先运行 codex login，\n' +
         '  或在 ~/.open-im/config.json 的 env 中添加 "OPENAI_API_KEY": "你的 API Key"。\n'
       );
     }

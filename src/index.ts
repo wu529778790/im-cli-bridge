@@ -81,6 +81,42 @@ async function sendLifecycleNotification(platform: string, message: string) {
   await Promise.all(sendPromises);
 }
 
+function buildStartupMessage(
+  platform: string,
+  appVersion: string,
+  aiCommand: string,
+  defaultWorkDir: string,
+  defaultModeLabel: string,
+  defaultPermissionMode: string,
+  successfulPlatforms: string[],
+  sessionManager: SessionManager,
+): string {
+  let sessionDir: string | undefined;
+
+  // Telegram 私聊、企业微信当前实现里，活跃 chatId 可直接对应到 session userId。
+  if (platform === "telegram" || platform === "wework") {
+    const activeChatId = getActiveChatId(platform);
+    if (activeChatId) {
+      sessionDir = sessionManager.getWorkDir(activeChatId);
+    }
+  }
+
+  const lines = [
+    `🟢 open-im v${appVersion} 服务已启动`,
+    "",
+    `AI 工具: ${aiCommand}`,
+    `默认权限模式: ${defaultModeLabel} (${defaultPermissionMode})`,
+    `成功启动平台: ${successfulPlatforms.join(", ")}`,
+  ];
+
+  if (sessionDir) {
+    lines.push(`会话目录: ${sessionDir}`);
+  } else {
+    lines.push(`会话目录: 请发送 /pwd 查看`);
+  }
+  return lines.join("\n");
+}
+
 export async function main() {
   if (needsSetup()) {
     const saved = await runInteractiveSetup();
@@ -134,7 +170,7 @@ export async function main() {
 
   log.info("Starting open-im bridge...");
   log.info(`AI 工具: ${config.aiCommand}`);
-  log.info(`工作目录: ${config.claudeWorkDir}`);
+  log.info(`默认会话目录: ${config.claudeWorkDir}`);
   log.info(`默认权限模式: ${defaultModeLabel} (${config.defaultPermissionMode})`);
   log.info(`启用平台: ${config.enabledPlatforms.join(", ")}`);
 
@@ -206,17 +242,18 @@ export async function main() {
   log.info("Service is running. Press Ctrl+C to stop.");
   log.info(`Successfully initialized platforms: ${successfulPlatforms.join(", ")}`);
 
-  const startupMsg = [
-    `🟢 open-im v${APP_VERSION} 服务已启动`,
-    "",
-    `AI 工具: ${config.aiCommand}`,
-    `工作目录: ${config.claudeWorkDir}`,
-    `默认权限模式: ${defaultModeLabel} (${config.defaultPermissionMode})`,
-    `成功启动平台: ${successfulPlatforms.join(", ")}`,
-  ].join("\n");
-
   // Send notification only to successfully initialized platforms
   for (const platform of successfulPlatforms) {
+    const startupMsg = buildStartupMessage(
+      platform,
+      APP_VERSION,
+      config.aiCommand,
+      config.claudeWorkDir,
+      defaultModeLabel,
+      config.defaultPermissionMode,
+      successfulPlatforms,
+      sessionManager,
+    );
     await sendLifecycleNotification(platform, startupMsg).catch(() => {});
   }
 

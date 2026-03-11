@@ -55,7 +55,7 @@ function parseCodexEvent(line: string): Record<string, unknown> | null {
 }
 
 function buildCodexArgs(
-  prompt: string,
+  _prompt: string,
   sessionId: string | undefined,
   workDir: string,
   options?: CodexRunOptions
@@ -86,8 +86,8 @@ function buildCodexArgs(
   }
 
   return canResume
-    ? ["exec", "resume", ...resumeOptions, sessionId!, "--", prompt]
-    : ["exec", ...newSessionOptions, "--", prompt];
+    ? ["exec", "resume", ...resumeOptions, sessionId!, "-"]
+    : ["exec", ...newSessionOptions, "-"];
 }
 
 function quoteForWindowsCmd(arg: string): string {
@@ -141,7 +141,7 @@ export function runCodex(
     env.LC_ALL = env.LC_ALL || 'C.UTF-8';
   }
 
-  const argsForLog = args.filter((a) => a !== prompt).join(' ');
+  const argsForLog = args.join(' ');
   log.info(`Spawning Codex CLI: path=${cliPath}, cwd=${workDir}, session=${sessionId ?? 'new'}, args=${argsForLog}`);
 
   // Windows: .cmd/.bat 或简单命令名（如 codex）需通过 cmd.exe 执行，否则 spawn 报 ENOENT
@@ -160,10 +160,14 @@ export function runCodex(
 
   const child = spawn(spawnCmd, spawnArgs, {
     cwd: workDir,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['pipe', 'pipe', 'pipe'],
     env,
     windowsHide: process.platform === 'win32',
   });
+
+  // 通过 stdin 传 prompt，避免 Windows 下命令行参数引用导致中文/路径/空格被拆分。
+  child.stdin?.write(prompt);
+  child.stdin?.end();
 
   let accumulated = '';
   let accumulatedThinking = '';

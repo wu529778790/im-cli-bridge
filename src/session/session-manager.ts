@@ -75,6 +75,10 @@ export class SessionManager {
     return this.sessions.get(userId)?.workDir ?? this.defaultWorkDir;
   }
 
+  hasUserSession(userId: string): boolean {
+    return this.sessions.has(userId);
+  }
+
   getConvId(userId: string): string {
     const s = this.sessions.get(userId);
     if (s) {
@@ -222,7 +226,7 @@ export class SessionManager {
         resolved = driveRoot;
       } else if (rest.startsWith('/') || rest.startsWith('\\')) {
         // 已是绝对路径，直接使用
-        resolved = `${drive}${rest}`;
+        resolved = `${drive}:${rest}`;
       } else {
         // 相对于驱动器根目录的路径，使用 resolve 处理
         resolved = resolve(driveRoot, rest);
