@@ -16,6 +16,9 @@ import type { ToolAdapter, RunCallbacks, RunOptions, RunHandle } from './tool-ad
 
 const log = createLogger('ClaudeSDK');
 
+// 存储所有活跃的查询，用于清理
+const activeQueries = new Set<AsyncIterator<SDKMessage>>();
+
 function isStreamEvent(msg: SDKMessage): boolean {
   return (msg as { type?: string }).type === 'stream_event';
 }
@@ -35,6 +38,22 @@ function isAssistant(msg: SDKMessage): boolean {
 
 export class ClaudeSDKAdapter implements ToolAdapter {
   readonly toolId = 'claude-sdk';
+
+  /**
+   * 清理所有活跃的 SDK 查询
+   */
+  static destroy(): void {
+    for (const q of activeQueries) {
+      try {
+        if (q && typeof q.return === 'function') {
+          q.return();
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    activeQueries.clear();
+  }
 
   run(
     prompt: string,
@@ -70,6 +89,9 @@ export class ClaudeSDKAdapter implements ToolAdapter {
           prompt,
           options: opts,
         });
+
+        // 将查询添加到活跃列表
+        activeQueries.add(q as unknown as AsyncIterator<SDKMessage>);
 
         let accumulated = '';
         let accumulatedThinking = '';
@@ -141,6 +163,8 @@ export class ClaudeSDKAdapter implements ToolAdapter {
         }
         } finally {
           q.close();
+          // 从活跃列表中移除
+          activeQueries.delete(q as unknown as AsyncIterator<SDKMessage>);
         }
       } catch (err) {
         if (abortController.signal.aborted) return;
