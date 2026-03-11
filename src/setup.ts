@@ -35,8 +35,8 @@ interface ExistingConfig {
   aiCommand?: string;
   tools?: {
     claude?: { cliPath?: string; workDir?: string; skipPermissions?: boolean; timeoutMs?: number; model?: string };
-    cursor?: { cliPath?: string };
-    codex?: { cliPath?: string; workDir?: string };
+    cursor?: { cliPath?: string; skipPermissions?: boolean };
+    codex?: { cliPath?: string; workDir?: string; skipPermissions?: boolean };
   };
 }
 
@@ -99,8 +99,8 @@ function printManualInstructions(configPath: string): void {
       "skipPermissions": true,
       "timeoutMs": 600000
     },
-    "cursor": { "cliPath": "agent" },
-    "codex": { "cliPath": "codex", "workDir": "${process.cwd().replace(/\\/g, "/")}" }
+    "cursor": { "cliPath": "agent", "skipPermissions": true },
+    "codex": { "cliPath": "codex", "workDir": "${process.cwd().replace(/\\/g, "/")}", "skipPermissions": true }
   },
   "platforms": {
     "telegram": {
@@ -768,11 +768,13 @@ export async function runInteractiveSetup(): Promise<boolean> {
       cursor: {
         ...baseTools.cursor,
         cliPath: baseTools.cursor?.cliPath ?? "agent",
+        skipPermissions: baseTools.cursor?.skipPermissions ?? baseTools.claude?.skipPermissions ?? true,
       },
       codex: {
         ...baseTools.codex,
         cliPath: baseTools.codex?.cliPath ?? "codex",
         workDir: baseTools.codex?.workDir ?? workDir,
+        skipPermissions: baseTools.codex?.skipPermissions ?? baseTools.claude?.skipPermissions ?? true,
       },
     },
   };

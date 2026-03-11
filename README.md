@@ -78,8 +78,8 @@ cat > ~/.open-im/config.json << 'EOF'
       "skipPermissions": true,
       "timeoutMs": 600000
     },
-    "cursor": { "cliPath": "agent" },
-    "codex": { "cliPath": "codex", "workDir": "YOUR_WORK_DIR" }
+    "cursor": { "cliPath": "agent", "skipPermissions": true },
+    "codex": { "cliPath": "codex", "workDir": "YOUR_WORK_DIR", "skipPermissions": true }
   },
   "platforms": {
     # 企业微信配置

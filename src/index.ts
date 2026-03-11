@@ -116,6 +116,13 @@ export async function main() {
   loadActiveChats();
   initPermissionModes();
 
+  // 当配置为跳过权限时，设置 CC_SKIP_PERMISSIONS 让权限服务器自动放行
+  // 否则 Cursor/Claude 请求工具权限时会卡住等待用户 /allow
+  if (config.claudeSkipPermissions) {
+    process.env.CC_SKIP_PERMISSIONS = 'true';
+    log.info('skipPermissions 已启用，权限请求将自动放行');
+  }
+
   initAdapters(config);
 
   // Start permission server for tool approval

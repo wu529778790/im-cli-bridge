@@ -129,11 +129,15 @@ interface FileToolClaude {
 
 interface FileToolCursor {
   cliPath?: string;
+  /** 是否跳过权限确认（默认 true，与 tools.claude 共用权限服务器） */
+  skipPermissions?: boolean;
 }
 
 interface FileToolCodex {
   cliPath?: string;
   workDir?: string;
+  /** 是否跳过权限确认（默认 true） */
+  skipPermissions?: boolean;
 }
 
 interface FileConfig {
@@ -196,11 +200,13 @@ function migrateToNewConfigFormat(raw: Record<string, unknown>): Record<string, 
     cursor: {
       ...tcur,
       cliPath: tcur.cliPath ?? raw.cursorCliPath ?? 'agent',
+      skipPermissions: tcur.skipPermissions ?? raw.claudeSkipPermissions ?? true,
     },
     codex: {
       ...tcod,
       cliPath: tcod.cliPath ?? 'codex',
       workDir: tcod.workDir ?? raw.claudeWorkDir ?? process.cwd(),
+      skipPermissions: tcod.skipPermissions ?? raw.claudeSkipPermissions ?? true,
     },
   };
 
@@ -432,6 +438,7 @@ export function loadConfig(): Config {
   const aiCommand = (process.env.AI_COMMAND ?? file.aiCommand ?? 'claude') as AiCommand;
   const tc = file.tools?.claude ?? {};
   const tcur = file.tools?.cursor ?? {};
+  const tcod = file.tools?.codex ?? {};
 
   const claudeCliPath = process.env.CLAUDE_CLI_PATH ?? tc.cliPath ?? 'claude';
   let cursorCliPath = process.env.CURSOR_CLI_PATH ?? tcur.cliPath ?? 'agent';
@@ -452,10 +459,14 @@ export function loadConfig(): Config {
       : file.allowedBaseDirs ?? [];
   if (allowedBaseDirs.length === 0) allowedBaseDirs.push(claudeWorkDir);
 
-  const claudeSkipPermissions =
-    process.env.CLAUDE_SKIP_PERMISSIONS !== undefined
-      ? process.env.CLAUDE_SKIP_PERMISSIONS === 'true'
-      : tc.skipPermissions ?? true;
+  // 按当前 AI 工具选择 skipPermissions：claude 用 tools.claude，cursor 用 tools.cursor（fallback claude），codex 用 tools.codex（fallback claude）
+  const claudeSkipPermissions = (() => {
+    if (process.env.CLAUDE_SKIP_PERMISSIONS !== undefined) return process.env.CLAUDE_SKIP_PERMISSIONS === 'true';
+    if (process.env.CURSOR_SKIP_PERMISSIONS !== undefined && aiCommand === 'cursor') return process.env.CURSOR_SKIP_PERMISSIONS === 'true';
+    if (aiCommand === 'cursor') return tcur.skipPermissions ?? tc.skipPermissions ?? true;
+    if (aiCommand === 'codex') return tcod.skipPermissions ?? tc.skipPermissions ?? true;
+    return tc.skipPermissions ?? true;
+  })();
 
   const defaultPermissionMode = (file.defaultPermissionMode ?? 'ask') as 'ask' | 'accept-edits' | 'plan' | 'yolo';
 
