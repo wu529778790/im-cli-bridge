@@ -209,7 +209,10 @@ async function cmdRestart(): Promise<void> {
   }
 
   console.log('  → 正在启动服务...');
+  // 设置环境变量，告诉 main() 函数这是 restart，需要清除旧的 sessionId
+  process.env.OPEN_IM_RESTART = '1';
   await cmdStart(true);  // 传递 true 跳过平台选择提示
+  delete process.env.OPEN_IM_RESTART;
 }
 
 async function cmdInit(): Promise<void> {
