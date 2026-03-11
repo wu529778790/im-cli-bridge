@@ -93,14 +93,10 @@ async function validateOrSetup(): Promise<boolean> {
 // 命令处理
 // ============================================================================
 
-async function cmdStart(skipPlatformPrompt = false): Promise<void> {
+async function cmdStart(): Promise<void> {
   const pid = getPid();
 
-  // 如果是 restart 调用，先确保旧进程完全清理
-  if (skipPlatformPrompt && pid) {
-    // 强制清理，即使进程看起来在运行
-    removePid();
-  } else if (pid && isRunning(pid)) {
+  if (pid && isRunning(pid)) {
     console.log(`open-im 已在后台运行 (pid=${pid})`);
     return;
   } else {
@@ -112,9 +108,8 @@ async function cmdStart(skipPlatformPrompt = false): Promise<void> {
   }
 
   // 有 TTY 时在父进程让用户选择要启用的平台，再启动子进程
-  // skipPlatformPrompt 为 true 时跳过提示（用于 restart 命令）
   let config = loadConfig();
-  if (process.stdin.isTTY && !skipPlatformPrompt) {
+  if (process.stdin.isTTY) {
     const updated = await runPlatformSelectionPrompt(config);
     if (!updated) {
       console.log("已取消启动。");
@@ -180,41 +175,6 @@ async function cmdStop(): Promise<void> {
   console.log(`open-im 已停止 (pid=${pid})`);
 }
 
-async function cmdRestart(): Promise<void> {
-  const pid = getPid();
-  const wasRunning = pid && isRunning(pid);
-
-  if (wasRunning) {
-    console.log(`正在重启 open-im (当前 pid=${pid})...`);
-    console.log('  → 正在停止服务...');
-    await cmdStop();
-    // 等待进程完全停止
-    for (let i = 0; i < 50; i++) {
-      await new Promise((r) => setTimeout(r, 100));
-      if (!isRunning(pid)) {
-        console.log('  → 服务已停止');
-        break;
-      }
-    }
-    // 额外等待一下，确保所有资源（端口、文件句柄等）完全释放
-    console.log('  → 等待资源释放...');
-    await new Promise((r) => setTimeout(r, 1000));
-  } else {
-    if (pid) {
-      console.log(`检测到 PID 文件存在 (pid=${pid})，但进程未运行，清理后重启...`);
-    } else {
-      console.log('open-im 未在后台运行，直接启动...');
-    }
-    removePid();
-  }
-
-  console.log('  → 正在启动服务...');
-  // 设置环境变量，告诉 main() 函数这是 restart，需要清除旧的 sessionId
-  process.env.OPEN_IM_RESTART = '1';
-  await cmdStart(true);  // 传递 true 跳过平台选择提示
-  delete process.env.OPEN_IM_RESTART;
-}
-
 async function cmdInit(): Promise<void> {
   console.log("\n━━━ open-im 配置向导 ━━━\n");
   const saved = await runInteractiveSetup();
@@ -236,7 +196,6 @@ function showHelp(exitCode = 0): void {
 命令:
   start    后台运行服务
   stop     停止后台服务
-  restart  重启服务
   init     配置向导（首次或追加配置，会覆盖已有 config.json）
   dev      前台运行（调试模式），Ctrl+C 停止
 
@@ -255,7 +214,6 @@ const cmd = process.argv[2];
 const commands: Record<string, () => Promise<void>> = {
   start: cmdStart,
   stop: cmdStop,
-  restart: cmdRestart,
   init: cmdInit,
   dev: main,
 };

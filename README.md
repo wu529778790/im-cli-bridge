@@ -37,7 +37,6 @@ open-im start
 | `open-im init` | 初始化配置（不启动服务） |
 | `open-im start` | 后台运行，适合长期使用 |
 | `open-im stop` | 停止后台服务 |
-| `open-im restart` | 重启服务 |
 | `open-im dev` | 前台运行（调试模式），Ctrl+C 停止 |
 
 ## 会话说明

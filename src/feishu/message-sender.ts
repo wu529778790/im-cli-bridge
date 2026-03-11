@@ -311,6 +311,11 @@ export async function sendThinkingMessage(
   }
 }
 
+// Track if patch API is working for this session
+let patchApiWorking = true;
+let patchFailCount = 0;
+const MAX_PATCH_FAILURES_BEFORE_DISABLE = 3;
+
 export async function updateMessage(
   chatId: string,
   messageId: string,
@@ -325,34 +330,49 @@ export async function updateMessage(
   const cardContent = createFeishuCard(title, content, status, note);
 
   // Try to use patch API for in-place update (streaming)
-  try {
-    const resp = await client.im.message.patch({
-      path: { message_id: messageId },
-      data: {
-        content: cardContent,
-      },
-    });
+  // Only attempt patch if it has been working recently
+  if (patchApiWorking) {
+    try {
+      const resp = await client.im.message.patch({
+        path: { message_id: messageId },
+        data: {
+          content: cardContent,
+        },
+      });
 
-    if (resp.code === 0) {
-      log.info(`Message updated in-place: ${messageId}`);
-      return;
+      if (resp.code === 0) {
+        log.debug(`✓ Patch API succeeded: ${messageId}`);
+        patchFailCount = 0; // Reset failure count on success
+        return;
+      }
+
+      // Patch failed with API error
+      patchFailCount++;
+      log.warn(`Patch API failed (code: ${resp.code}, msg: ${resp.msg}) - failure ${patchFailCount}/${MAX_PATCH_FAILURES_BEFORE_DISABLE}`);
+
+      if (patchFailCount >= MAX_PATCH_FAILURES_BEFORE_DISABLE) {
+        log.warn('Patch API disabled for this session due to repeated failures');
+        patchApiWorking = false;
+      }
+    } catch (err: unknown) {
+      // Patch failed with network/other error
+      patchFailCount++;
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      log.warn(`Patch API error (${patchFailCount}/${MAX_PATCH_FAILURES_BEFORE_DISABLE}): ${errorMsg}`);
+
+      if (patchFailCount >= MAX_PATCH_FAILURES_BEFORE_DISABLE) {
+        log.warn('Patch API disabled for this session due to repeated errors');
+        patchApiWorking = false;
+      }
     }
-
-    // If patch failed with validation error, fall back to delete+create
-    log.warn(`Patch API failed (code: ${resp.code}, msg: ${resp.msg}), falling back to delete+create`);
-  } catch (err: unknown) {
-    // Log but don't throw - we'll fall back to delete+create
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    log.debug(`Patch API error: ${errorMsg}, falling back to delete+create`);
   }
 
   // Fallback: Delete old message and send new one
   try {
-    log.info(`Deleting old message ${messageId}`);
     await client.im.message.delete({
       path: { message_id: messageId },
     });
-    log.info(`Old message deleted successfully`);
+    log.debug(`Deleted old message for recreate: ${messageId}`);
   } catch (err) {
     log.warn('Failed to delete old message:', err);
   }
@@ -367,7 +387,7 @@ export async function updateMessage(
       },
       params: { receive_id_type: 'chat_id' },
     });
-    log.info(`New message created with ID: ${resp.data?.message_id}`);
+    log.debug(`Created new message: ${resp.data?.message_id}`);
   } catch (err) {
     log.error('Failed to send new message:', err);
     throw err;
@@ -384,8 +404,8 @@ export async function sendFinalMessages(
   const client = getClient();
   const parts = splitLongContent(fullContent, MAX_FEISHU_MESSAGE_LENGTH);
 
-  // If content fits in one message, try patch for smooth transition
-  if (parts.length === 1) {
+  // If content fits in one message and patch is working, try patch for smooth transition
+  if (parts.length === 1 && patchApiWorking) {
     const cardContent = createFeishuCard(
       getToolTitle(toolId, 'done'),
       fullContent,
@@ -401,7 +421,7 @@ export async function sendFinalMessages(
       });
 
       if (resp.code === 0) {
-        log.info(`Final message updated in-place: ${messageId}`);
+        log.info(`✓ Final message patched successfully: ${messageId}`);
         return;
       }
 
@@ -414,11 +434,10 @@ export async function sendFinalMessages(
 
   // Fallback: Delete old message first (for multi-part or failed patch)
   try {
-    log.info(`Deleting old message ${messageId}`);
     await client.im.message.delete({
       path: { message_id: messageId },
     });
-    log.info(`Old message deleted successfully`);
+    log.debug(`Deleted old message for final recreate: ${messageId}`);
   } catch (err) {
     log.warn('Failed to delete old message:', err);
   }
