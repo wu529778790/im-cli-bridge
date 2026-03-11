@@ -15,28 +15,17 @@
 - **Node.js** >= 20
 - **Claude API**：需要 API Key 或 Auth Token（[获取方式](https://console.anthropic.com/)）
 
-## 安装
-
-```bash
-npm install @wu529778790/open-im -g
-```
-
 ## 快速开始
 
 ```bash
-# 使用 npx 快速体验（无需全局安装）
-npx @wu529778790/open-im init    # 初始化配置
-npx @wu529778790/open-im start   # 后台运行
-npx @wu529778790/open-im stop    # 停止后台服务
-npx @wu529778790/open-im dev     # 前台运行（调试），Ctrl+C 停止
+npx @wu529778790/open-im start
 ```
 
 或全局安装后直接使用：
 
 ```bash
 npm install @wu529778790/open-im -g
-open-im init    # 初始化配置
-open-im start   # 后台运行
+open-im start
 ```
 
 配置保存到 `~/.open-im/config.json`。
@@ -48,6 +37,7 @@ open-im start   # 后台运行
 | `open-im init` | 初始化配置（不启动服务） |
 | `open-im start` | 后台运行，适合长期使用 |
 | `open-im stop` | 停止后台服务 |
+| `open-im restart` | 重启服务 |
 | `open-im dev` | 前台运行（调试模式），Ctrl+C 停止 |
 
 ## 会话说明
@@ -74,17 +64,41 @@ open-im start   # 后台运行
 **快速配置**：
 
 ```bash
-# 方式 1：环境变量
-export ANTHROPIC_API_KEY="sk-ant-..."
-
-# 方式 2：运行配置向导
+# 方式 1：运行配置向导
 open-im init
 
-# 方式 3：编辑配置文件
+# 方式 2：编辑配置文件
 cat > ~/.open-im/config.json << 'EOF'
 {
-  "env": {
-    "ANTHROPIC_API_KEY": "sk-ant-..."
+  # 工作目录 默认当前目录
+  "claudeWorkDir": "YOUR_WORK_DIR",
+  # 是否跳过权限确认 默认 true
+  "claudeSkipPermissions": true,
+  # 使用的 AI 命令 默认 claude
+  "aiCommand": "claude",
+  # 平台配置
+  "platforms": {
+    # 企业微信配置
+    "wework": {
+      "enabled": true,
+      "allowedUserIds": [],
+      "corpId": "YOUR_WEWORK_CORP_ID",
+      "secret": "YOUR_WEWORK_SECRET" # 从企业微信管理后台获取 Corp ID 和 Secret
+    },
+    # Telegram 配置
+    "telegram": {
+      "enabled": true,
+      "proxy": "http://127.0.0.1:7890",
+      "allowedUserIds": [],
+      "botToken": "YOUR_TELEGRAM_BOT_TOKEN" # 从 @BotFather 获取 Bot Token
+    },
+    # 飞书配置
+    "feishu": {
+      "enabled": true,
+      "allowedUserIds": [],
+      "appId": "YOUR_FEISHU_APP_ID",
+      "appSecret": "YOUR_FEISHU_APP_SECRET" # 从飞书开放平台获取 App ID 和 App Secret
+    }
   }
 }
 EOF
@@ -101,8 +115,6 @@ EOF
   }
 }
 ```
-
-配置优先级：环境变量 > config.json > ~/.claude/settings.json
 
 ### 平台配置
 
@@ -143,8 +155,6 @@ EOF
 [MIT](LICENSE)
 
 ## 🔧 故障排除
-
-**启动失败**：查看日志 `tail -f ~/.open-im/logs/*.log`，或重新配置 `rm ~/.open-im/config.json && open-im init`
 
 **Telegram 无响应**：检查网络，可能需要代理，在配置文件中添加 `"proxy": "http://127.0.0.1:7890"`
 

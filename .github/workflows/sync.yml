@@ -1,0 +1,24 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    # 每天 UTC 时间 00:00 运行（北京时间 08:00）
+    - cron: '0 0 * * *'
+  workflow_dispatch: # 允许手动触发
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Sync from upstream
+        uses: TGXSoftware/gh-action-sync-upstream@v1.4.0
+        with:
+          upstream_repo: wu529778790/open-im
+          upstream_branch: dev
+          target_branch: dev
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # 如果存在冲突，尝试自动解决
+          force: true
+          # 同步时保留提交历史
+          fast_forward: true

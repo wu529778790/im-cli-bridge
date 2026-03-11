@@ -135,6 +135,13 @@ export async function main() {
     config.claudeWorkDir,
     config.allowedBaseDirs,
   );
+
+  // 如果是 restart，清除所有旧的 sessionId（SDK 内部状态已失效）
+  if (process.env.OPEN_IM_RESTART === '1') {
+    sessionManager.clearAllSessionIds();
+    delete process.env.OPEN_IM_RESTART;
+  }
+
   let telegramHandle: ReturnType<typeof setupTelegramHandlers> | null = null;
   let feishuHandle: ReturnType<typeof setupFeishuHandlers> | null = null;
   let wechatHandle: ReturnType<typeof setupWeChatHandlers> | null = null;

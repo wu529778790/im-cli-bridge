@@ -16,6 +16,9 @@ import type { ToolAdapter, RunCallbacks, RunOptions, RunHandle } from './tool-ad
 
 const log = createLogger('ClaudeSDK');
 
+// 存储所有活跃的查询，用于清理
+const activeQueries = new Set<AsyncIterator<SDKMessage>>();
+
 function isStreamEvent(msg: SDKMessage): boolean {
   return (msg as { type?: string }).type === 'stream_event';
 }
@@ -35,6 +38,22 @@ function isAssistant(msg: SDKMessage): boolean {
 
 export class ClaudeSDKAdapter implements ToolAdapter {
   readonly toolId = 'claude-sdk';
+
+  /**
+   * 清理所有活跃的 SDK 查询
+   */
+  static destroy(): void {
+    for (const q of activeQueries) {
+      try {
+        if (q && typeof q.return === 'function') {
+          q.return();
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    activeQueries.clear();
+  }
 
   run(
     prompt: string,
@@ -56,6 +75,15 @@ export class ClaudeSDKAdapter implements ToolAdapter {
 
     const runQuery = async () => {
       try {
+        // 调试：检查关键环境变量
+        const hasApiKey = !!process.env.ANTHROPIC_API_KEY;
+        const hasAuthToken = !!process.env.ANTHROPIC_AUTH_TOKEN;
+        const hasBaseUrl = !!process.env.ANTHROPIC_BASE_URL;
+
+        if (!hasApiKey && !hasAuthToken && !hasBaseUrl) {
+          log.warn('Claude SDK: No API credentials found in environment variables');
+        }
+
         const opts = {
           cwd: workDir,
           resume: sessionId,
@@ -70,6 +98,9 @@ export class ClaudeSDKAdapter implements ToolAdapter {
           prompt,
           options: opts,
         });
+
+        // 将查询添加到活跃列表
+        activeQueries.add(q as unknown as AsyncIterator<SDKMessage>);
 
         let accumulated = '';
         let accumulatedThinking = '';
@@ -141,11 +172,21 @@ export class ClaudeSDKAdapter implements ToolAdapter {
         }
         } finally {
           q.close();
+          // 从活跃列表中移除
+          activeQueries.delete(q as unknown as AsyncIterator<SDKMessage>);
         }
       } catch (err) {
         if (abortController.signal.aborted) return;
-        const msg = err instanceof Error ? err.message : String(err);
+        const errorObj = err as Error;
+        const msg = errorObj.message || String(err);
+        const stack = errorObj.stack || '';
+
+        // 输出详细的错误信息用于调试
         log.error(`Claude SDK error: ${msg}`);
+        if (stack) {
+          log.error(`Error stack: ${stack}`);
+        }
+
         callbacks.onError(msg);
       }
     };

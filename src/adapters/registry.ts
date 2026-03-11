@@ -30,5 +30,6 @@ export function getAdapter(aiCommand: string): ToolAdapter | undefined {
  */
 export function cleanupAdapters(): void {
   ClaudeAdapter.destroy();
+  ClaudeSDKAdapter.destroy();  // 清理 SDK 查询
   adapters.clear();
 }
