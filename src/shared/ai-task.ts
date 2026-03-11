@@ -12,6 +12,7 @@ import {
   formatToolStats,
   formatToolCallNotification,
   getContextWarning,
+  getAIToolDisplayName,
 } from './utils.js';
 import { createLogger } from '../logger.js';
 
@@ -52,6 +53,8 @@ export interface TaskRunState {
   latestContent: string;
   settle: () => void;
   startedAt: number;
+  /** AI 工具标识，用于动态显示工具名称 */
+  toolId: string;
 }
 
 function buildCompletionNote(
@@ -152,17 +155,20 @@ export function runAITask(
     let skipPermissions: boolean | undefined;
     let permissionMode: 'default' | 'acceptEdits' | 'plan' | undefined;
 
-    // 标准模式 / SDK 模式：传递权限模式参数
-    skipPermissions = mode === 'yolo' || config.claudeSkipPermissions;
-    permissionMode = !skipPermissions
+    // `plan` 必须保持只读语义，不能被全局 skipPermissions 覆盖。
+    if (mode === 'plan') {
+      skipPermissions = false;
+      permissionMode = 'plan';
+    } else {
+      skipPermissions = mode === 'yolo' || config.claudeSkipPermissions;
+      permissionMode = !skipPermissions
         ? (mode === 'ask'
           ? 'default'
           : mode === 'accept-edits'
             ? 'acceptEdits'
-            : mode === 'plan'
-              ? 'plan'
-              : undefined)
+            : undefined)
         : undefined;
+    }
 
     const handle = toolAdapter.run(
       prompt,
@@ -170,11 +176,11 @@ export function runAITask(
       ctx.workDir,
       {
         onSessionId: (id) => {
-          if (ctx.threadId) sessionManager.setSessionIdForThread(ctx.userId, ctx.threadId, id);
-          else if (ctx.convId) sessionManager.setSessionIdForConv(ctx.userId, ctx.convId, id);
+          if (ctx.threadId) sessionManager.setSessionIdForThread(ctx.userId, ctx.threadId, config.aiCommand, id);
+          else if (ctx.convId) sessionManager.setSessionIdForConv(ctx.userId, ctx.convId, config.aiCommand, id);
         },
         onSessionInvalid: () => {
-          if (ctx.convId) sessionManager.clearSessionForConv(ctx.userId, ctx.convId);
+          if (ctx.convId) sessionManager.clearSessionForConv(ctx.userId, ctx.convId, config.aiCommand);
         },
         onThinking: (t) => {
           if (!firstContentLogged) {
@@ -183,7 +189,7 @@ export function runAITask(
           }
           wasThinking = true;
           thinkingText = t;
-          throttledUpdate(`💭 **思考中...**\n\n${t}`);
+          throttledUpdate(`💭 **${getAIToolDisplayName(config.aiCommand)} 思考中...**\n\n${t}`);
         },
         onText: (accumulated) => {
           if (!firstContentLogged) {
@@ -249,6 +255,16 @@ export function runAITask(
             pendingUpdate = null;
           }
           log.error(`Task error for user ${ctx.userId}: ${error}`);
+          // CLI 工具（cursor/codex）出错时清除 sessionId，
+          // 防止 resume 到中途被中断的会话（如未完成的 tool call 循环）
+          // Claude SDK 不需要，其 session 是对话上下文，出错仍可继续。
+          // 这里只清当前任务所属会话里的当前工具 session，避免误伤其它 AI 工具
+          // 或用户在 /new、/cd 后已经切出的新会话。
+          if (config.aiCommand !== 'claude') {
+            if (ctx.convId) sessionManager.clearSessionForConv(ctx.userId, ctx.convId, config.aiCommand);
+            else sessionManager.clearActiveToolSession(ctx.userId, config.aiCommand);
+            log.info(`Session reset for user ${ctx.userId} due to ${config.aiCommand} task error`);
+          }
           try {
             await platformAdapter.sendError(error);
           } catch (err) {
@@ -266,10 +282,11 @@ export function runAITask(
         chatId: ctx.chatId,
         // SDK 模式下不使用 hookPort
         ...(config.useSdkMode ? {} : { hookPort: config.hookPort }),
+        ...(config.aiCommand === 'codex' && config.codexProxy ? { proxy: config.codexProxy } : {}),
       }
     );
 
-    taskState = { handle, latestContent: '', settle, startedAt: Date.now() };
+    taskState = { handle, latestContent: '', settle, startedAt: Date.now(), toolId: config.aiCommand };
     platformAdapter.onTaskReady(taskState);
   });
 }

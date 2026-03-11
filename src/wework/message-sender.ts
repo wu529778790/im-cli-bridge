@@ -5,7 +5,7 @@
 
 import { sendText, sendStream, sendMessage, sendProactiveMessage } from './client.js';
 import { createLogger } from '../logger.js';
-import { splitLongContent } from '../shared/utils.js';
+import { splitLongContent, getAIToolDisplayName } from '../shared/utils.js';
 import { MAX_WEWORK_MESSAGE_LENGTH } from '../constants.js';
 import { randomBytes } from 'node:crypto';
 
@@ -36,14 +36,8 @@ const STATUS_CONFIG: Record<MessageStatus, { icon: string; title: string }> = {
   error: { icon: '❌', title: '错误' },
 };
 
-const TOOL_DISPLAY_NAMES: Record<string, string> = {
-  claude: 'Claude Code',
-  codex: 'Codex',
-  cursor: 'Cursor',
-};
-
 function getToolTitle(toolId: string, status: MessageStatus): string {
-  const name = TOOL_DISPLAY_NAMES[toolId] ?? toolId;
+  const name = getAIToolDisplayName(toolId);
   const statusText = STATUS_CONFIG[status].title;
   return status === 'done' ? name : `${name} - ${statusText}`;
 }

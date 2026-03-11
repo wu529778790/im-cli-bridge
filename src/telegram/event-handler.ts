@@ -142,7 +142,7 @@ export function setupTelegramHandlers(
     }
 
     const sessionId = convId
-      ? sessionManager.getSessionIdForConv(userId, convId)
+      ? sessionManager.getSessionIdForConv(userId, convId, config.aiCommand)
       : undefined;
     log.info(
       `Running ${config.aiCommand} for user ${userId}, sessionId=${sessionId ?? "new"}`,

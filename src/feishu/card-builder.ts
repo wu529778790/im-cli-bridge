@@ -4,7 +4,7 @@
  */
 
 import { MAX_STREAMING_CONTENT_LENGTH, MAX_FEISHU_MESSAGE_LENGTH } from '../constants.js';
-import { splitLongContent as sharedSplitLongContent, truncateText } from '../shared/utils.js';
+import { splitLongContent as sharedSplitLongContent, truncateText, getAIToolDisplayName } from '../shared/utils.js';
 
 export type CardStatus = 'processing' | 'thinking' | 'streaming' | 'done' | 'error';
 
@@ -13,6 +13,8 @@ interface CardOptions {
   status: CardStatus;
   note?: string;
   thinking?: string;
+  /** AI 工具标识（claude/cursor/codex），用于生成标题 */
+  toolName?: string;
 }
 
 const HEADER_TEMPLATES: Record<CardStatus, string> = {
@@ -23,13 +25,15 @@ const HEADER_TEMPLATES: Record<CardStatus, string> = {
   error: 'red',
 };
 
-const HEADER_TITLES: Record<CardStatus, string> = {
-  processing: 'Claude Code - 处理中...',
-  thinking: 'Claude Code - 思考中...',
-  streaming: 'Claude Code',
-  done: 'Claude Code',
-  error: 'Claude Code - 错误',
-};
+function getHeaderTitle(status: CardStatus, toolName: string): string {
+  switch (status) {
+    case 'processing': return `${toolName} - 处理中...`;
+    case 'thinking':   return `${toolName} - 思考中...`;
+    case 'streaming':  return toolName;
+    case 'done':       return toolName;
+    case 'error':      return `${toolName} - 错误`;
+  }
+}
 
 export function truncateForStreaming(text: string): string {
   return truncateText(text, MAX_STREAMING_CONTENT_LENGTH);
@@ -40,7 +44,8 @@ export function buildCardV2Object(
   options: CardOptions,
   cardId?: string
 ): Record<string, unknown> {
-  const { content, status, note, thinking } = options;
+  const { content, status, note, thinking, toolName: rawToolName } = options;
+  const toolName = getAIToolDisplayName(rawToolName ?? 'claude');
 
   const elements: unknown[] = [];
 
@@ -94,7 +99,7 @@ export function buildCardV2Object(
     },
     header: {
       template: HEADER_TEMPLATES[status],
-      title: { tag: 'plain_text', content: HEADER_TITLES[status] },
+      title: { tag: 'plain_text', content: getHeaderTitle(status, toolName) },
     },
     body: {
       direction: 'vertical',

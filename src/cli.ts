@@ -196,7 +196,7 @@ function showHelp(exitCode = 0): void {
 命令:
   start    后台运行服务
   stop     停止后台服务
-  init     配置向导（首次或追加配置，会覆盖已有 config.json）
+  init     配置向导（首次或追加配置，保留已有平台配置并更新 config.json）
   dev      前台运行（调试模式），Ctrl+C 停止
 
 选项:

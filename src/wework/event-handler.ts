@@ -78,7 +78,7 @@ export function setupWeWorkHandlers(
       return;
     }
 
-    const sessionId = convId ? sessionManager.getSessionIdForConv(userId, convId) : undefined;
+    const sessionId = convId ? sessionManager.getSessionIdForConv(userId, convId, config.aiCommand) : undefined;
     log.info(`[handleAIRequest] Running ${config.aiCommand} for user ${userId}, sessionId=${sessionId ?? 'new'}`);
 
     const toolId = config.aiCommand;

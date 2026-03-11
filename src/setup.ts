@@ -32,9 +32,12 @@ interface ExistingConfig {
     wework?: { enabled?: boolean; corpId?: string; secret?: string; allowedUserIds?: string[] };
   };
   env?: Record<string, string>;
-  claudeWorkDir?: string;
-  claudeSkipPermissions?: boolean;
   aiCommand?: string;
+  tools?: {
+    claude?: { cliPath?: string; workDir?: string; skipPermissions?: boolean; timeoutMs?: number; model?: string };
+    cursor?: { cliPath?: string; skipPermissions?: boolean };
+    codex?: { cliPath?: string; workDir?: string; skipPermissions?: boolean; proxy?: string };
+  };
 }
 
 function loadExistingConfig(): ExistingConfig | null {
@@ -88,6 +91,17 @@ function printManualInstructions(configPath: string): void {
   console.log("  3. 填入以下内容（替换为你的 Token/App ID 和用户 ID）：");
   console.log("");
   console.log(`{
+  "aiCommand": "claude",
+  "tools": {
+    "claude": {
+      "cliPath": "claude",
+      "workDir": "${process.cwd().replace(/\\/g, "/")}",
+      "skipPermissions": true,
+      "timeoutMs": 600000
+    },
+    "cursor": { "cliPath": "agent", "skipPermissions": true },
+    "codex": { "cliPath": "codex", "workDir": "${process.cwd().replace(/\\/g, "/")}", "skipPermissions": true, "proxy": "http://127.0.0.1:7890" }
+  },
   "platforms": {
     "telegram": {
       "enabled": true,
@@ -103,7 +117,6 @@ function printManualInstructions(configPath: string): void {
     "wework": {
       "enabled": false,
       "corpId": "你的企业微信 Corp ID（可选）",
-      "agentId": "你的企业微信 Agent ID（可选）",
       "secret": "你的企业微信 Secret（可选）",
       "allowedUserIds": ["允许访问的企业微信用户 ID（可选）"]
     },
@@ -111,13 +124,10 @@ function printManualInstructions(configPath: string): void {
       "enabled": false,
       "appId": "你的微信 App ID（可选，测试中）",
       "appSecret": "你的微信 App Secret（可选）",
-      "wsUrl": "AGP WebSocket URL（可选，默认使用官方服务）",
+      "wsUrl": "AGP WebSocket URL（可选）",
       "allowedUserIds": ["允许访问的微信用户 ID（可选）"]
     }
-  },
-  "claudeWorkDir": "${process.cwd().replace(/\\/g, "/")}",
-  "claudeSkipPermissions": true,
-  "aiCommand": "claude"
+  }
 }`);
   console.log("");
   console.log("提示：至少需要配置 Telegram、Feishu、WeChat 或 WeWork 其中一个平台");
@@ -136,6 +146,15 @@ function loadClaudeSettings(): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+/** 检查 ~/.claude/settings.json 中是否已有 API Key 或 Auth Token（env 内或顶层） */
+function hasClaudeCredsInSettings(): boolean {
+  const s = loadClaudeSettings();
+  const env = s?.env as Record<string, unknown> | undefined;
+  const fromEnv = !!(env?.ANTHROPIC_API_KEY || env?.ANTHROPIC_AUTH_TOKEN);
+  const fromTop = !!(s?.ANTHROPIC_API_KEY || s?.ANTHROPIC_AUTH_TOKEN);
+  return fromEnv || fromTop;
 }
 
 function printManualClaudeInstructions(): void {
@@ -564,11 +583,23 @@ export async function runInteractiveSetup(): Promise<boolean> {
       type: "text",
       name: "workDir",
       message: "工作目录",
-      initial: existing?.claudeWorkDir ?? process.cwd(),
+      initial: existing?.tools?.claude?.workDir ?? process.cwd(),
     },
   );
 
   const commonResp = await prompts(commonPrompts, { onCancel });
+  const codexProxyResp =
+    commonResp.aiCommand === "codex"
+      ? await prompts(
+          {
+            type: "text",
+            name: "codexProxy",
+            message: "Codex 代理（可选，如 http://127.0.0.1:7890）",
+            initial: existing?.tools?.codex?.proxy ?? "",
+          },
+          { onCancel }
+        )
+      : {};
 
   // 如果选择 Claude，询问 API 配置
   let claudeApiConfig: {
@@ -580,13 +611,14 @@ export async function runInteractiveSetup(): Promise<boolean> {
     opusModel?: string;
   } = {};
   if (commonResp.aiCommand === "claude") {
-    // 检查是否已配置 API 密钥（环境变量或配置文件）
+    // 检查是否已配置 API 密钥（环境变量、open-im config、或 ~/.claude/settings.json）
     const hasExistingApiKey = !!(
       process.env.ANTHROPIC_API_KEY ||
       process.env.ANTHROPIC_AUTH_TOKEN ||
       process.env.CLAUDE_CODE_OAUTH_TOKEN ||
       existing?.env?.ANTHROPIC_API_KEY ||
-      existing?.env?.ANTHROPIC_AUTH_TOKEN
+      existing?.env?.ANTHROPIC_AUTH_TOKEN ||
+      hasClaudeCredsInSettings()
     );
 
     if (hasExistingApiKey) {
@@ -679,42 +711,88 @@ export async function runInteractiveSetup(): Promise<boolean> {
   const base = existing
     ? (JSON.parse(JSON.stringify(existing)) as ExistingConfig)
     : null;
-  const { telegramBotToken: _, feishuAppId: __, feishuAppSecret: ___, ...baseRest } = (base ?? {}) as Record<string, unknown>;
+  const {
+    telegramBotToken: _,
+    feishuAppId: __,
+    feishuAppSecret: ___,
+    claudeWorkDir: _cwd,
+    claudeSkipPermissions: _csp,
+    claudeCliPath: _ccp,
+    cursorCliPath: _curp,
+    claudeTimeoutMs: _ctm,
+    claudeModel: _cm,
+    ...baseRest
+  } = (base ?? {}) as Record<string, unknown>;
 
-  // 构建 env 配置（用于 Claude API）
-  const envConfig: Record<string, string> = { ...(base?.env ?? {}) };
-  if (claudeApiConfig.apiKey) {
-    // 检测是 API_KEY 还是 AUTH_TOKEN（UUID 格式）
-    const apiKey = claudeApiConfig.apiKey.trim();
-    if (apiKey.startsWith('sk-')) {
-      envConfig.ANTHROPIC_API_KEY = apiKey;
-    } else {
-      envConfig.ANTHROPIC_AUTH_TOKEN = apiKey;
+  // Claude API 凭证不存入 config.json，仅从 ~/.claude/settings.json 或环境变量读取
+  const ANTHROPIC_KEYS = [
+    "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL",
+  ];
+  const envConfig: Record<string, string> = {};
+  for (const [k, v] of Object.entries(base?.env ?? {})) {
+    if (v != null && typeof v === "string" && !ANTHROPIC_KEYS.includes(k)) {
+      envConfig[k] = v;
     }
   }
-  if (claudeApiConfig.baseUrl) {
-    envConfig.ANTHROPIC_BASE_URL = claudeApiConfig.baseUrl.trim();
+  // 若用户在向导中输入了 Claude 配置，写入 ~/.claude/settings.json（与 Claude Code 共用）
+  if (claudeApiConfig.apiKey || claudeApiConfig.baseUrl || claudeApiConfig.model) {
+    const claudeExisting = loadClaudeSettings();
+    const claudeEnv: Record<string, string> = { ...((claudeExisting.env ?? {}) as Record<string, string>) };
+    if (claudeApiConfig.apiKey?.trim()) {
+      const key = claudeApiConfig.apiKey.trim();
+      if (key.startsWith("sk-")) {
+        claudeEnv.ANTHROPIC_API_KEY = key;
+        delete claudeEnv.ANTHROPIC_AUTH_TOKEN;
+      } else {
+        claudeEnv.ANTHROPIC_AUTH_TOKEN = key;
+        delete claudeEnv.ANTHROPIC_API_KEY;
+      }
+    }
+    if (claudeApiConfig.baseUrl?.trim()) claudeEnv.ANTHROPIC_BASE_URL = claudeApiConfig.baseUrl.trim();
+    if (claudeApiConfig.model?.trim()) claudeEnv.ANTHROPIC_MODEL = claudeApiConfig.model.trim();
+    if (claudeApiConfig.haikuModel?.trim()) claudeEnv.ANTHROPIC_DEFAULT_HAIKU_MODEL = claudeApiConfig.haikuModel.trim();
+    if (claudeApiConfig.sonnetModel?.trim()) claudeEnv.ANTHROPIC_DEFAULT_SONNET_MODEL = claudeApiConfig.sonnetModel.trim();
+    if (claudeApiConfig.opusModel?.trim()) claudeEnv.ANTHROPIC_DEFAULT_OPUS_MODEL = claudeApiConfig.opusModel.trim();
+    const claudeDir = dirname(CLAUDE_SETTINGS_PATH);
+    if (!existsSync(claudeDir)) mkdirSync(claudeDir, { recursive: true });
+    writeFileSync(CLAUDE_SETTINGS_PATH, JSON.stringify({ ...claudeExisting, env: claudeEnv }, null, 2), "utf-8");
+    console.log("\n✓ Claude API 配置已保存到", CLAUDE_SETTINGS_PATH);
   }
-  if (claudeApiConfig.model) {
-    envConfig.ANTHROPIC_MODEL = claudeApiConfig.model.trim();
-  }
-  if (claudeApiConfig.haikuModel) {
-    envConfig.ANTHROPIC_DEFAULT_HAIKU_MODEL = claudeApiConfig.haikuModel.trim();
-  }
-  if (claudeApiConfig.sonnetModel) {
-    envConfig.ANTHROPIC_DEFAULT_SONNET_MODEL = claudeApiConfig.sonnetModel.trim();
-  }
-  if (claudeApiConfig.opusModel) {
-    envConfig.ANTHROPIC_DEFAULT_OPUS_MODEL = claudeApiConfig.opusModel.trim();
-  }
+
+  const workDir = (commonResp.workDir || process.cwd()).trim();
+  const aiCmd = commonResp.aiCommand ?? base?.aiCommand ?? "claude";
+  const baseTools = base?.tools ?? {};
 
   const out: Record<string, unknown> = {
     ...baseRest,
     platforms: { ...(base?.platforms ?? {}) },
     env: Object.keys(envConfig).length > 0 ? envConfig : undefined,
-    claudeWorkDir: (commonResp.workDir || process.cwd()).trim(),
-    claudeSkipPermissions: base?.claudeSkipPermissions ?? true,
-    aiCommand: commonResp.aiCommand ?? base?.aiCommand ?? "claude",
+    aiCommand: aiCmd,
+    tools: {
+      claude: {
+        ...baseTools.claude,
+        cliPath: baseTools.claude?.cliPath ?? "claude",
+        workDir,
+        skipPermissions: baseTools.claude?.skipPermissions ?? true,
+        timeoutMs: baseTools.claude?.timeoutMs ?? 600000,
+      },
+      cursor: {
+        ...baseTools.cursor,
+        cliPath: baseTools.cursor?.cliPath ?? "agent",
+        skipPermissions: baseTools.cursor?.skipPermissions ?? baseTools.claude?.skipPermissions ?? true,
+      },
+      codex: {
+        ...baseTools.codex,
+        cliPath: baseTools.codex?.cliPath ?? "codex",
+        workDir: workDir,
+        skipPermissions: baseTools.codex?.skipPermissions ?? baseTools.claude?.skipPermissions ?? true,
+        proxy:
+          commonResp.aiCommand === "codex"
+            ? (codexProxyResp as { codexProxy?: string }).codexProxy?.trim() || undefined
+            : baseTools.codex?.proxy,
+      },
+    },
   };
 
   if (selectedPlatforms.includes("telegram")) {

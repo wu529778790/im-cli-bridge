@@ -32,6 +32,8 @@ export interface RunOptions {
   model?: string;
   chatId?: string;
   hookPort?: number;
+  /** Codex 专用：HTTP/HTTPS 代理地址，如 http://127.0.0.1:7890 */
+  proxy?: string;
 }
 
 export interface RunHandle {

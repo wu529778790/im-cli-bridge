@@ -4,9 +4,9 @@ try {
   /* dotenv optional */
 }
 
-import { readFileSync, accessSync, constants } from 'node:fs';
+import { readFileSync, writeFileSync, accessSync, constants, existsSync, mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { join, isAbsolute } from 'node:path';
+import { join, dirname, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
 import type { LogLevel } from './logger.js';
 import { APP_HOME } from './constants.js';
@@ -44,6 +44,10 @@ export interface Config {
 
   aiCommand: AiCommand;
   claudeCliPath: string;
+  cursorCliPath: string;
+  codexCliPath: string;
+  /** Codex 访问 chatgpt.com 的代理（如 http://127.0.0.1:7890） */
+  codexProxy?: string;
   claudeWorkDir: string;
   allowedBaseDirs: string[];
   claudeSkipPermissions: boolean;
@@ -118,14 +122,35 @@ interface FilePlatformWework {
   allowedUserIds?: string[];
 }
 
+interface FileToolClaude {
+  cliPath?: string;
+  workDir?: string;
+  skipPermissions?: boolean;
+  timeoutMs?: number;
+  model?: string;
+}
+
+interface FileToolCursor {
+  cliPath?: string;
+  /** 是否跳过权限确认（默认 true，与 tools.claude 共用权限服务器） */
+  skipPermissions?: boolean;
+}
+
+interface FileToolCodex {
+  cliPath?: string;
+  workDir?: string;
+  /** 是否跳过权限确认（默认 true） */
+  skipPermissions?: boolean;
+  /** HTTP/HTTPS 代理，用于访问 chatgpt.com（如 http://127.0.0.1:7890） */
+  proxy?: string;
+}
+
 interface FileConfig {
-  // 旧版扁平字段（兼容）
   telegramBotToken?: string;
   feishuAppId?: string;
   feishuAppSecret?: string;
   allowedUserIds?: string[];
 
-  // 新版分块字段
   platforms?: {
     telegram?: FilePlatformTelegram;
     feishu?: FilePlatformFeishu;
@@ -135,13 +160,13 @@ interface FileConfig {
 
   env?: Record<string, string>;
   aiCommand?: string;
-  claudeCliPath?: string;
-  claudeWorkDir?: string;
+  tools?: {
+    claude?: FileToolClaude;
+    cursor?: FileToolCursor;
+    codex?: FileToolCodex;
+  };
   allowedBaseDirs?: string[];
-  claudeSkipPermissions?: boolean;
   defaultPermissionMode?: 'ask' | 'accept-edits' | 'plan' | 'yolo';
-  claudeTimeoutMs?: number;
-  claudeModel?: string;
   hookPort?: number;
   logDir?: string;
   logLevel?: LogLevel;
@@ -149,10 +174,113 @@ interface FileConfig {
 }
 
 const CONFIG_PATH = join(APP_HOME, 'config.json');
+const CODEX_AUTH_PATHS = [
+  join(homedir(), '.codex', 'auth.json'),
+  join(homedir(), '.config', 'codex', 'auth.json'),
+  join(homedir(), 'AppData', 'Roaming', 'codex', 'auth.json'),
+];
+
+const OLD_ROOT_KEYS = [
+  'claudeWorkDir', 'claudeSkipPermissions', 'claudeCliPath', 'cursorCliPath',
+  'claudeTimeoutMs', 'claudeModel',
+] as const;
+
+function hasOldConfigFormat(raw: Record<string, unknown>): boolean {
+  const hasOld = OLD_ROOT_KEYS.some((k) => raw[k] !== undefined && raw[k] !== null);
+  const hasNew = raw.tools && typeof raw.tools === 'object' && (raw.tools as Record<string, unknown>).claude;
+  return !!hasOld && !hasNew;
+}
+
+function hasCodexAuth(): boolean {
+  if (process.env.OPENAI_API_KEY) return true;
+  return CODEX_AUTH_PATHS.some((p) => {
+    try {
+      return existsSync(p) && readFileSync(p, 'utf-8').trim().length > 0;
+    } catch {
+      return false;
+    }
+  });
+}
+
+function migrateToNewConfigFormat(raw: Record<string, unknown>): Record<string, unknown> {
+  const tools = (raw.tools as Record<string, unknown>) || {};
+  const tc = (tools.claude as Record<string, unknown>) || {};
+  const tcur = (tools.cursor as Record<string, unknown>) || {};
+  const tcod = (tools.codex as Record<string, unknown>) || {};
+
+  const migrated: Record<string, unknown> = { ...raw };
+  migrated.tools = {
+    claude: {
+      ...tc,
+      cliPath: tc.cliPath ?? raw.claudeCliPath ?? 'claude',
+      workDir: tc.workDir ?? raw.claudeWorkDir ?? process.cwd(),
+      skipPermissions: tc.skipPermissions ?? raw.claudeSkipPermissions ?? true,
+      timeoutMs: tc.timeoutMs ?? raw.claudeTimeoutMs ?? 600000,
+      model: tc.model ?? raw.claudeModel,
+    },
+    cursor: {
+      ...tcur,
+      cliPath: tcur.cliPath ?? raw.cursorCliPath ?? 'agent',
+      skipPermissions: tcur.skipPermissions ?? raw.claudeSkipPermissions ?? true,
+    },
+    codex: {
+      ...tcod,
+      cliPath: tcod.cliPath ?? 'codex',
+      workDir: tcod.workDir ?? raw.claudeWorkDir ?? process.cwd(),
+      skipPermissions: tcod.skipPermissions ?? raw.claudeSkipPermissions ?? true,
+      proxy: tcod.proxy,
+    },
+  };
+
+  for (const k of OLD_ROOT_KEYS) {
+    delete migrated[k];
+  }
+  return migrated;
+}
+
+/** 确保 cursor/codex 有 skipPermissions（缺失时从 claude 继承并写回） */
+function ensureToolsSkipPermissions(raw: Record<string, unknown>): boolean {
+  const tools = raw.tools as Record<string, unknown> | undefined;
+  if (!tools || typeof tools !== 'object') return false;
+  const tc = (tools.claude as Record<string, unknown>) || {};
+  const fallback = tc.skipPermissions ?? true;
+  let changed = false;
+  if (tools.cursor && typeof tools.cursor === 'object') {
+    const cur = tools.cursor as Record<string, unknown>;
+    if (cur.skipPermissions === undefined) {
+      cur.skipPermissions = fallback;
+      changed = true;
+    }
+  }
+  if (tools.codex && typeof tools.codex === 'object') {
+    const cod = tools.codex as Record<string, unknown>;
+    if (cod.skipPermissions === undefined) {
+      cod.skipPermissions = fallback;
+      changed = true;
+    }
+  }
+  if (changed) {
+    const dir = dirname(CONFIG_PATH);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(CONFIG_PATH, JSON.stringify(raw, null, 2), 'utf-8');
+  }
+  return changed;
+}
 
 function loadFileConfig(): FileConfig {
   try {
-    return JSON.parse(readFileSync(CONFIG_PATH, 'utf-8'));
+    const raw = JSON.parse(readFileSync(CONFIG_PATH, 'utf-8')) as Record<string, unknown>;
+    if (!raw || typeof raw !== 'object') return {};
+
+    if (hasOldConfigFormat(raw)) {
+      const migrated = migrateToNewConfigFormat(raw);
+      const dir = dirname(CONFIG_PATH);
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      writeFileSync(CONFIG_PATH, JSON.stringify(migrated, null, 2), 'utf-8');
+      return migrated as FileConfig;
+    }
+    ensureToolsSkipPermissions(raw);
+    return raw as FileConfig;
   } catch {
     return {};
   }
@@ -358,10 +486,41 @@ export function loadConfig(): Config {
       ? parseCommaSeparated(process.env.WEWORK_ALLOWED_USER_IDS)
       : fileWework?.allowedUserIds ?? allowedUserIds;
 
-  // 5. AI / 工作目录 / 安全配置
+  // 5. AI / 工作目录 / 安全配置（从 tools 读取）
   const aiCommand = (process.env.AI_COMMAND ?? file.aiCommand ?? 'claude') as AiCommand;
-  const claudeCliPath = process.env.CLAUDE_CLI_PATH ?? file.claudeCliPath ?? 'claude';
-  const claudeWorkDir = process.env.CLAUDE_WORK_DIR ?? file.claudeWorkDir ?? process.cwd();
+  const tc = file.tools?.claude ?? {};
+  const tcur = file.tools?.cursor ?? {};
+  const tcod = file.tools?.codex ?? {};
+
+  const claudeCliPath = process.env.CLAUDE_CLI_PATH ?? tc.cliPath ?? 'claude';
+  const codexProxy = process.env.CODEX_PROXY ?? tcod.proxy;
+  let codexCliPath = process.env.CODEX_CLI_PATH ?? tcod.cliPath ?? 'codex';
+  if (process.platform === 'win32' && codexCliPath === 'codex') {
+    const npmPaths = [
+      join(process.env.APPDATA || '', 'npm', 'codex.cmd'),
+      join(process.env.LOCALAPPDATA || '', 'npm', 'codex.cmd'),
+    ];
+    for (const p of npmPaths) {
+      try {
+        accessSync(p, constants.F_OK);
+        codexCliPath = p;
+        break;
+      } catch {
+        /* 尝试下一个路径 */
+      }
+    }
+  }
+  let cursorCliPath = process.env.CURSOR_CLI_PATH ?? tcur.cliPath ?? 'agent';
+  if (process.platform === 'win32' && cursorCliPath === 'agent') {
+    const winAgentPath = join(process.env.LOCALAPPDATA || '', 'cursor-agent', 'agent.cmd');
+    try {
+      accessSync(winAgentPath, constants.F_OK);
+      cursorCliPath = winAgentPath;
+    } catch {
+      /* 使用默认 agent */
+    }
+  }
+  const claudeWorkDir = process.env.CLAUDE_WORK_DIR ?? tc.workDir ?? process.cwd();
 
   const allowedBaseDirs =
     process.env.ALLOWED_BASE_DIRS !== undefined
@@ -369,17 +528,21 @@ export function loadConfig(): Config {
       : file.allowedBaseDirs ?? [];
   if (allowedBaseDirs.length === 0) allowedBaseDirs.push(claudeWorkDir);
 
-  const claudeSkipPermissions =
-    process.env.CLAUDE_SKIP_PERMISSIONS !== undefined
-      ? process.env.CLAUDE_SKIP_PERMISSIONS === 'true'
-      : file.claudeSkipPermissions ?? true;
+  // 按当前 AI 工具选择 skipPermissions：claude 用 tools.claude，cursor 用 tools.cursor（fallback claude），codex 用 tools.codex（fallback claude）
+  const claudeSkipPermissions = (() => {
+    if (process.env.CLAUDE_SKIP_PERMISSIONS !== undefined) return process.env.CLAUDE_SKIP_PERMISSIONS === 'true';
+    if (process.env.CURSOR_SKIP_PERMISSIONS !== undefined && aiCommand === 'cursor') return process.env.CURSOR_SKIP_PERMISSIONS === 'true';
+    if (aiCommand === 'cursor') return tcur.skipPermissions ?? tc.skipPermissions ?? true;
+    if (aiCommand === 'codex') return tcod.skipPermissions ?? tc.skipPermissions ?? true;
+    return tc.skipPermissions ?? true;
+  })();
 
   const defaultPermissionMode = (file.defaultPermissionMode ?? 'ask') as 'ask' | 'accept-edits' | 'plan' | 'yolo';
 
   const claudeTimeoutMs =
     process.env.CLAUDE_TIMEOUT_MS !== undefined
       ? parseInt(process.env.CLAUDE_TIMEOUT_MS, 10) || 600000
-      : file.claudeTimeoutMs ?? 600000;
+      : tc.timeoutMs ?? 600000;
 
   const hookPort =
     process.env.HOOK_PORT !== undefined
@@ -429,7 +592,91 @@ export function loadConfig(): Config {
     }
   }
 
-  // 7. 校验 Claude CLI（SDK 模式不需要 CLI）
+  // 7. 校验 Codex CLI（使用 codex 时）
+  if (aiCommand === 'codex') {
+    if (isAbsolute(codexCliPath) || codexCliPath.includes('/') || codexCliPath.includes('\\')) {
+      try {
+        accessSync(codexCliPath, constants.F_OK);
+      } catch {
+        throw new Error(`Codex CLI 不可执行: ${codexCliPath}`);
+      }
+    } else {
+      const checkCommand = process.platform === 'win32' ? 'where' : 'which';
+      try {
+        execFileSync(checkCommand, [codexCliPath], {
+          stdio: 'pipe',
+          windowsHide: process.platform === 'win32',
+        });
+      } catch {
+        const installGuide = [
+          '',
+          '━━━ Codex CLI 未安装 ━━━',
+          '',
+          '使用 Codex 需要先安装 OpenAI Codex CLI。',
+          '',
+          '安装方法：',
+          '',
+          '  npm install -g @openai/codex',
+          '',
+          '或: brew install --cask codex',
+          '',
+          '安装后运行 codex login 登录，并用 codex exec --help 验证。',
+          '',
+        ].join('\n');
+        throw new Error(installGuide);
+      }
+    }
+    if (!hasCodexAuth()) {
+      console.warn(
+        '\n⚠ Codex 模式：未检测到 OPENAI_API_KEY 或 Codex 登录态。首次使用请先运行 codex login，\n' +
+        '  或在 ~/.open-im/config.json 的 env 中添加 "OPENAI_API_KEY": "你的 API Key"。\n'
+      );
+    }
+  }
+
+  // 8. 校验 Cursor CLI（使用 cursor 时）
+  if (aiCommand === 'cursor') {
+    if (isAbsolute(cursorCliPath) || cursorCliPath.includes('/') || cursorCliPath.includes('\\')) {
+      try {
+        accessSync(cursorCliPath, constants.F_OK);
+      } catch {
+        throw new Error(`Cursor CLI 不可执行: ${cursorCliPath}`);
+      }
+    } else {
+      const checkCommand = process.platform === 'win32' ? 'where' : 'which';
+      try {
+        execFileSync(checkCommand, [cursorCliPath], {
+          stdio: 'pipe',
+          windowsHide: process.platform === 'win32',
+        });
+      } catch {
+        const installGuide = [
+        '',
+        '━━━ Cursor CLI 未安装 ━━━',
+        '',
+        '使用 Cursor 需要先安装 Cursor Agent CLI。',
+        '',
+        '安装方法：',
+        '',
+        '  macOS/Linux: curl https://cursor.com/install -fsSL | bash',
+        '  Windows: irm \'https://cursor.com/install?win32=true\' | iex',
+        '',
+        '安装后运行 agent --version 验证。',
+        '',
+      ].join('\n');
+      throw new Error(installGuide);
+      }
+    }
+    // 提示 Cursor 认证：需 agent login 或 CURSOR_API_KEY
+    if (!process.env.CURSOR_API_KEY) {
+      console.warn(
+        '\n⚠ Cursor 模式：未检测到 CURSOR_API_KEY。首次使用请先运行 agent login，\n' +
+        '  或在 ~/.open-im/config.json 的 env 中添加 "CURSOR_API_KEY": "你的 API Key"。\n'
+      );
+    }
+  }
+
+  // 9. 校验 Claude CLI（SDK 模式不需要 CLI）
   if (aiCommand === 'claude' && !useSdkMode) {
     if (isAbsolute(claudeCliPath) || claudeCliPath.includes('/') || claudeCliPath.includes('\\')) {
       try {
@@ -441,7 +688,10 @@ export function loadConfig(): Config {
       // 检查命令是否存在（Windows 用 where，Unix 用 which）
       const checkCommand = process.platform === 'win32' ? 'where' : 'which';
       try {
-        execFileSync(checkCommand, [claudeCliPath], { stdio: 'pipe' });
+        execFileSync(checkCommand, [claudeCliPath], {
+          stdio: 'pipe',
+          windowsHide: process.platform === 'win32',
+        });
       } catch {
         const installGuide = [
           '',
@@ -457,8 +707,9 @@ export function loadConfig(): Config {
           '  1. 访问 https://claude.ai/download',
           '  2. 下载并安装 Claude Code',
           '',
-          '安装后重新运行：',
-          '  open-im run',
+          '安装后重新运行，例如：',
+          '  open-im dev',
+          '  或 open-im start',
           '',
         ].join('\n');
         throw new Error(installGuide);
@@ -546,12 +797,15 @@ export function loadConfig(): Config {
     weworkAllowedUserIds,
     aiCommand,
     claudeCliPath,
+    cursorCliPath,
+    codexCliPath,
+    codexProxy,
     claudeWorkDir,
     allowedBaseDirs,
     claudeSkipPermissions,
     defaultPermissionMode,
     claudeTimeoutMs,
-    claudeModel: process.env.CLAUDE_MODEL ?? file.claudeModel,
+    claudeModel: process.env.CLAUDE_MODEL ?? tc.model,
     hookPort,
     logDir,
     logLevel,

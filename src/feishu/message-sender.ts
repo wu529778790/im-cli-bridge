@@ -4,6 +4,7 @@ import { createLogger } from '../logger.js';
 import { splitLongContent } from '../shared/utils.js';
 import { MAX_FEISHU_MESSAGE_LENGTH } from '../constants.js';
 import { buildCardV2, splitLongContent as cardSplitLongContent, truncateForStreaming } from './card-builder.js';
+import { getAIToolDisplayName } from '../shared/utils.js';
 import {
   createCard,
   enableStreaming,
@@ -31,14 +32,8 @@ const STATUS_CONFIG: Record<MessageStatus, { icon: string; template: string; tit
   error: { icon: '❌', template: 'red', title: '错误' },
 };
 
-const TOOL_DISPLAY_NAMES: Record<string, string> = {
-  claude: 'Claude Code',
-  codex: 'Codex',
-  cursor: 'Cursor',
-};
-
 function getToolTitle(toolId: string, status: MessageStatus): string {
-  const name = TOOL_DISPLAY_NAMES[toolId] ?? toolId;
+  const name = getAIToolDisplayName(toolId);
   const statusText = STATUS_CONFIG[status].title;
   return status === 'done' ? name : `${name} - ${statusText}`;
 }
@@ -330,7 +325,7 @@ export async function sendThinkingMessage(
 /** CardKit 打字机：发送思考卡片并返回 cardId + messageId */
 export async function sendThinkingCard(chatId: string, toolId = 'claude'): Promise<CardHandle> {
   const initialCard = buildCardV2(
-    { content: '正在启动...', status: 'processing', note: '请稍候' }
+    { content: '正在启动...', status: 'processing', note: '请稍候', toolName: toolId }
   );
   const cardId = await createCard(initialCard);
 
@@ -339,8 +334,9 @@ export async function sendThinkingCard(chatId: string, toolId = 'claude'): Promi
     sendCardMessage(chatId, cardId),
   ]);
 
+  const toolDisplayName = getAIToolDisplayName(toolId);
   const cardWithButton = buildCardV2(
-    { content: '等待 Claude 响应...', status: 'processing', note: '请稍候' },
+    { content: `等待 ${toolDisplayName} 响应...`, status: 'processing', note: '请稍候', toolName: toolId },
     cardId
   );
   await updateCardFull(cardId, cardWithButton);
@@ -364,21 +360,22 @@ export async function sendFinalCards(
   cardId: string,
   fullContent: string,
   note: string,
-  thinking?: string
+  thinking?: string,
+  toolId = 'claude'
 ): Promise<void> {
   const parts = cardSplitLongContent(fullContent);
 
   markCompleted(cardId);
   await disableStreaming(cardId);
 
-  const finalCard = buildCardV2({ content: parts[0], status: 'done', note, thinking }, cardId);
+  const finalCard = buildCardV2({ content: parts[0], status: 'done', note, thinking, toolName: toolId }, cardId);
   await updateCardFull(cardId, finalCard);
 
   const client = getClient();
   for (let i = 1; i < parts.length; i++) {
     const overflowContent = `${parts[i]}\n\n_*(续 ${i + 1}/${parts.length})*_`;
     const overflowCard = createFeishuCard(
-      getToolTitle('claude', 'done'),
+      getToolTitle(toolId, 'done'),
       overflowContent,
       'done',
       note

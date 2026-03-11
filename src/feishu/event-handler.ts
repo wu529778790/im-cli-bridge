@@ -192,7 +192,7 @@ export function setupFeishuHandlers(
     }
 
     log.info(`[handleAIRequest] Adapter found, getting session...`);
-    const sessionId = convId ? sessionManager.getSessionIdForConv(userId, convId) : undefined;
+    const sessionId = convId ? sessionManager.getSessionIdForConv(userId, convId, config.aiCommand) : undefined;
     log.info(`[handleAIRequest] Running ${config.aiCommand} for user ${userId}, sessionId=${sessionId ?? 'new'}`);
 
     const toolId = config.aiCommand;
@@ -226,7 +226,7 @@ export function setupFeishuHandlers(
         throttleMs: CARDKIT_THROTTLE_MS,
         streamUpdate,
         sendComplete: async (content, note, thinkingText) => {
-          await sendFinalCards(chatId, msgId, cardId, content, note ?? '', thinkingText);
+          await sendFinalCards(chatId, msgId, cardId, content, note ?? '', thinkingText, toolId);
         },
         sendError: async (error) => {
           await sendErrorCard(cardId, error);
@@ -239,7 +239,7 @@ export function setupFeishuHandlers(
           runningTasks.set(taskKey, state);
         },
         onThinkingToText: (content) => {
-          const resetCard = buildCardV2({ content: content || '...', status: 'streaming' }, cardId);
+          const resetCard = buildCardV2({ content: content || '...', status: 'streaming', toolName: toolId }, cardId);
           updateCardFull(cardId, resetCard).catch((e) =>
             log.warn('Thinking→text transition update failed:', e?.message ?? e)
           );
@@ -363,7 +363,7 @@ export function setupFeishuHandlers(
         runningTasks.delete(taskKey);
         taskInfo.settle();
         taskInfo.handle.abort();
-        const stoppedCard = buildCardV2({ content: stoppedContent, status: 'done', note: '⏹️ 已停止' });
+        const stoppedCard = buildCardV2({ content: stoppedContent, status: 'done', note: '⏹️ 已停止', toolName: taskInfo.toolId });
         disableStreaming(cardId)
           .then(() => updateCardFull(cardId, stoppedCard))
           .catch((e) => log.warn('Stop card update failed:', e?.message ?? e))

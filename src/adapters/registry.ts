@@ -2,6 +2,8 @@ import type { Config } from '../config.js';
 import type { ToolAdapter } from './tool-adapter.interface.js';
 import { ClaudeAdapter } from './claude-adapter.js';
 import { ClaudeSDKAdapter } from './claude-sdk-adapter.js';
+import { CursorAdapter } from './cursor-adapter.js';
+import { CodexAdapter } from './codex-adapter.js';
 
 const adapters = new Map<string, ToolAdapter>();
 
@@ -18,6 +20,12 @@ export function initAdapters(config: Config): void {
         idleTimeoutMs: 2 * 60 * 1000, // 2 minutes
       }));
     }
+  } else if (config.aiCommand === 'cursor') {
+    console.log('🖱️ 使用 Cursor Agent CLI 适配器');
+    adapters.set('cursor', new CursorAdapter(config.cursorCliPath));
+  } else if (config.aiCommand === 'codex') {
+    console.log('📦 使用 Codex CLI 适配器');
+    adapters.set('codex', new CodexAdapter(config.codexCliPath));
   }
 }
 

@@ -5,7 +5,7 @@ import { createLogger } from "../logger.js";
 import {
   splitLongContent,
   truncateText,
-  preprocessMarkdownForTelegram,
+  getAIToolDisplayName,
 } from "../shared/utils.js";
 import { MAX_TELEGRAM_MESSAGE_LENGTH } from "../constants.js";
 import {
@@ -25,14 +25,8 @@ const STATUS_ICONS: Record<MessageStatus, string> = {
   error: "🔴",
 };
 
-const TOOL_DISPLAY_NAMES: Record<string, string> = {
-  claude: "claude-code",
-  codex: "codex",
-  cursor: "cursor",
-};
-
 function getToolTitle(toolId: string, status: MessageStatus): string {
-  const name = TOOL_DISPLAY_NAMES[toolId] ?? toolId;
+  const name = getAIToolDisplayName(toolId);
   if (status === "thinking") return `${name} - 思考中...`;
   if (status === "error") return `${name} - 错误`;
   return name;
@@ -52,12 +46,6 @@ function formatMessage(
   const icon = STATUS_ICONS[status];
   const title = getToolTitle(toolId, status);
 
-  // 在应用 Markdown 格式时，预处理内容以兼容 Telegram
-  let processedContent = content;
-  if (status === "done" || status === "error") {
-    processedContent = preprocessMarkdownForTelegram(content);
-  }
-
   // 计算可用内容长度（预留 header 和 note 空间）
   const headerLength = `${icon} ${title}\n\n`.length;
   const noteLength = note ? `\n\n─────────\n${note}`.length : 0;
@@ -65,7 +53,7 @@ function formatMessage(
     TG_MAX_LENGTH - headerLength - noteLength - RESERVED_LENGTH;
 
   // 确保内容长度不超过限制
-  const text = truncateText(processedContent, Math.max(100, maxContentLength));
+  const text = truncateText(content, Math.max(100, maxContentLength));
   let out = `${icon} ${title}\n\n${text}`;
   if (note) out += `\n\n─────────\n${note}`;
 
@@ -107,7 +95,6 @@ export async function sendThinkingMessage(
   const text = formatMessage("正在思考...", "thinking", "请稍候", toolId);
   const msg = await bot.telegram.sendMessage(Number(chatId), text, {
     ...extra,
-    parse_mode: "Markdown",
   });
   await bot.telegram.editMessageReplyMarkup(
     Number(chatId),
@@ -167,7 +154,7 @@ export async function updateMessage(
       Number(messageId),
       undefined,
       formatted,
-      { ...opts, parse_mode: "Markdown" },
+      opts,
     );
   } catch (err) {
     if (
@@ -206,7 +193,6 @@ export async function sendFinalMessages(
           `(续 ${i + 1}/${parts.length}) ${note}`,
           toolId,
         ),
-        { parse_mode: "Markdown" },
       );
     } catch (err) {
       log.error("Failed to send continuation:", err);

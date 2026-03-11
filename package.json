@@ -9,7 +9,6 @@
   },
   "files": [
     "dist",
-    ".env.example",
     "README.md",
     "LICENSE"
   ],
@@ -45,7 +44,6 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.72",
     "@larksuiteoapi/node-sdk": "^1.59.0",
-    "@wecom/wecom-openclaw-plugin": "^1.0.6",
     "prompts": "^2.4.2",
     "qrcode-terminal": "^0.12.0",
     "telegraf": "^4.16.3",
@@ -56,7 +54,6 @@
     "@types/prompts": "^2.4.9",
     "@types/qrcode-terminal": "^0.12.2",
     "@types/ws": "^8.5.13",
-    "@vitest/coverage-v8": "4.0.18",
     "dotenv": "^16.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0",
