@@ -17,6 +17,10 @@ import {
   sendModeCard,
   createFeishuModeCardReadOnly,
   delayUpdateCard,
+  sendThinkingCard,
+  streamContentUpdate,
+  sendFinalCards,
+  sendErrorCard,
 } from './message-sender.js';
 import { registerPermissionSender, resolvePermissionById } from '../hook/permission-server.js';
 import { setPermissionMode } from '../permission-mode/session-mode.js';
@@ -24,8 +28,10 @@ import { MODE_LABELS } from '../permission-mode/types.js';
 import { CommandHandler } from '../commands/handler.js';
 import { getAdapter } from '../adapters/registry.js';
 import { runAITask, type TaskRunState } from '../shared/ai-task.js';
+import { buildCardV2 } from './card-builder.js';
+import { disableStreaming, updateCardFull, destroySession } from './cardkit-manager.js';
 import { startTaskCleanup } from '../shared/task-cleanup.js';
-import { FEISHU_THROTTLE_MS, IMAGE_DIR } from '../constants.js';
+import { CARDKIT_THROTTLE_MS, IMAGE_DIR } from '../constants.js';
 import { setActiveChatId } from '../shared/active-chats.js';
 import { setChatUser } from '../shared/chat-user-map.js';
 import { createLogger } from '../logger.js';
@@ -190,24 +196,25 @@ export function setupFeishuHandlers(
     log.info(`[handleAIRequest] Running ${config.aiCommand} for user ${userId}, sessionId=${sessionId ?? 'new'}`);
 
     const toolId = config.aiCommand;
-    let msgId: string;
+
+    // 使用 CardKit 打字机效果（80ms 节流，约 12 次/秒，比 patch 5 QPS 更流畅）
+    let cardHandle: { messageId: string; cardId: string };
     try {
-      msgId = await sendThinkingMessage(chatId, replyToMessageId, toolId);
+      cardHandle = await sendThinkingCard(chatId, toolId);
     } catch (err) {
-      log.error('Failed to send thinking message:', err);
+      log.error('Failed to send thinking card:', err);
       return;
     }
 
+    const { messageId: msgId, cardId } = cardHandle;
     const stopTyping = startTypingLoop(chatId);
-    const taskKey = `${userId}:${msgId}`;
+    const taskKey = `${userId}:${cardId}`;
 
-    // 串行化 patch，避免并发导致乱序/闪烁（电报、企微无此问题）
-    let patchChain: Promise<void> = Promise.resolve();
-    const serializedUpdate = (content: string, toolNote?: string) => {
+    const streamUpdate = (content: string, toolNote?: string) => {
       const note = toolNote ? '输出中...\n' + toolNote : '输出中...';
-      patchChain = patchChain
-        .then(() => updateMessage(chatId, msgId, content, 'streaming', note, toolId))
-        .catch((err) => log.debug('Stream update failed (will retry on next update):', err));
+      streamContentUpdate(cardId, content, note).catch((e) =>
+        log.debug('Stream update failed (will retry on next update):', e?.message ?? e)
+      );
     };
 
     await runAITask(
@@ -216,14 +223,13 @@ export function setupFeishuHandlers(
       prompt,
       toolAdapter,
       {
-        throttleMs: FEISHU_THROTTLE_MS,
-        streamUpdate: serializedUpdate,
-        sendComplete: async (content, note) => {
-          // Use sendFinalMessages to handle the final result
-          await sendFinalMessages(chatId, msgId, content, note ?? '', toolId);
+        throttleMs: CARDKIT_THROTTLE_MS,
+        streamUpdate,
+        sendComplete: async (content, note, thinkingText) => {
+          await sendFinalCards(chatId, msgId, cardId, content, note ?? '', thinkingText);
         },
         sendError: async (error) => {
-          await updateMessage(chatId, msgId, `错误：${error}`, 'error', '执行失败', toolId);
+          await sendErrorCard(cardId, error);
         },
         extraCleanup: () => {
           stopTyping();
@@ -231,6 +237,12 @@ export function setupFeishuHandlers(
         },
         onTaskReady: (state) => {
           runningTasks.set(taskKey, state);
+        },
+        onThinkingToText: (content) => {
+          const resetCard = buildCardV2({ content: content || '...', status: 'streaming' }, cardId);
+          updateCardFull(cardId, resetCard).catch((e) =>
+            log.warn('Thinking→text transition update failed:', e?.message ?? e)
+          );
         },
         sendImage: (path) => sendImageReply(chatId, path),
       }
@@ -327,6 +339,40 @@ export function setupFeishuHandlers(
     const userId = event?.sender?.sender_id?.open_id ?? event?.operator?.open_id ?? '';
 
     log.info(`[handleCardAction] chatId=${chatId}, userId=${userId}, actionValue=${JSON.stringify(actionValue)}`);
+
+    // 处理 CardKit 停止按钮
+    type StopAction = { action?: string; card_id?: string };
+    let actionData: StopAction | null = null;
+    try {
+      let parsed: unknown = actionValue;
+      if (typeof parsed === 'string') {
+        parsed = JSON.parse(parsed);
+        if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+      }
+      actionData = parsed as StopAction;
+    } catch {
+      /* ignore */
+    }
+    if (actionData?.action === 'stop' && actionData.card_id) {
+      const cardId = actionData.card_id;
+      const taskKey = `${userId}:${cardId}`;
+      const taskInfo = runningTasks.get(taskKey);
+      if (taskInfo) {
+        log.info(`User ${userId} stopped task for card ${cardId}`);
+        const stoppedContent = taskInfo.latestContent || '(任务已停止，暂无输出)';
+        runningTasks.delete(taskKey);
+        taskInfo.settle();
+        taskInfo.handle.abort();
+        const stoppedCard = buildCardV2({ content: stoppedContent, status: 'done', note: '⏹️ 已停止' });
+        disableStreaming(cardId)
+          .then(() => updateCardFull(cardId, stoppedCard))
+          .catch((e) => log.warn('Stop card update failed:', e?.message ?? e))
+          .finally(() => destroySession(cardId));
+      } else {
+        log.warn(`No running task found for key: ${taskKey}`);
+      }
+      return { toast: { type: 'success', content: '已停止' } };
+    }
 
     // 处理 mode 按钮（兼容 value 为对象或 JSON 字符串）
     const modeAv = parseActionValue(actionValue);

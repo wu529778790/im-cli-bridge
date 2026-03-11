@@ -3,8 +3,24 @@ import { readFileSync } from 'node:fs';
 import { createLogger } from '../logger.js';
 import { splitLongContent } from '../shared/utils.js';
 import { MAX_FEISHU_MESSAGE_LENGTH } from '../constants.js';
+import { buildCardV2, splitLongContent as cardSplitLongContent, truncateForStreaming } from './card-builder.js';
+import {
+  createCard,
+  enableStreaming,
+  sendCardMessage,
+  streamContent as cardkitStreamContent,
+  updateCardFull,
+  markCompleted,
+  disableStreaming,
+  destroySession,
+} from './cardkit-manager.js';
 
 const log = createLogger('FeishuSender');
+
+export interface CardHandle {
+  messageId: string;
+  cardId: string;
+}
 
 export type MessageStatus = 'thinking' | 'streaming' | 'done' | 'error';
 
@@ -309,6 +325,88 @@ export async function sendThinkingMessage(
     log.error('Failed to send thinking message:', err);
     throw err;
   }
+}
+
+/** CardKit 打字机：发送思考卡片并返回 cardId + messageId */
+export async function sendThinkingCard(chatId: string, toolId = 'claude'): Promise<CardHandle> {
+  const initialCard = buildCardV2(
+    { content: '正在启动...', status: 'processing', note: '请稍候' }
+  );
+  const cardId = await createCard(initialCard);
+
+  const [, messageId] = await Promise.all([
+    enableStreaming(cardId),
+    sendCardMessage(chatId, cardId),
+  ]);
+
+  const cardWithButton = buildCardV2(
+    { content: '等待 Claude 响应...', status: 'processing', note: '请稍候' },
+    cardId
+  );
+  await updateCardFull(cardId, cardWithButton);
+  log.debug(`Processing card created: cardId=${cardId}, messageId=${messageId}`);
+
+  return { messageId, cardId };
+}
+
+/** CardKit 流式更新（打字机效果） */
+export async function streamContentUpdate(cardId: string, content: string, note?: string): Promise<void> {
+  const truncated = truncateForStreaming(content) || '...';
+  const updates: Promise<void>[] = [cardkitStreamContent(cardId, 'main_content', truncated)];
+  if (note) updates.push(cardkitStreamContent(cardId, 'note_area', note));
+  await Promise.all(updates);
+}
+
+/** CardKit 完成：关闭流式、全量更新、溢出分片 */
+export async function sendFinalCards(
+  chatId: string,
+  _messageId: string,
+  cardId: string,
+  fullContent: string,
+  note: string,
+  thinking?: string
+): Promise<void> {
+  const parts = cardSplitLongContent(fullContent);
+
+  markCompleted(cardId);
+  await disableStreaming(cardId);
+
+  const finalCard = buildCardV2({ content: parts[0], status: 'done', note, thinking }, cardId);
+  await updateCardFull(cardId, finalCard);
+
+  const client = getClient();
+  for (let i = 1; i < parts.length; i++) {
+    const overflowContent = `${parts[i]}\n\n_*(续 ${i + 1}/${parts.length})*_`;
+    const overflowCard = createFeishuCard(
+      getToolTitle('claude', 'done'),
+      overflowContent,
+      'done',
+      note
+    );
+    await client.im.message.create({
+      data: {
+        receive_id: chatId,
+        msg_type: 'interactive',
+        content: overflowCard,
+      },
+      params: { receive_id_type: 'chat_id' },
+    });
+  }
+
+  destroySession(cardId);
+}
+
+/** CardKit 错误卡片 */
+export async function sendErrorCard(cardId: string, error: string): Promise<void> {
+  markCompleted(cardId);
+  await disableStreaming(cardId);
+  try {
+    const errorCard = buildCardV2({ content: `错误：${error}`, status: 'error', note: '执行失败' });
+    await updateCardFull(cardId, errorCard);
+  } catch (err) {
+    log.error('Failed to send error card:', err);
+  }
+  destroySession(cardId);
 }
 
 // Track if patch API is working for this session
