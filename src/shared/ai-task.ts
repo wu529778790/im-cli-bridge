@@ -40,6 +40,8 @@ export interface TaskAdapter {
   onThinkingToText?(content: string): void;
   extraCleanup?(): void;
   throttleMs: number;
+  /** 块级流式：仅当内容增长超过此字符数时才更新，减少 patch 次数（飞书 5 QPS 限制） */
+  minContentDeltaChars?: number;
   onTaskReady(state: TaskRunState): void;
   onFirstContent?(): void;
   sendImage?(imagePath: string): Promise<void>;
@@ -88,6 +90,7 @@ export function runAITask(
   const { config, sessionManager } = deps;
   return new Promise((resolve) => {
     let lastUpdateTime = 0;
+    let lastSentContentLength = 0;
     let pendingUpdate: ReturnType<typeof setTimeout> | null = null;
     let settled = false;
     let firstContentLogged = false;
@@ -95,6 +98,7 @@ export function runAITask(
     let thinkingText = '';
     const toolLines: string[] = [];
     const startTime = Date.now();
+    const minDelta = platformAdapter.minContentDeltaChars ?? 0;
 
     const cleanup = () => {
       if (pendingUpdate) {
@@ -113,13 +117,17 @@ export function runAITask(
 
     let taskState: TaskRunState;
 
-    const throttledUpdate = (content: string) => {
+    const throttledUpdate = (content: string, force = false) => {
       taskState.latestContent = content;
       const now = Date.now();
       const elapsed = now - lastUpdateTime;
+      const contentDelta = content.length - lastSentContentLength;
+      const shouldUpdateByTime = elapsed >= platformAdapter.throttleMs;
+      const shouldUpdateByContent = minDelta > 0 && contentDelta >= minDelta;
 
-      if (elapsed >= platformAdapter.throttleMs) {
+      if (force || shouldUpdateByTime || shouldUpdateByContent) {
         lastUpdateTime = now;
+        lastSentContentLength = content.length;
         if (pendingUpdate) {
           clearTimeout(pendingUpdate);
           pendingUpdate = null;
@@ -130,6 +138,7 @@ export function runAITask(
         pendingUpdate = setTimeout(() => {
           pendingUpdate = null;
           lastUpdateTime = Date.now();
+          lastSentContentLength = taskState.latestContent.length;
           const toolNote = toolLines.length > 0 ? toolLines.slice(-3).join('\n') : undefined;
           platformAdapter.streamUpdate(taskState.latestContent, toolNote);
         }, platformAdapter.throttleMs - elapsed);
@@ -196,7 +205,7 @@ export function runAITask(
           const notification = formatToolCallNotification(toolName, toolInput);
           toolLines.push(notification);
           if (toolLines.length > 5) toolLines.shift();
-          throttledUpdate(taskState.latestContent);
+          throttledUpdate(taskState.latestContent, true); // 强制更新以显示工具调用提示
         },
         onComplete: async (result) => {
           if (settled) return;

@@ -208,6 +208,7 @@ export function setupFeishuHandlers(
       toolAdapter,
       {
         throttleMs: FEISHU_THROTTLE_MS,
+        minContentDeltaChars: 80, // 块级流式：内容增长≥80 字符才 patch，减少 API 调用
         streamUpdate: async (content, toolNote) => {
           const note = toolNote ? '输出中...\n' + toolNote : '输出中...';
           try {

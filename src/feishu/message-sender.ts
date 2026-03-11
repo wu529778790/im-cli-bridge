@@ -332,66 +332,49 @@ export async function updateMessage(
   // Try to use patch API for in-place update (streaming)
   // Only attempt patch if it has been working recently
   if (patchApiWorking) {
-    try {
+    const doPatch = async (): Promise<{ ok: boolean; code?: number }> => {
       const resp = await client.im.message.patch({
         path: { message_id: messageId },
-        data: {
-          content: cardContent,
-        },
+        data: { content: cardContent },
       });
+      if (resp.code === 0) return { ok: true };
+      return { ok: false, code: resp.code };
+    };
 
-      if (resp.code === 0) {
+    try {
+      let result = await doPatch();
+      // 230020 频控：等待后重试一次
+      if (!result.ok && result.code === 230020) {
+        await new Promise((r) => setTimeout(r, 400));
+        result = await doPatch();
+      }
+      if (result.ok) {
         log.debug(`✓ Patch API succeeded: ${messageId}`);
-        patchFailCount = 0; // Reset failure count on success
+        patchFailCount = 0;
         return;
       }
 
-      // Patch failed with API error
       patchFailCount++;
-      log.warn(`Patch API failed (code: ${resp.code}, msg: ${resp.msg}) - failure ${patchFailCount}/${MAX_PATCH_FAILURES_BEFORE_DISABLE}`);
-
+      log.warn(`Patch API failed (code: ${result.code}) - failure ${patchFailCount}/${MAX_PATCH_FAILURES_BEFORE_DISABLE}`);
       if (patchFailCount >= MAX_PATCH_FAILURES_BEFORE_DISABLE) {
         log.warn('Patch API disabled for this session due to repeated failures');
         patchApiWorking = false;
       }
+      // 流式更新时不 fallback 到 delete+create，否则会生成新消息但 caller 仍持旧 msgId，导致后续 patch 全失败并不断创建新消息
+      // 直接返回，下次节流周期会重试
+      return;
     } catch (err: unknown) {
-      // Patch failed with network/other error
       patchFailCount++;
       const errorMsg = err instanceof Error ? err.message : String(err);
       log.warn(`Patch API error (${patchFailCount}/${MAX_PATCH_FAILURES_BEFORE_DISABLE}): ${errorMsg}`);
-
       if (patchFailCount >= MAX_PATCH_FAILURES_BEFORE_DISABLE) {
         log.warn('Patch API disabled for this session due to repeated errors');
         patchApiWorking = false;
       }
     }
   }
-
-  // Fallback: Delete old message and send new one
-  try {
-    await client.im.message.delete({
-      path: { message_id: messageId },
-    });
-    log.debug(`Deleted old message for recreate: ${messageId}`);
-  } catch (err) {
-    log.warn('Failed to delete old message:', err);
-  }
-
-  // Send new message
-  try {
-    const resp = await client.im.message.create({
-      data: {
-        receive_id: chatId,
-        msg_type: 'interactive',
-        content: cardContent,
-      },
-      params: { receive_id_type: 'chat_id' },
-    });
-    log.debug(`Created new message: ${resp.data?.message_id}`);
-  } catch (err) {
-    log.error('Failed to send new message:', err);
-    throw err;
-  }
+  // 流式更新失败时不再 fallback 到 delete+create（会生成新消息但 caller 持旧 msgId，导致重复创建）
+  // 下次节流周期会重试；最终内容由 sendFinalMessages 负责
 }
 
 export async function sendFinalMessages(
