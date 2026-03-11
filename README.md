@@ -1,19 +1,21 @@
 # open-im
 
-多平台 IM 桥接，将 Telegram、飞书 (Feishu/Lark)、企业微信和微信连接到 AI CLI 工具（Claude Code、Codex、Cursor），实现移动端/远程访问 AI 编程助手。
+多平台 IM 桥接工具，把 Telegram、飞书、企业微信、微信接到 AI CLI 工具（Claude Code、Codex、Cursor），方便在手机或聊天窗口里远程使用 AI 编程助手。
 
 ## 功能特性
 
-- **多平台**：支持 Telegram、飞书、企业微信、微信（测试中），可同时启用
-- **多 AI 工具**：通过配置切换 Claude Code / Codex / Cursor
-- **流式输出**：节流更新，实时展示 AI 回复
-- **会话管理**：每用户独立 session，`/new` 重置会话
-- **命令支持**：`/help` `/new` `/cd` `/pwd` `/status` `/allow` `/deny`
+- 多平台：支持 Telegram、飞书、企业微信、微信（测试中），可同时启用
+- 多 AI 工具：支持 Claude、Codex、Cursor
+- 流式输出：实时回传 AI 回复与工具执行进度
+- 会话隔离：每个用户独立维护本地会话，`/new` 可重置
+- 权限模式：支持 `ask`、`accept-edits`、`plan`、`yolo`
+- 常用命令：支持 `/help`、`/mode`、`/new`、`/cd`、`/pwd`、`/status`
 
 ## 环境要求
 
-- **Node.js** >= 20
-- **Claude API**：需要 API Key 或 Auth Token（[获取方式](https://console.anthropic.com/)）
+- Node.js >= 20
+- 至少配置一个 IM 平台
+- 根据所选 AI 工具完成认证
 
 ## 快速开始
 
@@ -21,95 +23,50 @@
 npx @wu529778790/open-im start
 ```
 
-或全局安装后直接使用：
+或全局安装：
 
 ```bash
-npm install @wu529778790/open-im -g
+npm install -g @wu529778790/open-im
 open-im start
 ```
 
-配置保存到 `~/.open-im/config.json`。
+配置文件默认保存在 `~/.open-im/config.json`。
 
-## 命令说明
+## 仓库开发
+
+```bash
+npm run build
+npm run dev
+npm start
+npm stop
+```
+
+## CLI 命令
 
 | 命令 | 说明 |
-|------|------|
-| `open-im init` | 初始化配置（不启动服务） |
-| `open-im start` | 后台运行，适合长期使用 |
+| ---- | ---- |
+| `open-im init` | 初始化或追加配置，不启动服务 |
+| `open-im start` | 后台运行服务 |
 | `open-im stop` | 停止后台服务 |
-| `open-im dev` | 前台运行（调试模式），Ctrl+C 停止 |
+| `open-im dev` | 前台运行（调试模式） |
 
 ## 会话说明
 
-**会话上下文存储在本地**（`~/.open-im/data/sessions.json`），与 IM 聊天记录无关。每用户在本地维护独立的 session 和 Claude 会话 ID，`/new` 可重置当前会话。
+会话上下文保存在本地 `~/.open-im/data/sessions.json`，与 IM 聊天记录本身无关。每个用户有独立会话目录和 session 信息，发送 `/new` 会重置当前 AI 会话。
 
-### 环境变量
+## 配置说明
 
-| 变量 | 说明 |
-|------|------|
-| `TELEGRAM_BOT_TOKEN` | Telegram Bot Token |
-| `FEISHU_APP_ID` | 飞书 App ID |
-| `FEISHU_APP_SECRET` | 飞书 App Secret |
-| `WEWORK_CORP_ID` | 企业微信 Bot ID |
-| `WEWORK_SECRET` | 企业微信 Secret |
-| `ALLOWED_USER_IDS` | 白名单（逗号分隔，空=所有人） |
-| `CLAUDE_WORK_DIR` | 工作目录，默认当前目录 |
-| `ALLOWED_BASE_DIRS` | 允许访问的目录（逗号分隔） |
-| `CURSOR_API_KEY` | Cursor Agent API Key（使用 cursor 时必填，或先运行 agent login） |
-| `CODEX_PROXY` | Codex 访问 chatgpt.com 的代理（如 http://127.0.0.1:7890） |
+### Claude
 
-### Claude API 配置
+Claude 默认使用 Agent SDK，不依赖本地 `claude` 可执行文件；通常只需要配置 API 凭证。
 
-**自动加载**：优先使用环境变量，其次从 `~/.open-im/config.json` 的 `env` 字段读取，最后从 `~/.claude/settings.json`（与 Claude Code 共用）自动加载。
+自动加载顺序：
 
-**快速配置**：
+1. 环境变量
+2. `~/.open-im/config.json` 的 `env`
+3. `~/.claude/settings.json` 或 `~/.claude.json`
 
-```bash
-# 方式 1：运行配置向导
-open-im init
-
-# 方式 2：编辑配置文件
-cat > ~/.open-im/config.json << 'EOF'
-{
-  "aiCommand": "claude",
-  "tools": {
-    "claude": {
-      "cliPath": "claude",
-      "workDir": "YOUR_WORK_DIR",
-      "skipPermissions": true,
-      "timeoutMs": 600000
-    },
-    "cursor": { "cliPath": "agent", "skipPermissions": true },
-    "codex": { "cliPath": "codex", "workDir": "YOUR_WORK_DIR", "skipPermissions": true, "proxy": "http://127.0.0.1:7890" }
-  },
-  "platforms": {
-    # 企业微信配置
-    "wework": {
-      "enabled": true,
-      "allowedUserIds": [],
-      "corpId": "YOUR_WEWORK_CORP_ID",
-      "secret": "YOUR_WEWORK_SECRET" # 从企业微信管理后台获取 Corp ID 和 Secret
-    },
-    # Telegram 配置
-    "telegram": {
-      "enabled": true,
-      "proxy": "http://127.0.0.1:7890",
-      "allowedUserIds": [],
-      "botToken": "YOUR_TELEGRAM_BOT_TOKEN" # 从 @BotFather 获取 Bot Token
-    },
-    # 飞书配置
-    "feishu": {
-      "enabled": true,
-      "allowedUserIds": [],
-      "appId": "YOUR_FEISHU_APP_ID",
-      "appSecret": "YOUR_FEISHU_APP_SECRET" # 从飞书开放平台获取 App ID 和 App Secret
-    }
-  }
-}
-EOF
-```
-
-**支持第三方模型**（可选）：
+支持官方 API，也支持第三方兼容接口：
 
 ```json
 {
@@ -121,52 +78,135 @@ EOF
 }
 ```
 
-### 平台配置
+### 配置文件示例
 
-运行 `open-im init` 自动配置，或手动设置：
+下面示例是合法 JSON，可直接保存为 `~/.open-im/config.json`：
 
-- **Telegram**：从 [@BotFather](https://t.me/BotFather) 获取 Bot Token
-- **飞书**：[开放平台](https://open.feishu.cn/) 创建应用，启用机器人，配置 WebSocket 事件订阅
-- **企业微信**：[管理后台](https://work.weixin.qq.com/) 创建应用，获取 Bot ID 和 Secret
-- **微信**：测试中，基于 Qclaw 协议
+```json
+{
+  "aiCommand": "claude",
+  "tools": {
+    "claude": {
+      "cliPath": "claude",
+      "workDir": "D:/coding/open-im",
+      "skipPermissions": true,
+      "timeoutMs": 600000
+    },
+    "cursor": {
+      "cliPath": "agent",
+      "skipPermissions": true
+    },
+    "codex": {
+      "cliPath": "codex",
+      "workDir": "D:/coding/open-im",
+      "skipPermissions": true,
+      "proxy": "http://127.0.0.1:7890"
+    }
+  },
+  "platforms": {
+    "telegram": {
+      "enabled": true,
+      "proxy": "http://127.0.0.1:7890",
+      "allowedUserIds": [],
+      "botToken": "YOUR_TELEGRAM_BOT_TOKEN"
+    },
+    "feishu": {
+      "enabled": false,
+      "allowedUserIds": [],
+      "appId": "YOUR_FEISHU_APP_ID",
+      "appSecret": "YOUR_FEISHU_APP_SECRET"
+    },
+    "wework": {
+      "enabled": false,
+      "allowedUserIds": [],
+      "corpId": "YOUR_WEWORK_CORP_ID",
+      "secret": "YOUR_WEWORK_SECRET"
+    },
+    "wechat": {
+      "enabled": false,
+      "allowedUserIds": [],
+      "appId": "YOUR_WECHAT_APP_ID",
+      "appSecret": "YOUR_WECHAT_APP_SECRET"
+    }
+  }
+}
+```
+
+### 常用环境变量
+
+| 变量 | 说明 |
+| ---- | ---- |
+| `AI_COMMAND` | 选择 `claude` / `codex` / `cursor` |
+| `CLAUDE_WORK_DIR` | 默认会话目录 |
+| `ALLOWED_BASE_DIRS` | 允许访问的目录列表，逗号分隔 |
+| `LOG_DIR` | 日志目录 |
+| `LOG_LEVEL` | 日志级别 |
+| `HOOK_PORT` | 权限服务端口 |
+| `CODEX_PROXY` | Codex 访问 `chatgpt.com` 的代理 |
+| `OPENAI_API_KEY` | Codex API Key，可替代 `codex login` |
+| `CURSOR_API_KEY` | Cursor API Key，可替代 `agent login` |
+| `TELEGRAM_BOT_TOKEN` | Telegram Bot Token |
+| `TELEGRAM_PROXY` | Telegram 代理地址 |
+| `TELEGRAM_ALLOWED_USER_IDS` | Telegram 白名单 |
+| `FEISHU_APP_ID` | 飞书 App ID |
+| `FEISHU_APP_SECRET` | 飞书 App Secret |
+| `FEISHU_ALLOWED_USER_IDS` | 飞书白名单 |
+| `WEWORK_CORP_ID` | 企业微信 Bot ID |
+| `WEWORK_SECRET` | 企业微信 Secret |
+| `WEWORK_WS_URL` | 企业微信 WebSocket 地址 |
+| `WEWORK_ALLOWED_USER_IDS` | 企业微信白名单 |
+| `WECHAT_APP_ID` | 微信标准模式 App ID |
+| `WECHAT_APP_SECRET` | 微信标准模式 App Secret |
+| `WECHAT_TOKEN` | 微信 AGP 模式 Token |
+| `WECHAT_GUID` | 微信 AGP 模式 GUID |
+| `WECHAT_USER_ID` | 微信 AGP 模式 User ID |
+| `WECHAT_WS_URL` | 微信 WebSocket 地址 |
+| `WECHAT_ALLOWED_USER_IDS` | 微信白名单 |
+
+### 平台配置来源
+
+- Telegram：从 [@BotFather](https://t.me/BotFather) 获取 Bot Token
+- 飞书：从 [飞书开放平台](https://open.feishu.cn/) 创建应用并启用机器人
+- 企业微信：从 [企业微信管理后台](https://work.weixin.qq.com/) 获取 Bot ID 和 Secret
+- 微信：测试中，支持标准模式和 AGP/Qclaw 相关配置
 
 ## IM 内命令
 
 | 命令 | 说明 |
-|------|------|
+| ---- | ---- |
 | `/help` | 显示帮助 |
-| `/mode` | 切换权限模式（卡片/按钮选择） |
-| `/mode <模式>` | 直接切换：ask / accept-edits / plan / yolo |
+| `/mode` | 飞书显示卡片，Telegram 显示按钮，其它平台显示文本模式列表 |
+| `/mode <模式>` | 直接切换：`ask` / `accept-edits` / `plan` / `yolo` |
 | `/new` | 开始新会话 |
-| `/status` | 显示状态（AI 工具、工作目录、费用等） |
-| `/cd <路径>` | 切换工作目录 |
-| `/pwd` | 显示当前工作目录 |
+| `/status` | 显示 AI 工具、版本、会话目录、会话 ID |
+| `/cd <路径>` | 切换会话目录 |
+| `/pwd` | 显示当前会话目录 |
 | `/allow` `/y` | 允许权限请求 |
 | `/deny` `/n` | 拒绝权限请求 |
 
 ### 权限模式
 
-与 Claude Code 官方命名一致，见 [permissions](https://code.claude.com/docs/en/permissions)：
+与 Claude Code 官方命名保持一致，参考 [permissions](https://code.claude.com/docs/en/permissions)：
 
 | 模式 | Claude 名 | 说明 |
-|------|-----------|------|
-| ask | default | 首次使用每个工具时提示确认 |
-| accept-edits | acceptEdits | 编辑权限自动通过 |
-| plan | plan | 仅分析，不修改文件不执行命令 |
-| yolo | bypassPermissions | 跳过所有权限确认 |
+| ---- | --------- | ---- |
+| `ask` | `default` | 首次使用工具时询问 |
+| `accept-edits` | `acceptEdits` | 自动允许编辑 |
+| `plan` | `plan` | 只读分析，不执行命令、不改文件 |
+| `yolo` | `bypassPermissions` | 跳过所有权限确认 |
 
-## 📝 License
+## 故障排除
+
+**Telegram 无响应**：检查网络，必要时在 Telegram 平台配置中添加 `"proxy": "http://127.0.0.1:7890"` 或设置 `TELEGRAM_PROXY`。
+
+**飞书卡片报错**：未配置卡片回调时，可直接用 `/mode ask`、`/mode yolo`。
+
+**企业微信收不到通知**：需要先给机器人发过一条消息，后续才能收到主动通知。
+
+**Cursor 报 `Authentication required`**：先执行 `agent login`，或在 `env` 中设置 `CURSOR_API_KEY`。
+
+**Codex 报 `stream disconnected` / `error sending request`**：无法访问 `chatgpt.com`，请配置 `tools.codex.proxy` 或环境变量 `CODEX_PROXY`。
+
+## License
 
 [MIT](LICENSE)
-
-## 🔧 故障排除
-
-**Telegram 无响应**：检查网络，可能需要代理，在配置文件中添加 `"proxy": "http://127.0.0.1:7890"`
-
-**飞书卡片报错**：未配置卡片回调，使用命令替代：`/mode ask`、`/mode yolo`
-
-**企业微信收不到通知**：需先发一条消息给机器人，才能接收启动通知
-
-**Cursor 报 Authentication required**：需先认证。方式 1：在终端运行 `agent login`；方式 2：在 `~/.open-im/config.json` 的 `env` 中添加 `"CURSOR_API_KEY": "你的 API Key"`
-
-**Codex 报 stream disconnected / error sending request**：网络无法访问 chatgpt.com，需配置代理。在 `tools.codex` 中添加 `"proxy": "http://127.0.0.1:7890"`，或设置环境变量 `CODEX_PROXY`

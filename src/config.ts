@@ -698,8 +698,9 @@ export function loadConfig(): Config {
           '  1. 访问 https://claude.ai/download',
           '  2. 下载并安装 Claude Code',
           '',
-          '安装后重新运行：',
-          '  open-im run',
+          '安装后重新运行，例如：',
+          '  open-im dev',
+          '  或 open-im start',
           '',
         ].join('\n');
         throw new Error(installGuide);
