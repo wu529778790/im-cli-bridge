@@ -44,6 +44,7 @@ export interface Config {
 
   aiCommand: AiCommand;
   claudeCliPath: string;
+  cursorCliPath: string;
   claudeWorkDir: string;
   allowedBaseDirs: string[];
   claudeSkipPermissions: boolean;
@@ -136,6 +137,7 @@ interface FileConfig {
   env?: Record<string, string>;
   aiCommand?: string;
   claudeCliPath?: string;
+  cursorCliPath?: string;
   claudeWorkDir?: string;
   allowedBaseDirs?: string[];
   claudeSkipPermissions?: boolean;
@@ -361,6 +363,17 @@ export function loadConfig(): Config {
   // 5. AI / 工作目录 / 安全配置
   const aiCommand = (process.env.AI_COMMAND ?? file.aiCommand ?? 'claude') as AiCommand;
   const claudeCliPath = process.env.CLAUDE_CLI_PATH ?? file.claudeCliPath ?? 'claude';
+  let cursorCliPath = process.env.CURSOR_CLI_PATH ?? file.cursorCliPath ?? 'agent';
+  // Windows: spawn 无法解析 .cmd，需使用完整路径（Cursor 默认安装在 %LOCALAPPDATA%\cursor-agent\agent.cmd）
+  if (process.platform === 'win32' && cursorCliPath === 'agent') {
+    const winAgentPath = join(process.env.LOCALAPPDATA || '', 'cursor-agent', 'agent.cmd');
+    try {
+      accessSync(winAgentPath, constants.F_OK);
+      cursorCliPath = winAgentPath;
+    } catch {
+      /* 使用默认 agent，由后续 where 校验 */
+    }
+  }
   const claudeWorkDir = process.env.CLAUDE_WORK_DIR ?? file.claudeWorkDir ?? process.cwd();
 
   const allowedBaseDirs =
@@ -429,7 +442,46 @@ export function loadConfig(): Config {
     }
   }
 
-  // 7. 校验 Claude CLI（SDK 模式不需要 CLI）
+  // 7. 校验 Cursor CLI（使用 cursor 时）
+  if (aiCommand === 'cursor') {
+    if (isAbsolute(cursorCliPath) || cursorCliPath.includes('/') || cursorCliPath.includes('\\')) {
+      try {
+        accessSync(cursorCliPath, constants.F_OK);
+      } catch {
+        throw new Error(`Cursor CLI 不可执行: ${cursorCliPath}`);
+      }
+    } else {
+      const checkCommand = process.platform === 'win32' ? 'where' : 'which';
+      try {
+        execFileSync(checkCommand, [cursorCliPath], { stdio: 'pipe' });
+      } catch {
+        const installGuide = [
+        '',
+        '━━━ Cursor CLI 未安装 ━━━',
+        '',
+        '使用 Cursor 需要先安装 Cursor Agent CLI。',
+        '',
+        '安装方法：',
+        '',
+        '  macOS/Linux: curl https://cursor.com/install -fsSL | bash',
+        '  Windows: irm \'https://cursor.com/install?win32=true\' | iex',
+        '',
+        '安装后运行 agent --version 验证。',
+        '',
+      ].join('\n');
+      throw new Error(installGuide);
+      }
+    }
+    // 提示 Cursor 认证：需 agent login 或 CURSOR_API_KEY
+    if (!process.env.CURSOR_API_KEY) {
+      console.warn(
+        '\n⚠ Cursor 模式：未检测到 CURSOR_API_KEY。首次使用请先运行 agent login，\n' +
+        '  或在 ~/.open-im/config.json 的 env 中添加 "CURSOR_API_KEY": "你的 API Key"。\n'
+      );
+    }
+  }
+
+  // 8. 校验 Claude CLI（SDK 模式不需要 CLI）
   if (aiCommand === 'claude' && !useSdkMode) {
     if (isAbsolute(claudeCliPath) || claudeCliPath.includes('/') || claudeCliPath.includes('\\')) {
       try {
@@ -546,6 +598,7 @@ export function loadConfig(): Config {
     weworkAllowedUserIds,
     aiCommand,
     claudeCliPath,
+    cursorCliPath,
     claudeWorkDir,
     allowedBaseDirs,
     claudeSkipPermissions,

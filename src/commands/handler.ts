@@ -166,7 +166,7 @@ export class CommandHandler {
   }
 
   private async handleStatus(chatId: string, userId: string): Promise<boolean> {
-    const version = await this.getClaudeVersion();
+    const version = await this.getAiVersion();
     const workDir = this.deps.sessionManager.getWorkDir(userId);
     const convId = this.deps.sessionManager.getConvId(userId);
     const sessionId = this.deps.sessionManager.getSessionIdForConv(userId, convId);
@@ -231,9 +231,10 @@ export class CommandHandler {
     return true;
   }
 
-  private getClaudeVersion(): Promise<string> {
+  private getAiVersion(): Promise<string> {
+    const cmd = this.deps.config.aiCommand === 'cursor' ? this.deps.config.cursorCliPath : this.deps.config.claudeCliPath;
     return new Promise((resolve) => {
-      execFile(this.deps.config.claudeCliPath, ['--version'], { timeout: 5000 }, (err, stdout) => {
+      execFile(cmd, ['--version'], { timeout: 5000 }, (err, stdout) => {
         resolve(err ? '未知' : (stdout?.toString().trim() || '未知'));
       });
     });

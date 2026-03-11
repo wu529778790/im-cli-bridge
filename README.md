@@ -55,6 +55,7 @@ open-im start
 | `ALLOWED_USER_IDS` | 白名单（逗号分隔，空=所有人） |
 | `CLAUDE_WORK_DIR` | 工作目录，默认当前目录 |
 | `ALLOWED_BASE_DIRS` | 允许访问的目录（逗号分隔） |
+| `CURSOR_API_KEY` | Cursor Agent API Key（使用 cursor 时必填，或先运行 agent login） |
 
 ### Claude API 配置
 
@@ -160,3 +161,5 @@ EOF
 **飞书卡片报错**：未配置卡片回调，使用命令替代：`/mode ask`、`/mode yolo`
 
 **企业微信收不到通知**：需先发一条消息给机器人，才能接收启动通知
+
+**Cursor 报 Authentication required**：需先认证。方式 1：在终端运行 `agent login`；方式 2：在 `~/.open-im/config.json` 的 `env` 中添加 `"CURSOR_API_KEY": "你的 API Key"`
