@@ -143,14 +143,9 @@ export function runAITask(
     let skipPermissions: boolean | undefined;
     let permissionMode: 'default' | 'acceptEdits' | 'plan' | undefined;
 
-    // 桥梁模式：让 Claude CLI 原生处理权限，不传递任何权限参数
-    if (config.useBridgeMode) {
-      log.info('Using bridge mode: Claude CLI will handle permissions natively');
-      // 不设置 skipPermissions 和 permissionMode
-    } else {
-      // 标准模式：传递权限模式参数
-      skipPermissions = mode === 'yolo' || config.claudeSkipPermissions;
-      permissionMode = !skipPermissions
+    // 标准模式 / SDK 模式：传递权限模式参数
+    skipPermissions = mode === 'yolo' || config.claudeSkipPermissions;
+    permissionMode = !skipPermissions
         ? (mode === 'ask'
           ? 'default'
           : mode === 'accept-edits'
@@ -159,7 +154,6 @@ export function runAITask(
               ? 'plan'
               : undefined)
         : undefined;
-    }
 
     const handle = toolAdapter.run(
       prompt,
@@ -244,8 +238,8 @@ export function runAITask(
         timeoutMs: config.claudeTimeoutMs,
         model: sessionManager.getModel(ctx.userId, ctx.threadId) ?? config.claudeModel,
         chatId: ctx.chatId,
-        // 桥梁模式下不使用 hookPort，由 Claude CLI 原生处理权限
-        ...(config.useBridgeMode ? {} : { hookPort: config.hookPort }),
+        // SDK 模式下不使用 hookPort
+        ...(config.useSdkMode ? {} : { hookPort: config.hookPort }),
       }
     );
 

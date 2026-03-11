@@ -53,7 +53,8 @@ This is a multi-platform IM bridge that connects Telegram, Feishu (Lark), and We
 
 - **AI Adapter Layer** (`src/adapters/`):
   - `tool-adapter.interface.ts` - Common interface for all AI tools
-  - `claude-adapter.ts` - Claude Code CLI integration
+  - `claude-adapter.ts` - Claude Code CLI integration (spawn per message)
+  - `claude-sdk-adapter.ts` - Claude Agent SDK (in-process, no spawn, faster)
   - `registry.ts` - Adapter registry, initialized based on config
 
 - **Session Management** (`src/session/`):
@@ -92,6 +93,7 @@ Key config options:
 - `claudeTimeoutMs` - Claude CLI timeout (default: 600000)
 - `logDir` - Log directory (default: `~/.open-im/logs`)
 - `logLevel` - Log level (INFO/DEBUG/WARN/ERROR)
+- `useSdkMode` - Use Agent SDK (default: true, faster; set false for CLI mode; requires ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN)
 
 ### Important Design Decisions
 

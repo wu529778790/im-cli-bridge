@@ -43,6 +43,7 @@
     "url": "https://github.com/wu529778790/open-im/issues"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.72",
     "@larksuiteoapi/node-sdk": "^1.59.0",
     "@wecom/wecom-openclaw-plugin": "^1.0.6",
     "prompts": "^2.4.2",
