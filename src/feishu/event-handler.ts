@@ -201,6 +201,15 @@ export function setupFeishuHandlers(
     const stopTyping = startTypingLoop(chatId);
     const taskKey = `${userId}:${msgId}`;
 
+    // 串行化 patch，避免并发导致乱序/闪烁（电报、企微无此问题）
+    let patchChain: Promise<void> = Promise.resolve();
+    const serializedUpdate = (content: string, toolNote?: string) => {
+      const note = toolNote ? '输出中...\n' + toolNote : '输出中...';
+      patchChain = patchChain
+        .then(() => updateMessage(chatId, msgId, content, 'streaming', note, toolId))
+        .catch((err) => log.debug('Stream update failed (will retry on next update):', err));
+    };
+
     await runAITask(
       { config, sessionManager },
       { userId, chatId, workDir, sessionId, convId, platform: 'feishu', taskKey },
@@ -208,15 +217,7 @@ export function setupFeishuHandlers(
       toolAdapter,
       {
         throttleMs: FEISHU_THROTTLE_MS,
-        minContentDeltaChars: 80, // 块级流式：内容增长≥80 字符才 patch，减少 API 调用
-        streamUpdate: async (content, toolNote) => {
-          const note = toolNote ? '输出中...\n' + toolNote : '输出中...';
-          try {
-            await updateMessage(chatId, msgId, content, 'streaming', note, toolId);
-          } catch (err) {
-            log.debug('Stream update failed (will retry on next update):', err);
-          }
-        },
+        streamUpdate: serializedUpdate,
         sendComplete: async (content, note) => {
           // Use sendFinalMessages to handle the final result
           await sendFinalMessages(chatId, msgId, content, note ?? '', toolId);

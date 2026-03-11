@@ -38,8 +38,8 @@ export const TERMINAL_ONLY_COMMANDS = new Set([
 ]);
 
 export const DEDUP_TTL_MS = 5 * 60 * 1000;
-/** 飞书流式更新节流：350ms 留出余量（官方 5 QPS 限制），配合块级流式减少 patch 次数 */
-export const FEISHU_THROTTLE_MS = 350;
+/** 飞书流式更新节流：250ms（约 4 次/秒，留余量避免 5 QPS 频控） */
+export const FEISHU_THROTTLE_MS = 250;
 /** Telegram 编辑消息节流：200ms（open-im 默认值） */
 export const TELEGRAM_THROTTLE_MS = 200;
 /** WeChat 流式更新节流：1000ms（AGP 协议建议值） */
