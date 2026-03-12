@@ -51,6 +51,7 @@ export function setupDingTalkHandlers(
 ): DingTalkEventHandlerHandle {
   configureDingTalkMessageSender({
     cardTemplateId: config.dingtalkCardTemplateId,
+    robotCodeFallback: config.dingtalkClientId,
   });
   if (config.dingtalkCardTemplateId) {
     log.info('DingTalk AI card streaming enabled');
@@ -169,7 +170,7 @@ export function setupDingTalkHandlers(
       chatId,
       userId,
       conversationType: robotMessage.conversationType,
-      robotCode: robotMessage.robotCode,
+      robotCode: robotMessage.robotCode || config.dingtalkClientId,
     });
     setChatUser(chatId, userId, 'dingtalk');
 
@@ -190,7 +191,7 @@ export function setupDingTalkHandlers(
       conversationType: robotMessage.conversationType,
       senderStaffId: robotMessage.senderStaffId,
       senderId: robotMessage.senderId,
-      robotCode: robotMessage.robotCode,
+      robotCode: robotMessage.robotCode || config.dingtalkClientId,
     };
 
     const enqueueResult = requestQueue.enqueue(userId, convId, text, async (prompt) => {

@@ -585,6 +585,25 @@ export async function updateCardInstance(
   });
 }
 
+/** StandardCard 模板结构（与钉钉官方 Go 打字机示例完全一致：text=标题，markdown=内容） */
+function buildStandardCardData(cardData: Record<string, unknown>): string {
+  const title = String(cardData.title ?? 'AI');
+  const content = String(cardData.content ?? cardData.displayText ?? '').trim() || '...';
+  const schema = {
+    config: { autoLayout: true, enableForward: true },
+    header: {
+      title: { type: 'text', text: title },
+      logo: '@lALPDfJ6V_FPDmvNAfTNAfQ',
+    },
+    contents: [
+      { type: 'text', text: title, id: 'text_1693929551595' },
+      { type: 'divider', id: 'divider_1693929551595' },
+      { type: 'markdown', text: content, id: 'markdown_1693929674245' },
+    ],
+  };
+  return JSON.stringify(schema);
+}
+
 /** 互动卡片普通版：发送（用于 prepare 失败时的 fallback 流式） */
 export async function sendRobotInteractiveCard(
   target: DingTalkStreamingTarget,
@@ -596,14 +615,7 @@ export async function sendRobotInteractiveCard(
     throw new Error('DingTalk robotCode required for interactive card');
   }
 
-  const content = String(cardData.content ?? cardData.displayText ?? '').trim() || '...';
-  const title = String(cardData.title ?? 'AI');
-  const cardDataStr = JSON.stringify({
-    cardParamMap: {
-      title,
-      text: content,
-    },
-  });
+  const cardDataStr = buildStandardCardData(cardData);
 
   const isSingle = isSingleConversation(conversationType);
   const body: Record<string, unknown> = {
@@ -647,15 +659,8 @@ export async function updateRobotInteractiveCard(
   cardBizId: string,
   cardData: Record<string, unknown>,
 ): Promise<void> {
-  const body = {
-    cardBizId,
-    cardData: JSON.stringify({
-      cardParamMap: {
-        title: cardData.title ?? 'AI',
-        text: cardData.content ?? cardData.displayText ?? '',
-      },
-    }),
-  };
+  const cardDataStr = buildStandardCardData(cardData);
+  const body = { cardBizId, cardData: cardDataStr };
   await callOpenApiWithMethod('PUT', '/v1.0/im/robots/interactiveCards', body);
 }
 

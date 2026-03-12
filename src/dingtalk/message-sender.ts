@@ -8,6 +8,8 @@ import {
   finishStreamingCard,
   createAndDeliverCard,
   updateCardInstance,
+  sendRobotInteractiveCard,
+  updateRobotInteractiveCard,
 } from './client.js';
 import type { DingTalkStreamingTarget } from './client.js';
 import { createLogger } from '../logger.js';
@@ -37,13 +39,15 @@ const FLOW_STATUS: Record<MessageStatus, number> = {
 
 interface SenderSettings {
   cardTemplateId?: string;
+  robotCodeFallback?: string;
 }
 
 interface StreamState {
   chatId: string;
-  mode: 'card' | 'cardInstance' | 'text';
+  mode: 'card' | 'cardInstance' | 'interactiveCard' | 'text';
   conversationToken?: string;
   outTrackId?: string;
+  cardBizId?: string;
   toolId: string;
   target?: DingTalkStreamingTarget;
 }
@@ -58,6 +62,7 @@ function generateMessageId(): string {
 export function configureDingTalkMessageSender(settings: SenderSettings): void {
   senderSettings = {
     cardTemplateId: settings.cardTemplateId?.trim(),
+    robotCodeFallback: settings.robotCodeFallback?.trim(),
   };
 }
 
@@ -173,7 +178,34 @@ export async function sendThinkingMessage(
 ): Promise<string> {
   const messageId = generateMessageId();
   const templateId = getCardTemplateId();
+  const robotCode = target?.robotCode || senderSettings.robotCodeFallback;
 
+  // 1. 优先尝试互动卡片普通版（机器人适用，无需 AI 助理权限）
+  if (robotCode) {
+    try {
+      const effectiveTarget: DingTalkStreamingTarget = target
+        ? { ...target, robotCode }
+        : { chatId, robotCode };
+      const cardBizId = messageId;
+      await sendRobotInteractiveCard(
+        effectiveTarget,
+        cardBizId,
+        buildCardData('', 'thinking', '请稍候', toolId),
+      );
+      streamStates.set(messageId, {
+        chatId,
+        mode: 'interactiveCard',
+        cardBizId,
+        toolId,
+        target,
+      });
+      return messageId;
+    } catch (err) {
+      log.debug('DingTalk 互动卡片普通版失败，尝试其他方式:', err);
+    }
+  }
+
+  // 2. 尝试 AI 助理 prepare（需 AI 助理会话）或 createAndDeliver（高级版）
   if (templateId) {
     try {
       const conversationToken = await prepareStreamingCard(
@@ -182,12 +214,16 @@ export async function sendThinkingMessage(
         buildCardData('', 'thinking', '请稍候', toolId),
       );
       streamStates.set(messageId, { chatId, mode: 'card', conversationToken, toolId, target });
+      return messageId;
     } catch (prepareErr) {
       log.debug('DingTalk prepare failed, trying createAndDeliver:', prepareErr);
-      if (target?.robotCode) {
+      if (robotCode) {
         try {
+          const effectiveTarget: DingTalkStreamingTarget = target
+            ? { ...target, robotCode }
+            : { chatId, robotCode };
           await createAndDeliverCard(
-            target,
+            effectiveTarget,
             templateId,
             messageId,
             buildCardData('', 'thinking', '请稍候', toolId),
@@ -199,19 +235,16 @@ export async function sendThinkingMessage(
             toolId,
             target,
           });
+          return messageId;
         } catch (cardErr) {
           log.debug('DingTalk createAndDeliver failed:', cardErr);
-          streamStates.set(messageId, { chatId, mode: 'text', toolId, target });
-          log.info('DingTalk 流式卡片不可用，将使用普通文本回复');
         }
-      } else {
-        streamStates.set(messageId, { chatId, mode: 'text', toolId, target });
-        log.info('DingTalk 流式卡片不可用，将使用普通文本回复');
       }
     }
-  } else {
-    streamStates.set(messageId, { chatId, mode: 'text', toolId, target });
   }
+
+  streamStates.set(messageId, { chatId, mode: 'text', toolId, target });
+  log.info('DingTalk 流式卡片不可用，将使用普通文本回复');
 
   return messageId;
 }
@@ -251,6 +284,18 @@ export async function updateMessage(
       );
     } catch (err) {
       log.warn('Failed to update DingTalk card instance:', err);
+    }
+    return;
+  }
+
+  if (state.mode === 'interactiveCard' && state.cardBizId) {
+    try {
+      await updateRobotInteractiveCard(
+        state.cardBizId,
+        buildCardData(content, status, note, toolId),
+      );
+    } catch (err) {
+      log.warn('Failed to update DingTalk interactive card:', err);
     }
     return;
   }
@@ -323,6 +368,27 @@ export async function sendFinalMessages(
     }
   }
 
+  if (state?.mode === 'interactiveCard' && state.cardBizId) {
+    try {
+      const cardNote =
+        parts.length > 1 ? `内容较长，后续将继续发送 (${1}/${parts.length})` : note;
+      await updateRobotInteractiveCard(
+        state.cardBizId,
+        buildCardData(parts[0], 'done', cardNote, toolId),
+      );
+      streamStates.delete(messageId);
+
+      for (let i = 1; i < parts.length; i++) {
+        const partNote =
+          i === parts.length - 1 ? note : `继续输出 (${i + 1}/${parts.length})`;
+        await sendTextWithRetry(chatId, formatMessage(parts[i], 'done', partNote, toolId));
+      }
+      return;
+    } catch (err) {
+      log.warn('Failed to finalize DingTalk interactive card, falling back to text:', err);
+    }
+  }
+
   streamStates.delete(messageId);
   for (let i = 0; i < parts.length; i++) {
     const partNote =
@@ -378,6 +444,19 @@ export async function sendErrorMessage(
       return;
     } catch (err) {
       log.warn('Failed to update DingTalk error card instance, falling back to text:', err);
+    }
+  }
+
+  if (state?.mode === 'interactiveCard' && state.cardBizId) {
+    try {
+      await updateRobotInteractiveCard(
+        state.cardBizId,
+        buildCardData(`错误：${error}`, 'error', '执行失败', toolId),
+      );
+      streamStates.delete(messageId);
+      return;
+    } catch (err) {
+      log.warn('Failed to update DingTalk error interactive card, falling back to text:', err);
     }
   }
 
