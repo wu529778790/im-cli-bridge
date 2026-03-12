@@ -45,12 +45,10 @@ export class SessionManager {
   private sessions = new Map<string, UserSession>();
   private convSessionMap = new Map<string, string>();
   private defaultWorkDir: string;
-  private allowedBaseDirs: string[];
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(defaultWorkDir: string, allowedBaseDirs: string[]) {
+  constructor(defaultWorkDir: string) {
     this.defaultWorkDir = defaultWorkDir;
-    this.allowedBaseDirs = allowedBaseDirs;
     this.load();
   }
 
@@ -258,13 +256,8 @@ export class SessionManager {
 
   private async resolveAndValidate(baseDir: string, targetDir: string): Promise<string> {
     const resolved = resolveWorkDirInput(baseDir, targetDir);
-    if (!existsSync(resolved)) throw new Error(`目录不存在: ${resolved}`);
-    const realPath = await realpath(resolved);
-    const allowed = this.allowedBaseDirs.some(
-      (base) => realPath === base || realPath.startsWith(base + '/') || realPath.startsWith(base + '\\')
-    );
-    if (!allowed) throw new Error(`目录不在允许范围内: ${realPath}`);
-    return realPath;
+    if (!existsSync(resolved)) throw new Error(`目录不存在: \`${resolved}\``);
+    return realpath(resolved);
   }
 
   private load(): void {
