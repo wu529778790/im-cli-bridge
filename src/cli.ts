@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { main, needsSetup, runInteractiveSetup } from "./index.js";
 import { loadConfig } from "./config.js";
 import { runPlatformSelectionPrompt } from "./setup.js";
+import { checkAndUpdate } from "./check-update.js";
 import { APP_HOME, SHUTDOWN_PORT } from "./constants.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -106,6 +107,12 @@ async function cmdStart(): Promise<void> {
 
   if (!(await validateOrSetup())) {
     process.exit(1);
+  }
+
+  // 检查并自动更新到最新版本
+  const { updated } = await checkAndUpdate();
+  if (updated) {
+    process.exit(0);
   }
 
   // 有 TTY 时在父进程让用户选择要启用的平台，再启动子进程
