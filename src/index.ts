@@ -100,8 +100,6 @@ function buildStartupMessage(
   appVersion: string,
   aiCommand: string,
   defaultWorkDir: string,
-  defaultModeLabel: string,
-  defaultPermissionMode: string,
   successfulPlatforms: string[],
   sessionManager: SessionManager,
 ): string {
@@ -119,7 +117,6 @@ function buildStartupMessage(
     `🟢 open-im v${appVersion} 服务已启动`,
     "",
     `AI 工具: ${aiCommand}`,
-    `默认权限模式: ${defaultModeLabel} (${defaultPermissionMode})`,
     `成功启动平台: ${successfulPlatforms.join(", ")}`,
   ];
 
@@ -179,13 +176,9 @@ export async function main() {
   const actualPort = startPermissionServer(config.hookPort);
   log.info(`Permission server listening on port ${actualPort}`);
 
-  const { MODE_LABELS } = await import('./permission-mode/types.js');
-  const defaultModeLabel = MODE_LABELS[config.defaultPermissionMode];
-
   log.info("Starting open-im bridge...");
   log.info(`AI 工具: ${config.aiCommand}`);
   log.info(`默认会话目录: ${config.claudeWorkDir}`);
-  log.info(`默认权限模式: ${defaultModeLabel} (${config.defaultPermissionMode})`);
   log.info(`启用平台: ${config.enabledPlatforms.join(", ")}`);
 
   const sessionManager = new SessionManager(
@@ -274,8 +267,6 @@ export async function main() {
       APP_VERSION,
       config.aiCommand,
       config.claudeWorkDir,
-      defaultModeLabel,
-      config.defaultPermissionMode,
       successfulPlatforms,
       sessionManager,
     );
