@@ -53,7 +53,6 @@ export interface Config {
   /** Codex 访问 chatgpt.com 的代理（如 http://127.0.0.1:7890） */
   codexProxy?: string;
   claudeWorkDir: string;
-  allowedBaseDirs: string[];
   claudeSkipPermissions: boolean;
   defaultPermissionMode: 'ask' | 'accept-edits' | 'plan' | 'yolo';
   claudeTimeoutMs: number;
@@ -183,7 +182,6 @@ interface FileConfig {
     cursor?: FileToolCursor;
     codex?: FileToolCodex;
   };
-  allowedBaseDirs?: string[];
   defaultPermissionMode?: 'ask' | 'accept-edits' | 'plan' | 'yolo';
   hookPort?: number;
   logDir?: string;
@@ -563,12 +561,6 @@ export function loadConfig(): Config {
   }
   const claudeWorkDir = process.env.CLAUDE_WORK_DIR ?? tc.workDir ?? process.cwd();
 
-  const allowedBaseDirs =
-    process.env.ALLOWED_BASE_DIRS !== undefined
-      ? parseCommaSeparated(process.env.ALLOWED_BASE_DIRS)
-      : file.allowedBaseDirs ?? [];
-  if (allowedBaseDirs.length === 0) allowedBaseDirs.push(claudeWorkDir);
-
   // 按当前 AI 工具选择 skipPermissions：claude 用 tools.claude，cursor 用 tools.cursor（fallback claude），codex 用 tools.codex（fallback claude）
   const claudeSkipPermissions = (() => {
     if (process.env.CLAUDE_SKIP_PERMISSIONS !== undefined) return process.env.CLAUDE_SKIP_PERMISSIONS === 'true';
@@ -857,7 +849,6 @@ export function loadConfig(): Config {
     codexCliPath,
     codexProxy,
     claudeWorkDir,
-    allowedBaseDirs,
     claudeSkipPermissions,
     defaultPermissionMode,
     claudeTimeoutMs,

@@ -181,10 +181,7 @@ export async function main() {
   log.info(`默认会话目录: ${config.claudeWorkDir}`);
   log.info(`启用平台: ${config.enabledPlatforms.join(", ")}`);
 
-  const sessionManager = new SessionManager(
-    config.claudeWorkDir,
-    config.allowedBaseDirs,
-  );
+  const sessionManager = new SessionManager(config.claudeWorkDir);
 
   // CLI 工具（Cursor/Codex）的 session 是进程级别的，服务重启后一定无效。
   // 启动时仅清除 CLI 工具自己的 sessionId，保留 Claude 的持久上下文。
