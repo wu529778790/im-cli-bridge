@@ -1,10 +1,16 @@
 import { randomBytes } from 'node:crypto';
 import { basename } from 'node:path';
-import { sendText, sendProactiveText } from './client.js';
+import {
+  sendText,
+  sendProactiveText,
+  prepareStreamingCard,
+  updateStreamingCard,
+  finishStreamingCard,
+} from './client.js';
 import { createLogger } from '../logger.js';
 import { splitLongContent, getAIToolDisplayName } from '../shared/utils.js';
 import { listDirectories, buildDirectoryKeyboard } from '../commands/handler.js';
-import { MAX_WEWORK_MESSAGE_LENGTH } from '../constants.js';
+import { MAX_DINGTALK_MESSAGE_LENGTH } from '../constants.js';
 import type { ThreadContext } from '../shared/types.js';
 import type { DingTalkActiveTarget } from '../shared/active-chats.js';
 
@@ -19,8 +25,39 @@ const STATUS_ICONS: Record<MessageStatus, string> = {
   error: '❌',
 };
 
+const FLOW_STATUS: Record<MessageStatus, number> = {
+  thinking: 1,
+  streaming: 2,
+  done: 3,
+  error: 5,
+};
+
+interface SenderSettings {
+  cardTemplateId?: string;
+}
+
+interface StreamState {
+  chatId: string;
+  mode: 'card' | 'text';
+  conversationToken?: string;
+  toolId: string;
+}
+
+let senderSettings: SenderSettings = {};
+const streamStates = new Map<string, StreamState>();
+
 function generateMessageId(): string {
   return `${Date.now()}-${randomBytes(6).toString('hex')}`;
+}
+
+export function configureDingTalkMessageSender(settings: SenderSettings): void {
+  senderSettings = {
+    cardTemplateId: settings.cardTemplateId?.trim(),
+  };
+}
+
+function getCardTemplateId(): string | undefined {
+  return senderSettings.cardTemplateId?.trim() || undefined;
 }
 
 function formatMessage(
@@ -45,6 +82,47 @@ function formatMessage(
   return text;
 }
 
+function getToolTitle(toolId: string, status: MessageStatus): string {
+  const toolName = getAIToolDisplayName(toolId);
+  if (status === 'done') return toolName;
+  if (status === 'thinking') return `${toolName} - 思考中`;
+  if (status === 'streaming') return `${toolName} - 执行中`;
+  return `${toolName} - 错误`;
+}
+
+function buildCardData(
+  content: string,
+  status: MessageStatus,
+  note?: string,
+  toolId = 'claude',
+): Record<string, unknown> {
+  const toolName = getAIToolDisplayName(toolId);
+  const safeContent =
+    content.trim() || (status === 'thinking' ? '正在思考，请稍候...' : status === 'error' ? '执行失败' : '...');
+  const safeNote = note?.trim() || '';
+
+  return {
+    title: getToolTitle(toolId, status),
+    content: safeContent,
+    note: safeNote,
+    toolName,
+    status,
+    flowStatus: FLOW_STATUS[status],
+    icon: STATUS_ICONS[status],
+    displayText: formatMessage(safeContent, status, safeNote, toolId),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+async function tryFinishCard(conversationToken?: string): Promise<void> {
+  if (!conversationToken) return;
+  try {
+    await finishStreamingCard(conversationToken);
+  } catch (err) {
+    log.warn('Failed to finish DingTalk streaming card:', err);
+  }
+}
+
 async function sendTextWithRetry(chatId: string, text: string, retries = 1): Promise<void> {
   let lastError: unknown;
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -67,12 +145,23 @@ export async function sendThinkingMessage(
   _replyToMessageId?: string,
   toolId = 'claude',
 ): Promise<string> {
-  // 钉钉 sessionWebhook 回复不支持像 Telegram/飞书那样稳定编辑原消息。
-  // 为避免 “thinking -> streaming -> final” 连发多条，这里只生成一个本地 messageId，
-  // 实际消息延迟到 sendFinalMessages/sendTextReply 阶段再发送。
-  void chatId;
-  void toolId;
-  return generateMessageId();
+  const messageId = generateMessageId();
+  const templateId = getCardTemplateId();
+  if (!templateId) return messageId;
+
+  try {
+    const conversationToken = await prepareStreamingCard(
+      chatId,
+      templateId,
+      buildCardData('', 'thinking', '请稍候', toolId),
+    );
+    streamStates.set(messageId, { chatId, mode: 'card', conversationToken, toolId });
+  } catch (err) {
+    log.warn('Failed to prepare DingTalk streaming card, falling back to text:', err);
+    streamStates.set(messageId, { chatId, mode: 'text', toolId });
+  }
+
+  return messageId;
 }
 
 export async function updateMessage(
@@ -83,13 +172,22 @@ export async function updateMessage(
   note?: string,
   toolId = 'claude',
 ): Promise<void> {
-  // 钉钉第一版不发送中间更新，避免用户看到多条状态消息。
   void chatId;
-  void messageId;
-  void content;
-  void status;
-  void note;
-  void toolId;
+  const templateId = getCardTemplateId();
+  const state = streamStates.get(messageId);
+  if (!templateId || !state || state.mode !== 'card' || !state.conversationToken) {
+    return;
+  }
+
+  try {
+    await updateStreamingCard(
+      state.conversationToken,
+      templateId,
+      buildCardData(content, status, note, toolId),
+    );
+  } catch (err) {
+    log.warn('Failed to update DingTalk streaming card:', err);
+  }
 }
 
 export async function sendFinalMessages(
@@ -99,8 +197,46 @@ export async function sendFinalMessages(
   note: string,
   toolId = 'claude',
 ): Promise<void> {
-  void messageId;
-  const parts = splitLongContent(fullContent, MAX_WEWORK_MESSAGE_LENGTH);
+  const parts = splitLongContent(fullContent, MAX_DINGTALK_MESSAGE_LENGTH);
+  const templateId = getCardTemplateId();
+  const state = streamStates.get(messageId);
+
+  if (templateId && state?.mode === 'card' && state.conversationToken) {
+    let updatedCard = false;
+    try {
+      const cardNote =
+        parts.length > 1 ? `内容较长，后续将继续发送 (${1}/${parts.length})` : note;
+      await updateStreamingCard(
+        state.conversationToken,
+        templateId,
+        buildCardData(parts[0], 'done', cardNote, toolId),
+      );
+      updatedCard = true;
+      try {
+        await finishStreamingCard(state.conversationToken);
+      } catch (err) {
+        log.warn('Failed to finish DingTalk streaming card after final update:', err);
+      }
+      streamStates.delete(messageId);
+
+      for (let i = 1; i < parts.length; i++) {
+        const partNote =
+          i === parts.length - 1 ? note : `继续输出 (${i + 1}/${parts.length})`;
+        await sendTextWithRetry(chatId, formatMessage(parts[i], 'done', partNote, toolId));
+      }
+      return;
+    } catch (err) {
+      if (updatedCard) {
+        log.warn('Final DingTalk card update already succeeded; skip text fallback:', err);
+        streamStates.delete(messageId);
+        return;
+      }
+      log.warn('Failed to finalize DingTalk streaming card, falling back to text:', err);
+      await tryFinishCard(state.conversationToken);
+    }
+  }
+
+  streamStates.delete(messageId);
   for (let i = 0; i < parts.length; i++) {
     const partNote =
       parts.length > 1
@@ -108,6 +244,45 @@ export async function sendFinalMessages(
         : note;
     await sendTextWithRetry(chatId, formatMessage(parts[i], 'done', partNote, toolId));
   }
+}
+
+export async function sendErrorMessage(
+  chatId: string,
+  messageId: string,
+  error: string,
+  toolId = 'claude',
+): Promise<void> {
+  const templateId = getCardTemplateId();
+  const state = streamStates.get(messageId);
+  if (templateId && state?.mode === 'card' && state.conversationToken) {
+    let updatedCard = false;
+    try {
+      await updateStreamingCard(
+        state.conversationToken,
+        templateId,
+        buildCardData(`错误：${error}`, 'error', '执行失败', toolId),
+      );
+      updatedCard = true;
+      try {
+        await finishStreamingCard(state.conversationToken);
+      } catch (err) {
+        log.warn('Failed to finish DingTalk error card after update:', err);
+      }
+      streamStates.delete(messageId);
+      return;
+    } catch (err) {
+      if (updatedCard) {
+        log.warn('DingTalk error card update already succeeded; skip text fallback:', err);
+        streamStates.delete(messageId);
+        return;
+      }
+      log.warn('Failed to send DingTalk error card, falling back to text:', err);
+      await tryFinishCard(state.conversationToken);
+    }
+  }
+
+  streamStates.delete(messageId);
+  await sendTextWithRetry(chatId, formatMessage(`错误：${error}`, 'error', '执行失败', toolId));
 }
 
 export async function sendTextReply(

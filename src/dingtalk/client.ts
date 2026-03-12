@@ -69,6 +69,13 @@ export async function sendMarkdown(chatId: string, title: string, text: string):
   });
 }
 
+function buildAiCardContent(templateId: string, cardData: Record<string, unknown>): string {
+  return JSON.stringify({
+    templateId,
+    cardData,
+  });
+}
+
 function getRobotCode(target: DingTalkActiveTarget): string {
   if (!target.robotCode) {
     throw new Error('DingTalk proactive target is missing robotCode');
@@ -275,4 +282,50 @@ export async function sendProactiveText(
   throw lastError instanceof Error
     ? lastError
     : new Error(`DingTalk proactive send failed for chat ${target.chatId}`);
+}
+
+export async function prepareStreamingCard(
+  chatId: string,
+  templateId: string,
+  cardData: Record<string, unknown>,
+): Promise<string> {
+  const result = await callOpenApi('/v1.0/aiInteraction/prepare', {
+    openConversationId: chatId,
+    contentType: 'ai_card',
+    content: buildAiCardContent(templateId, cardData),
+  }) as Record<string, unknown>;
+
+  const token = (result.result as Record<string, unknown> | undefined)?.conversationToken;
+  if (typeof token !== 'string' || token.length === 0) {
+    throw new Error(`DingTalk prepare did not return conversationToken: ${JSON.stringify(result)}`);
+  }
+  return token;
+}
+
+export async function updateStreamingCard(
+  conversationToken: string,
+  templateId: string,
+  cardData: Record<string, unknown>,
+): Promise<void> {
+  const result = await callOpenApi('/v1.0/aiInteraction/update', {
+    conversationToken,
+    contentType: 'ai_card',
+    content: buildAiCardContent(templateId, cardData),
+  }) as Record<string, unknown>;
+
+  const success = (result.result as Record<string, unknown> | undefined)?.success;
+  if (success === false) {
+    throw new Error(`DingTalk update returned success=false: ${JSON.stringify(result)}`);
+  }
+}
+
+export async function finishStreamingCard(conversationToken: string): Promise<void> {
+  const result = await callOpenApi('/v1.0/aiInteraction/finish', {
+    conversationToken,
+  }) as Record<string, unknown>;
+
+  const success = (result.result as Record<string, unknown> | undefined)?.success;
+  if (success === false) {
+    throw new Error(`DingTalk finish returned success=false: ${JSON.stringify(result)}`);
+  }
 }

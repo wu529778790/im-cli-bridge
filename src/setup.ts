@@ -30,7 +30,7 @@ interface ExistingConfig {
       allowedUserIds?: string[];
     };
     wework?: { enabled?: boolean; corpId?: string; secret?: string; allowedUserIds?: string[] };
-    dingtalk?: { enabled?: boolean; clientId?: string; clientSecret?: string; allowedUserIds?: string[] };
+    dingtalk?: { enabled?: boolean; clientId?: string; clientSecret?: string; allowedUserIds?: string[]; cardTemplateId?: string };
   };
   env?: Record<string, string>;
   aiCommand?: string;
@@ -127,6 +127,7 @@ function printManualInstructions(configPath: string): void {
       "enabled": false,
       "clientId": "你的钉钉 Client ID（可选）",
       "clientSecret": "你的钉钉 Client Secret（可选）",
+      "cardTemplateId": "你的钉钉 AI 卡片模板 ID（可选，配置后启用单条流式）",
       "allowedUserIds": ["允许访问的钉钉用户 ID（可选）"]
     },
     "wechat": {
@@ -561,17 +562,25 @@ export async function runInteractiveSetup(): Promise<boolean> {
           initial: existing?.platforms?.dingtalk?.clientSecret ?? "",
           validate: (v: string) => (v.trim() ? true : "Client Secret 不能为空"),
         },
+        {
+          type: "text",
+          name: "cardTemplateId",
+          message: "钉钉 AI 卡片模板 ID（可选，配置后启用单条流式）",
+          initial: existing?.platforms?.dingtalk?.cardTemplateId ?? "",
+        },
       ],
       { onCancel },
     );
 
     const dtClientId = dingtalkResp.clientId?.trim() || existing?.platforms?.dingtalk?.clientId;
     const dtClientSecret = dingtalkResp.clientSecret?.trim() || existing?.platforms?.dingtalk?.clientSecret;
+    const dtCardTemplateId = dingtalkResp.cardTemplateId?.trim() || existing?.platforms?.dingtalk?.cardTemplateId;
     if (dtClientId && dtClientSecret) {
       (config.platforms as any).dingtalk = {
         enabled: true,
         clientId: dtClientId,
         clientSecret: dtClientSecret,
+        cardTemplateId: dtCardTemplateId,
       };
     } else if (platform === "dingtalk") {
       return false;
@@ -938,6 +947,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
       enabled: true,
       clientId: (config.platforms as any).dingtalk?.clientId,
       clientSecret: (config.platforms as any).dingtalk?.clientSecret,
+      cardTemplateId: (config.platforms as any).dingtalk?.cardTemplateId,
       allowedUserIds: dingtalkIds,
     };
   } else if (base?.platforms?.dingtalk) {

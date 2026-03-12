@@ -4,9 +4,11 @@ import { AccessControl } from '../access/access-control.js';
 import type { SessionManager } from '../session/session-manager.js';
 import { RequestQueue } from '../queue/request-queue.js';
 import {
+  configureDingTalkMessageSender,
   sendThinkingMessage,
   updateMessage,
   sendFinalMessages,
+  sendErrorMessage,
   sendTextReply,
   startTypingLoop,
   sendPermissionCard,
@@ -46,6 +48,15 @@ export function setupDingTalkHandlers(
   config: Config,
   sessionManager: SessionManager,
 ): DingTalkEventHandlerHandle {
+  configureDingTalkMessageSender({
+    cardTemplateId: config.dingtalkCardTemplateId,
+  });
+  if (config.dingtalkCardTemplateId) {
+    log.info('DingTalk AI card streaming enabled');
+  } else {
+    log.info('DingTalk AI card streaming disabled: no cardTemplateId configured');
+  }
+
   const accessControl = new AccessControl(config.dingtalkAllowedUserIds);
   const requestQueue = new RequestQueue();
   const runningTasks = new Map<string, TaskRunState>();
@@ -102,7 +113,7 @@ export function setupDingTalkHandlers(
           await sendFinalMessages(chatId, msgId, content, note ?? '', toolId);
         },
         sendError: async (error) => {
-          await sendTextReply(chatId, `错误：${error}`);
+          await sendErrorMessage(chatId, msgId, error, toolId);
         },
         extraCleanup: () => {
           stopTyping();
