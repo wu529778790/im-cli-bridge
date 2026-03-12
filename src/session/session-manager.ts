@@ -144,9 +144,8 @@ export class SessionManager {
   }
 
   /**
-   * 服务启动时调用：清除所有用户的 sessionId。
-   * 适用于 CLI 工具（Cursor/Codex），其 session 是进程级别的，
-   * 服务重启后旧的 session 一定无效，若不清除会导致 --resume 到中断任务。
+   * 服务启动时调用：清除所有用户的 CLI sessionId。
+   * Cursor/Codex 的 session 是进程级别的，服务重启后旧 session 一定无效。
    */
   clearAllCliSessionIds(): void {
     let changed = false;

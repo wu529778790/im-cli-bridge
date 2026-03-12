@@ -1,5 +1,5 @@
 import { getBot } from "./client.js";
-import { createReadStream, existsSync } from "node:fs";
+import { createReadStream } from "node:fs";
 import { basename } from "node:path";
 import { createLogger } from "../logger.js";
 import {
@@ -32,9 +32,7 @@ function getToolTitle(toolId: string, status: MessageStatus): string {
   return name;
 }
 
-// Telegram 实际消息长度限制（4096 字符）
 const TG_MAX_LENGTH = 4096;
-// 预留给 header 和 note 的空间
 const RESERVED_LENGTH = 150;
 
 function formatMessage(
@@ -45,19 +43,15 @@ function formatMessage(
 ): string {
   const icon = STATUS_ICONS[status];
   const title = getToolTitle(toolId, status);
-
-  // 计算可用内容长度（预留 header 和 note 空间）
   const headerLength = `${icon} ${title}\n\n`.length;
   const noteLength = note ? `\n\n─────────\n${note}`.length : 0;
   const maxContentLength =
     TG_MAX_LENGTH - headerLength - noteLength - RESERVED_LENGTH;
 
-  // 确保内容长度不超过限制
   const text = truncateText(content, Math.max(100, maxContentLength));
   let out = `${icon} ${title}\n\n${text}`;
   if (note) out += `\n\n─────────\n${note}`;
 
-  // 最终安全检查：如果还是太长，强制截断
   if (out.length > TG_MAX_LENGTH) {
     const keepLen = TG_MAX_LENGTH - 50;
     const tail = text.slice(text.length - keepLen);
@@ -103,32 +97,6 @@ export async function sendThinkingMessage(
     buildStopKeyboard(msg.message_id),
   );
   return String(msg.message_id);
-}
-
-// 检查错误是否可忽略（只忽略真正无害的错误）
-function isIgnorableError(err: unknown): boolean {
-  if (err && typeof err === "object" && "message" in err) {
-    const msg = String((err as { message: string }).message);
-    // 只忽略 "not modified" 类错误（内容没有变化）
-    return (
-      msg.includes("not modified") || msg.includes("message is not modified")
-    );
-  }
-  return false;
-}
-
-// 提取重试延迟时间（秒）
-function extractRetryAfter(err: unknown): number | null {
-  if (err && typeof err === "object" && "message" in err) {
-    const msg = String((err as { message: string }).message);
-    const match = msg.match(/retry after (\d+)/);
-    if (match) return parseInt(match[1], 10);
-  }
-  if (err && typeof err === "object" && "parameters" in err) {
-    const params = (err as { parameters: { retry_after?: number } }).parameters;
-    if (params?.retry_after) return params.retry_after;
-  }
-  return null;
 }
 
 export async function updateMessage(
@@ -224,9 +192,6 @@ export async function sendImageReply(
   });
 }
 
-/**
- * 发送目录选择界面
- */
 export async function sendDirectorySelection(
   chatId: string,
   currentDir: string,

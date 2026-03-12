@@ -1,5 +1,5 @@
 /**
- * 共享 AI 任务执行层 - 支持多 ToolAdapter
+ * 共享 AI 任务执行层，支持多 ToolAdapter。
  */
 
 import type { Config } from '../config.js';
@@ -41,7 +41,7 @@ export interface TaskAdapter {
   onThinkingToText?(content: string): void;
   extraCleanup?(): void;
   throttleMs: number;
-  /** 块级流式：仅当内容增长超过此字符数时才更新，减少 patch 次数（飞书 5 QPS 限制） */
+  /** 块级流式：仅当内容增长超过此字符数时才更新，减少 patch 次数。 */
   minContentDeltaChars?: number;
   onTaskReady(state: TaskRunState): void;
   onFirstContent?(): void;
@@ -53,7 +53,7 @@ export interface TaskRunState {
   latestContent: string;
   settle: () => void;
   startedAt: number;
-  /** AI 工具标识，用于动态显示工具名称 */
+  /** AI 工具标识，用于动态显示工具名称。 */
   toolId: string;
 }
 
@@ -69,7 +69,6 @@ function buildCompletionNote(
   if (toolInfo) parts.push(toolInfo);
   if (result.model) parts.push(result.model);
 
-  // 获取当前的总轮数（不再累加，因为已经在请求开始时累加了）
   const currentTurns = ctx.threadId
     ? sessionManager.addTurnsForThread(ctx.userId, ctx.threadId, 0)
     : sessionManager.addTurns(ctx.userId, 0);
@@ -100,7 +99,6 @@ export function runAITask(
     let wasThinking = false;
     let thinkingText = '';
     const toolLines: string[] = [];
-    const startTime = Date.now();
     const minDelta = platformAdapter.minContentDeltaChars ?? 0;
 
     const cleanup = () => {
@@ -151,11 +149,9 @@ export function runAITask(
     const mode = getPermissionMode(ctx.userId, config.defaultPermissionMode);
     process.env.CC_IM_CHAT_ID = ctx.chatId;
 
-    // 构建运行选项
     let skipPermissions: boolean | undefined;
     let permissionMode: 'default' | 'acceptEdits' | 'plan' | undefined;
 
-    // `plan` 必须保持只读语义，不能被全局 skipPermissions 覆盖。
     if (mode === 'plan') {
       skipPermissions = false;
       permissionMode = 'plan';
@@ -214,7 +210,7 @@ export function runAITask(
           const notification = formatToolCallNotification(toolName, toolInput);
           toolLines.push(notification);
           if (toolLines.length > 5) toolLines.shift();
-          throttledUpdate(taskState.latestContent, true); // 强制更新以显示工具调用提示
+          throttledUpdate(taskState.latestContent, true);
         },
         onComplete: async (result) => {
           if (settled) return;
@@ -224,7 +220,6 @@ export function runAITask(
             pendingUpdate = null;
           }
           const note = buildCompletionNote(result, sessionManager, ctx, mode);
-          // 优先用 adapter 返回的 accumulated/result；若为空则用流式期间累积的 latestContent（SDK 有时 result 事件不携带文本）
           const output =
             result.accumulated ||
             result.result ||
@@ -255,11 +250,6 @@ export function runAITask(
             pendingUpdate = null;
           }
           log.error(`Task error for user ${ctx.userId}: ${error}`);
-          // CLI 工具（cursor/codex）出错时清除 sessionId，
-          // 防止 resume 到中途被中断的会话（如未完成的 tool call 循环）
-          // Claude SDK 不需要，其 session 是对话上下文，出错仍可继续。
-          // 这里只清当前任务所属会话里的当前工具 session，避免误伤其它 AI 工具
-          // 或用户在 /new、/cd 后已经切出的新会话。
           if (config.aiCommand !== 'claude') {
             if (ctx.convId) sessionManager.clearSessionForConv(ctx.userId, ctx.convId, config.aiCommand);
             else sessionManager.clearActiveToolSession(ctx.userId, config.aiCommand);
@@ -280,7 +270,6 @@ export function runAITask(
         timeoutMs: config.claudeTimeoutMs,
         model: sessionManager.getModel(ctx.userId, ctx.threadId) ?? config.claudeModel,
         chatId: ctx.chatId,
-        // SDK 模式下不使用 hookPort
         ...(config.useSdkMode ? {} : { hookPort: config.hookPort }),
         ...(config.aiCommand === 'codex' && config.codexProxy ? { proxy: config.codexProxy } : {}),
       }

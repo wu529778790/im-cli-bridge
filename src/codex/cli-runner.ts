@@ -1,7 +1,5 @@
 /**
- * Codex CLI Runner - 解析 codex exec --json 的 JSONL 输出
- * 参考: https://developers.openai.com/codex/cli/reference/
- *       https://takopi.dev/reference/runners/codex/exec-json-cheatsheet/
+ * Codex CLI Runner - 解析 `codex exec --json` 的 JSONL 输出。
  */
 
 import { spawn } from 'node:child_process';
@@ -95,7 +93,6 @@ function buildCodexArgs(
 }
 
 function quoteForWindowsCmd(arg: string): string {
-  // 普通 flag / sessionId / 无空格路径不需要加引号，否则引号可能被原样传给子进程。
   if (/^[A-Za-z0-9_./:=+\\-]+$/.test(arg)) {
     return arg;
   }
@@ -107,7 +104,6 @@ function quoteForWindowsCmd(arg: string): string {
 }
 
 function formatWindowsCommandName(command: string): string {
-  // 裸命令名（如 codex）依赖 PATH 查找，不能再包双引号，否则 cmd 会按字面量查找。
   if (/^[A-Za-z0-9_.-]+$/.test(command)) {
     return command;
   }
@@ -179,7 +175,6 @@ export function runCodex(
   callbacks: CodexRunCallbacks,
   options?: CodexRunOptions
 ): CodexRunHandle {
-  // codex exec --json 非交互模式
   const args = buildCodexArgs(prompt, sessionId, workDir, options);
 
   const env: Record<string, string> = {};
@@ -197,7 +192,6 @@ export function runCodex(
     env.all_proxy = options.proxy;
   }
   if (process.platform === 'win32') {
-    // 强制子进程在 Windows 下使用 UTF-8，避免中文源码/命令输出乱码。
     env.LANG = env.LANG || 'C.UTF-8';
     env.LC_ALL = env.LC_ALL || 'C.UTF-8';
   }
@@ -205,7 +199,6 @@ export function runCodex(
   const argsForLog = args.join(' ');
   log.info(`Spawning Codex CLI: path=${cliPath}, cwd=${workDir}, session=${sessionId ?? 'new'}, args=${argsForLog}`);
 
-  // Windows: .cmd/.bat 或简单命令名（如 codex）需通过 cmd.exe 执行，否则 spawn 报 ENOENT
   const isWinCmd =
     process.platform === 'win32' &&
     (/\.(cmd|bat)$/i.test(cliPath) || cliPath === 'codex');
@@ -235,14 +228,12 @@ export function runCodex(
     windowsHide: process.platform === 'win32',
   });
 
-  // 通过 stdin 传 prompt，避免 Windows 下命令行参数引用导致中文/路径/空格被拆分。
   child.stdin?.write(prompt);
   child.stdin?.end();
 
   let accumulated = '';
   let accumulatedThinking = '';
   let completed = false;
-  let threadId = '';
   const toolStats: Record<string, number> = {};
   const startTime = Date.now();
   const MAX_TIMEOUT = 2_147_483_647;
@@ -297,7 +288,7 @@ export function runCodex(
     log.debug(`[Codex event] type=${type}`);
 
     if (type === 'thread.started') {
-      threadId = (event.thread_id as string) ?? '';
+      const threadId = (event.thread_id as string) ?? '';
       if (threadId) callbacks.onSessionId?.(threadId);
       return;
     }
@@ -378,7 +369,6 @@ export function runCodex(
     if (type === 'turn.completed') {
       completed = true;
       if (timeoutHandle) clearTimeout(timeoutHandle);
-      const usage = event.usage as { output_tokens?: number; input_tokens?: number } | undefined;
       const durationMs = Date.now() - startTime;
       callbacks.onComplete({
         success: true,
