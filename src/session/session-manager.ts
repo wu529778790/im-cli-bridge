@@ -256,7 +256,7 @@ export class SessionManager {
 
   private async resolveAndValidate(baseDir: string, targetDir: string): Promise<string> {
     const resolved = resolveWorkDirInput(baseDir, targetDir);
-    if (!existsSync(resolved)) throw new Error(`目录不存在: ${resolved}`);
+    if (!existsSync(resolved)) throw new Error(`目录不存在: \`${resolved}\``);
     return realpath(resolved);
   }
 

@@ -2,6 +2,7 @@ import type { Config } from '../config.js';
 import type { SessionManager } from '../session/session-manager.js';
 import type { RequestQueue } from '../queue/request-queue.js';
 import { resolveLatestPermission, getPendingCount } from '../hook/permission-server.js';
+import { escapePathForMarkdown } from '../shared/utils.js';
 import { getPermissionMode, setPermissionMode } from '../permission-mode/session-mode.js';
 import { MODE_LABELS, MODE_DESCRIPTIONS, parsePermissionMode, type PermissionMode } from '../permission-mode/types.js';
 import { TERMINAL_ONLY_COMMANDS } from '../constants.js';
@@ -163,7 +164,7 @@ export class CommandHandler {
 
   private async handlePwd(chatId: string, userId: string): Promise<boolean> {
     const workDir = this.deps.sessionManager.getWorkDir(userId);
-    await this.deps.sender.sendTextReply(chatId, `当前工作目录: ${workDir}`);
+    await this.deps.sender.sendTextReply(chatId, `当前工作目录: ${escapePathForMarkdown(workDir)}`);
     return true;
   }
 
@@ -177,7 +178,7 @@ export class CommandHandler {
       '',
       `AI 工具: ${this.deps.config.aiCommand}`,
       `版本: ${version}`,
-      `工作目录: ${workDir}`,
+      `工作目录: ${escapePathForMarkdown(workDir)}`,
       `会话: ${sessionId ?? '无'}`,
     ];
     await this.deps.sender.sendTextReply(chatId, lines.join('\n'));
@@ -193,7 +194,7 @@ export class CommandHandler {
       } else {
         await this.deps.sender.sendTextReply(
           chatId,
-          `当前目录: ${currentDir}\n使用 /cd <路径> 切换`
+          `当前目录: ${escapePathForMarkdown(currentDir)}\n使用 /cd <路径> 切换`
         );
       }
       return true;
@@ -202,7 +203,7 @@ export class CommandHandler {
       const resolved = await this.deps.sessionManager.setWorkDir(userId, dir);
       await this.deps.sender.sendTextReply(
         chatId,
-        `📁 工作目录已切换到: ${resolved}\n\n` +
+        `📁 工作目录已切换到: ${escapePathForMarkdown(resolved)}\n\n` +
         `🔄 AI 会话已重置，下一条消息将使用全新上下文。\n` +
         this.getClearHistoryHint(platform)
       );
