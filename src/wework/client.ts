@@ -32,6 +32,8 @@ let connectionState: WeWorkConnectionState = 'disconnected';
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let reconnectAttempts = 0;
+let shouldReconnect = false;
+let isStopping = false;
 
 // Event handlers
 let messageHandler: ((data: WeWorkCallbackMessage) => Promise<void>) | null = null;
@@ -138,6 +140,8 @@ export async function initWeWork(
 
   messageHandler = eventHandler;
   stateChangeHandler = onStateChange ?? null;
+  isStopping = false;
+  shouldReconnect = false;
 
   log.info(`Initializing WeWork client (botId: ${config.botId})`);
   // 首次连接支持重试：单独启用企微时偶发 TLS 连接失败，加飞书后因初始化顺序有“预热”效果则稳定
@@ -146,7 +150,7 @@ export async function initWeWork(
   let lastErr: Error | null = null;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      await connectWebSocket(true); // true = 初始连接，close 时不 scheduleReconnect
+      await connectWebSocket();
       return;
     } catch (err) {
       lastErr = err instanceof Error ? err : new Error(String(err));
@@ -161,9 +165,8 @@ export async function initWeWork(
 
 /**
  * Connect to WeWork WebSocket server
- * @param isInitialConnect - 初始连接时为 true，close 时不 scheduleReconnect（由 initWeWork 重试）
  */
-async function connectWebSocket(isInitialConnect = false): Promise<void> {
+async function connectWebSocket(): Promise<void> {
   if (connectionState === 'connecting') {
     log.warn('WebSocket connection already in progress');
     return;
@@ -201,6 +204,7 @@ async function connectWebSocket(isInitialConnect = false): Promise<void> {
         // 发送认证订阅消息，并等待服务端确认（否则 aibot_send_msg 会报 846609 not subscribed）
         try {
           await sendSubscribeAndWaitAck(resolve, reject);
+          shouldReconnect = true;
           log.info('WeWork authentication successful');
         } catch (err) {
           log.error('WeWork authentication failed:', err);
@@ -227,7 +231,7 @@ async function connectWebSocket(isInitialConnect = false): Promise<void> {
         log.info('WeWork WebSocket closed');
         stopHeartbeat();
         updateState('disconnected');
-        if (!isInitialConnect) {
+        if (!isStopping && shouldReconnect) {
           scheduleReconnect();
         }
       });
@@ -405,17 +409,26 @@ function stopHeartbeat(): void {
  * Schedule reconnection attempt
  */
 function scheduleReconnect(): void {
+  if (isStopping || !shouldReconnect) {
+    return;
+  }
+
   if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
     log.error('Max reconnect attempts reached');
     return;
   }
 
   const interval = 5000; // 5秒后重连
+  if (reconnectTimer) {
+    return;
+  }
+
   reconnectTimer = setTimeout(async () => {
+    reconnectTimer = null;
     reconnectAttempts++;
     log.info(`Reconnecting... Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
     try {
-      await connectWebSocket(false); // 非初始连接，close 时继续 scheduleReconnect
+      await connectWebSocket();
     } catch (err) {
       log.error('Reconnection failed:', err);
     }
@@ -426,6 +439,8 @@ function scheduleReconnect(): void {
  * Stop WeWork client
  */
 export function stopWeWork(): void {
+  isStopping = true;
+  shouldReconnect = false;
   stopHeartbeat();
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
