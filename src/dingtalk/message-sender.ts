@@ -18,8 +18,6 @@ const STATUS_ICONS: Record<MessageStatus, string> = {
   error: '❌',
 };
 
-const streamingMessages = new Set<string>();
-
 function generateMessageId(): string {
   return `${Date.now()}-${randomBytes(6).toString('hex')}`;
 }
@@ -46,15 +44,34 @@ function formatMessage(
   return text;
 }
 
+async function sendTextWithRetry(chatId: string, text: string, retries = 1): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      await sendText(chatId, text);
+      return;
+    } catch (err) {
+      lastError = err;
+      if (attempt < retries) {
+        log.warn(`DingTalk send failed, retrying (${attempt + 1}/${retries}):`, err);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+    }
+  }
+  throw lastError;
+}
+
 export async function sendThinkingMessage(
   chatId: string,
   _replyToMessageId?: string,
   toolId = 'claude',
 ): Promise<string> {
-  const messageId = generateMessageId();
-  streamingMessages.add(messageId);
-  await sendText(chatId, formatMessage('正在思考，请稍候...', 'thinking', '处理中', toolId));
-  return messageId;
+  // 钉钉 sessionWebhook 回复不支持像 Telegram/飞书那样稳定编辑原消息。
+  // 为避免 “thinking -> streaming -> final” 连发多条，这里只生成一个本地 messageId，
+  // 实际消息延迟到 sendFinalMessages/sendTextReply 阶段再发送。
+  void chatId;
+  void toolId;
+  return generateMessageId();
 }
 
 export async function updateMessage(
@@ -65,11 +82,13 @@ export async function updateMessage(
   note?: string,
   toolId = 'claude',
 ): Promise<void> {
-  // 钉钉普通机器人回复不支持像 Telegram 那样编辑原消息。
-  // 第一版仅在首次进入 streaming 阶段时补一条状态消息，避免高频刷屏。
-  if (status !== 'streaming' || !streamingMessages.has(messageId)) return;
-  streamingMessages.delete(messageId);
-  await sendText(chatId, formatMessage(content || '正在输出...', 'streaming', note, toolId));
+  // 钉钉第一版不发送中间更新，避免用户看到多条状态消息。
+  void chatId;
+  void messageId;
+  void content;
+  void status;
+  void note;
+  void toolId;
 }
 
 export async function sendFinalMessages(
@@ -79,14 +98,14 @@ export async function sendFinalMessages(
   note: string,
   toolId = 'claude',
 ): Promise<void> {
-  streamingMessages.delete(messageId);
+  void messageId;
   const parts = splitLongContent(fullContent, MAX_WEWORK_MESSAGE_LENGTH);
   for (let i = 0; i < parts.length; i++) {
     const partNote =
       parts.length > 1
         ? `${i === parts.length - 1 ? note + '\n' : ''}(续 ${i + 1}/${parts.length})`.trim()
         : note;
-    await sendText(chatId, formatMessage(parts[i], 'done', partNote, toolId));
+    await sendTextWithRetry(chatId, formatMessage(parts[i], 'done', partNote, toolId));
   }
 }
 
@@ -95,7 +114,7 @@ export async function sendTextReply(
   text: string,
   _threadCtx?: ThreadContext | string,
 ): Promise<void> {
-  await sendText(chatId, text);
+  await sendTextWithRetry(chatId, text);
   log.info(`Text reply sent to DingTalk chat ${chatId}`);
 }
 
@@ -122,7 +141,7 @@ ${toolInput.length > 300 ? toolInput.slice(0, 300) + '...' : toolInput}
 /deny - 拒绝
 
 请求 ID: ${requestId.slice(-8)}`;
-  await sendText(chatId, message);
+  await sendTextWithRetry(chatId, message);
 }
 
 export async function sendModeCard(
@@ -140,7 +159,7 @@ export async function sendModeCard(
 /mode accept-edits - 自动批准编辑
 /mode plan - 仅分析
 /mode yolo - 跳过所有权限`;
-  await sendText(chatId, message);
+  await sendTextWithRetry(chatId, message);
 }
 
 export async function sendDirectorySelection(
@@ -151,7 +170,7 @@ export async function sendDirectorySelection(
   const directories = listDirectories(currentDir);
   const dirName = basename(currentDir) || currentDir;
   if (directories.length === 0) {
-    await sendText(chatId, `📁 当前目录: ${dirName}\n\n没有可访问的子目录`);
+    await sendTextWithRetry(chatId, `📁 当前目录: ${dirName}\n\n没有可访问的子目录`);
     return;
   }
   const keyboard = buildDirectoryKeyboard(directories, userId);
@@ -159,7 +178,7 @@ export async function sendDirectorySelection(
     .flat()
     .map((item) => item.text)
     .join('\n');
-  await sendText(chatId, `📁 当前目录: ${dirName}\n\n可用目录:\n${entries}\n\n请使用 /cd <路径> 切换目录`);
+  await sendTextWithRetry(chatId, `📁 当前目录: ${dirName}\n\n可用目录:\n${entries}\n\n请使用 /cd <路径> 切换目录`);
 }
 
 export function startTypingLoop(_chatId: string): () => void {
