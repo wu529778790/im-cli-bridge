@@ -6,6 +6,8 @@ import {
   prepareStreamingCard,
   updateStreamingCard,
   finishStreamingCard,
+  createAndDeliverCard,
+  updateCardInstance,
 } from './client.js';
 import type { DingTalkStreamingTarget } from './client.js';
 import { createLogger } from '../logger.js';
@@ -39,8 +41,9 @@ interface SenderSettings {
 
 interface StreamState {
   chatId: string;
-  mode: 'card' | 'text';
+  mode: 'card' | 'cardInstance' | 'text';
   conversationToken?: string;
+  outTrackId?: string;
   toolId: string;
   target?: DingTalkStreamingTarget;
 }
@@ -151,7 +154,6 @@ export async function sendThinkingMessage(
   const messageId = generateMessageId();
   const templateId = getCardTemplateId();
 
-  // 互动卡片普通版（StandardCard）在自定义机器人/普通群场景下报 param.error，暂不尝试
   if (templateId) {
     try {
       const conversationToken = await prepareStreamingCard(
@@ -160,9 +162,30 @@ export async function sendThinkingMessage(
         buildCardData('', 'thinking', '请稍候', toolId),
       );
       streamStates.set(messageId, { chatId, mode: 'card', conversationToken, toolId, target });
-    } catch (err) {
-      log.warn('Failed to prepare DingTalk streaming card:', err);
-      streamStates.set(messageId, { chatId, mode: 'text', toolId, target });
+    } catch (prepareErr) {
+      log.warn('DingTalk prepare failed, trying createAndDeliver:', prepareErr);
+      if (target?.robotCode) {
+        try {
+          await createAndDeliverCard(
+            target,
+            templateId,
+            messageId,
+            buildCardData('', 'thinking', '请稍候', toolId),
+          );
+          streamStates.set(messageId, {
+            chatId,
+            mode: 'cardInstance',
+            outTrackId: messageId,
+            toolId,
+            target,
+          });
+        } catch (cardErr) {
+          log.warn('DingTalk createAndDeliver failed, falling back to text:', cardErr);
+          streamStates.set(messageId, { chatId, mode: 'text', toolId, target });
+        }
+      } else {
+        streamStates.set(messageId, { chatId, mode: 'text', toolId, target });
+      }
     }
   } else {
     streamStates.set(messageId, { chatId, mode: 'text', toolId, target });
@@ -198,6 +221,17 @@ export async function updateMessage(
     return;
   }
 
+  if (state.mode === 'cardInstance' && state.outTrackId) {
+    try {
+      await updateCardInstance(
+        state.outTrackId,
+        buildCardData(content, status, note, toolId),
+      );
+    } catch (err) {
+      log.warn('Failed to update DingTalk card instance:', err);
+    }
+    return;
+  }
 }
 
 export async function sendFinalMessages(
@@ -246,6 +280,27 @@ export async function sendFinalMessages(
     }
   }
 
+  if (templateId && state?.mode === 'cardInstance' && state.outTrackId) {
+    try {
+      const cardNote =
+        parts.length > 1 ? `内容较长，后续将继续发送 (${1}/${parts.length})` : note;
+      await updateCardInstance(
+        state.outTrackId,
+        buildCardData(parts[0], 'done', cardNote, toolId),
+      );
+      streamStates.delete(messageId);
+
+      for (let i = 1; i < parts.length; i++) {
+        const partNote =
+          i === parts.length - 1 ? note : `继续输出 (${i + 1}/${parts.length})`;
+        await sendTextWithRetry(chatId, formatMessage(parts[i], 'done', partNote, toolId));
+      }
+      return;
+    } catch (err) {
+      log.warn('Failed to finalize DingTalk card instance, falling back to text:', err);
+    }
+  }
+
   streamStates.delete(messageId);
   for (let i = 0; i < parts.length; i++) {
     const partNote =
@@ -288,6 +343,19 @@ export async function sendErrorMessage(
       }
       log.warn('Failed to send DingTalk error card, falling back to text:', err);
       await tryFinishCard(state.conversationToken);
+    }
+  }
+
+  if (templateId && state?.mode === 'cardInstance' && state.outTrackId) {
+    try {
+      await updateCardInstance(
+        state.outTrackId,
+        buildCardData(`错误：${error}`, 'error', '执行失败', toolId),
+      );
+      streamStates.delete(messageId);
+      return;
+    } catch (err) {
+      log.warn('Failed to update DingTalk error card instance, falling back to text:', err);
     }
   }
 

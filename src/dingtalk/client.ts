@@ -504,6 +504,79 @@ export async function finishStreamingCard(conversationToken: string): Promise<vo
   }
 }
 
+/** 创建并投放卡片（卡片平台 API，支持普通群流式更新） */
+export async function createAndDeliverCard(
+  target: DingTalkStreamingTarget,
+  templateId: string,
+  outTrackId: string,
+  cardData: Record<string, unknown>,
+): Promise<void> {
+  const { chatId, robotCode, conversationType, senderStaffId } = target;
+  if (!robotCode) {
+    throw new Error('DingTalk robotCode required for createAndDeliver');
+  }
+
+  const isSingle = isSingleConversation(conversationType);
+  const cardParamMap: Record<string, string> = {};
+  for (const [k, v] of Object.entries(cardData)) {
+    if (v !== undefined && v !== null && typeof v !== 'object') {
+      cardParamMap[k] = String(v);
+    }
+  }
+  if (!cardParamMap.title) cardParamMap.title = 'AI';
+  if (!cardParamMap.content && !cardParamMap.displayText) cardParamMap.content = '...';
+
+  const lastMsg = String(cardData.displayText ?? cardData.content ?? cardData.title ?? 'AI').slice(0, 50);
+
+  const body: Record<string, unknown> = {
+    userId: senderStaffId ?? 'system',
+    cardTemplateId: templateId,
+    outTrackId,
+    cardData: { cardParamMap },
+  };
+
+  if (isSingle && senderStaffId) {
+    body.openSpaceId = `dtv1.card//im_robot.${senderStaffId}`;
+    body.imRobotOpenSpaceModel = {
+      lastMessageI18n: { zh_CN: lastMsg },
+      searchSupport: { searchIcon: '', searchTypeName: '消息', searchDesc: '' },
+      notification: { alertContent: lastMsg },
+    };
+    body.imRobotOpenDeliverModel = { spaceType: 'IM_ROBOT' };
+  } else {
+    body.openSpaceId = `dtv1.card//im_group.${chatId}`;
+    body.imGroupOpenSpaceModel = {
+      lastMessageI18n: { zh_CN: lastMsg },
+      searchSupport: { searchIcon: '', searchTypeName: '消息', searchDesc: '' },
+      notification: { alertContent: lastMsg },
+    };
+    body.imGroupOpenDeliverModel = {
+      robotCode,
+      atUserIds: {},
+      recipients: [],
+    };
+  }
+
+  await callOpenApiWithMethod('POST', '/v1.0/card/instances/createAndDeliver', body);
+}
+
+/** 更新卡片实例（用于流式更新） */
+export async function updateCardInstance(
+  outTrackId: string,
+  cardData: Record<string, unknown>,
+): Promise<void> {
+  const cardParamMap: Record<string, string> = {};
+  for (const [k, v] of Object.entries(cardData)) {
+    if (v !== undefined && v !== null && typeof v !== 'object') {
+      cardParamMap[k] = String(v);
+    }
+  }
+  await callOpenApiWithMethod('PUT', '/v1.0/card/instances', {
+    outTrackId,
+    cardData: { cardParamMap },
+  });
+}
+
 /** 互动卡片普通版：发送（用于 prepare 失败时的 fallback 流式） */
 export async function sendRobotInteractiveCard(
   target: DingTalkStreamingTarget,
