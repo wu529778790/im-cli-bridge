@@ -338,25 +338,10 @@ export function runCodex(
 
       if (itemType === 'command_execution') {
         const cmd = item.command as string | undefined;
-        const status = item.status as string | undefined;
-        if (cmd) {
-          if (type === 'item.started') {
-            const toolName = 'Bash';
-            toolStats[toolName] = (toolStats[toolName] || 0) + 1;
-            callbacks.onToolUse?.(toolName, { command: cmd });
-          }
-
-          if (type === 'item.completed' && status === 'completed') {
-            const out = item.aggregated_output as string | undefined;
-            const exitCode = item.exit_code as number | undefined;
-            if (out) {
-              accumulated += (accumulated ? '\n\n' : '') + '```\n' + out + '\n```';
-              callbacks.onText(accumulated);
-            }
-            const exitMsg = `\n\n✓ 命令执行完成 (exit ${exitCode ?? 0})`;
-            accumulated += exitMsg;
-            callbacks.onText(accumulated);
-          }
+        if (cmd && type === 'item.started') {
+          const toolName = 'Bash';
+          toolStats[toolName] = (toolStats[toolName] || 0) + 1;
+          callbacks.onToolUse?.(toolName, { command: cmd });
         }
         return;
       }
