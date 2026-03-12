@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, win32 } from 'node:path';
 import { createLogger } from '../logger.js';
 import { APP_HOME } from '../constants.js';
 
@@ -18,6 +18,27 @@ interface UserSession {
   totalTurns?: number;
   claudeModel?: string;
   threads?: Record<string, { sessionIds?: ToolSessionIds; totalTurns?: number; claudeModel?: string }>;
+}
+
+export function resolveWorkDirInput(baseDir: string, targetDir: string): string {
+  const drivePathMatch = targetDir.match(/^([a-zA-Z]):(.*)$/);
+  if (drivePathMatch) {
+    const [, drive, rest] = drivePathMatch;
+    if (rest === '') return `${drive}:\\`;
+    if (rest.startsWith('/') || rest.startsWith('\\')) return win32.normalize(`${drive}:${rest}`);
+    return win32.resolve(`${drive}:\\`, rest);
+  }
+
+  if (targetDir === '~' || targetDir.startsWith('~/')) {
+    const home = process.env.USERPROFILE || process.env.HOME || '';
+    return join(home, targetDir.slice(1));
+  }
+
+  if (targetDir.startsWith('/') || (targetDir.length >= 3 && targetDir[1] === ':' && (targetDir[2] === '\\' || targetDir[2] === '/'))) {
+    return targetDir;
+  }
+
+  return resolve(baseDir, targetDir);
 }
 
 export class SessionManager {
@@ -237,37 +258,7 @@ export class SessionManager {
   }
 
   private async resolveAndValidate(baseDir: string, targetDir: string): Promise<string> {
-    let resolved: string;
-
-    // 处理 Windows 驱动器路径 (如 d:, d:/path, d:\path)
-    const drivePathMatch = targetDir.match(/^([a-zA-Z]):(.*)$/);
-    if (drivePathMatch) {
-      const [, drive, rest] = drivePathMatch;
-      // 使用 resolve 确保路径格式正确
-      // 如果 rest 为空，则是驱动器根目录
-      // 如果 rest 不为空，resolve 会正确处理斜杠
-      const driveRoot = `${drive}:`;
-      if (rest === '') {
-        resolved = driveRoot;
-      } else if (rest.startsWith('/') || rest.startsWith('\\')) {
-        // 已是绝对路径，直接使用
-        resolved = `${drive}:${rest}`;
-      } else {
-        // 相对于驱动器根目录的路径，使用 resolve 处理
-        resolved = resolve(driveRoot, rest);
-      }
-    } else if (targetDir === '~' || targetDir.startsWith('~/')) {
-      // 处理家目录
-      const home = process.env.USERPROFILE || process.env.HOME || '';
-      resolved = join(home, targetDir.slice(1));
-    } else if (targetDir.startsWith('/') || (targetDir.length >= 3 && targetDir[1] === ':' && (targetDir[2] === '\\' || targetDir[2] === '/'))) {
-      // 绝对路径（包括 Windows 绝对路径）
-      resolved = targetDir;
-    } else {
-      // 相对路径
-      resolved = resolve(baseDir, targetDir);
-    }
-
+    const resolved = resolveWorkDirInput(baseDir, targetDir);
     if (!existsSync(resolved)) throw new Error(`目录不存在: ${resolved}`);
     const realPath = await realpath(resolved);
     const allowed = this.allowedBaseDirs.some(
