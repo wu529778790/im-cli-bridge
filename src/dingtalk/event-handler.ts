@@ -25,6 +25,7 @@ import { setActiveChatId, setDingTalkActiveTarget } from '../shared/active-chats
 import { setChatUser } from '../shared/chat-user-map.js';
 import { createLogger } from '../logger.js';
 import type { ThreadContext } from '../shared/types.js';
+import type { DingTalkStreamingTarget } from './client.js';
 
 const log = createLogger('DingTalkHandler');
 const DINGTALK_THROTTLE_MS = 1000;
@@ -80,6 +81,7 @@ export function setupDingTalkHandlers(
     convId?: string,
     _threadCtx?: ThreadContext,
     replyToMessageId?: string,
+    dingtalkTarget?: DingTalkStreamingTarget,
   ) {
     log.info(`[AI_REQUEST] userId=${userId}, chatId=${chatId}, promptLength=${prompt.length}`);
 
@@ -95,7 +97,7 @@ export function setupDingTalkHandlers(
     log.info(`[AI_REQUEST] Running ${config.aiCommand} for user ${userId}, sessionId=${sessionId ?? 'new'}`);
 
     const toolId = config.aiCommand;
-    const msgId = await sendThinkingMessage(chatId, replyToMessageId, toolId);
+    const msgId = await sendThinkingMessage(chatId, replyToMessageId, toolId, dingtalkTarget);
     const stopTyping = startTypingLoop(chatId);
     const taskKey = `${userId}:${msgId}`;
 
@@ -183,8 +185,16 @@ export function setupDingTalkHandlers(
 
     const workDir = sessionManager.getWorkDir(userId);
     const convId = sessionManager.getConvId(userId);
+    const dingtalkTarget: DingTalkStreamingTarget = {
+      chatId,
+      conversationType: robotMessage.conversationType,
+      senderStaffId: robotMessage.senderStaffId,
+      senderId: robotMessage.senderId,
+      robotCode: robotMessage.robotCode,
+    };
+
     const enqueueResult = requestQueue.enqueue(userId, convId, text, async (prompt) => {
-      await handleAIRequest(userId, chatId, prompt, workDir, convId);
+      await handleAIRequest(userId, chatId, prompt, workDir, convId, undefined, undefined, dingtalkTarget);
     });
 
     if (enqueueResult === 'rejected') {

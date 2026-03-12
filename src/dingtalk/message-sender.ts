@@ -6,7 +6,10 @@ import {
   prepareStreamingCard,
   updateStreamingCard,
   finishStreamingCard,
+  sendRobotInteractiveCard,
+  updateRobotInteractiveCard,
 } from './client.js';
+import type { DingTalkStreamingTarget } from './client.js';
 import { createLogger } from '../logger.js';
 import { splitLongContent, getAIToolDisplayName } from '../shared/utils.js';
 import { listDirectories, buildDirectoryKeyboard } from '../commands/handler.js';
@@ -38,9 +41,11 @@ interface SenderSettings {
 
 interface StreamState {
   chatId: string;
-  mode: 'card' | 'text';
+  mode: 'card' | 'robotCard' | 'text';
   conversationToken?: string;
+  cardBizId?: string;
   toolId: string;
+  target?: DingTalkStreamingTarget;
 }
 
 let senderSettings: SenderSettings = {};
@@ -144,21 +149,40 @@ export async function sendThinkingMessage(
   chatId: string,
   _replyToMessageId?: string,
   toolId = 'claude',
+  target?: DingTalkStreamingTarget,
 ): Promise<string> {
   const messageId = generateMessageId();
   const templateId = getCardTemplateId();
-  if (!templateId) return messageId;
 
-  try {
-    const conversationToken = await prepareStreamingCard(
-      chatId,
-      templateId,
-      buildCardData('', 'thinking', '请稍候', toolId),
-    );
-    streamStates.set(messageId, { chatId, mode: 'card', conversationToken, toolId });
-  } catch (err) {
-    log.warn('Failed to prepare DingTalk streaming card, falling back to text:', err);
-    streamStates.set(messageId, { chatId, mode: 'text', toolId });
+  const tryRobotCard = async (): Promise<boolean> => {
+    if (!target?.robotCode) return false;
+    try {
+      const cardBizId = messageId;
+      await sendRobotInteractiveCard(target, cardBizId, buildCardData('', 'thinking', '请稍候', toolId));
+      streamStates.set(messageId, { chatId, mode: 'robotCard', cardBizId, toolId, target });
+      return true;
+    } catch (robotErr) {
+      log.warn('DingTalk robot interactive card failed:', robotErr);
+      return false;
+    }
+  };
+
+  if (templateId) {
+    try {
+      const conversationToken = await prepareStreamingCard(
+        target ?? chatId,
+        templateId,
+        buildCardData('', 'thinking', '请稍候', toolId),
+      );
+      streamStates.set(messageId, { chatId, mode: 'card', conversationToken, toolId, target });
+    } catch (err) {
+      log.warn('Failed to prepare DingTalk streaming card, trying robot interactive card:', err);
+      if (!(await tryRobotCard())) {
+        streamStates.set(messageId, { chatId, mode: 'text', toolId, target });
+      }
+    }
+  } else if (!(await tryRobotCard())) {
+    streamStates.set(messageId, { chatId, mode: 'text', toolId, target });
   }
 
   return messageId;
@@ -173,20 +197,33 @@ export async function updateMessage(
   toolId = 'claude',
 ): Promise<void> {
   void chatId;
-  const templateId = getCardTemplateId();
   const state = streamStates.get(messageId);
-  if (!templateId || !state || state.mode !== 'card' || !state.conversationToken) {
+  if (!state) return;
+
+  if (state.mode === 'card' && state.conversationToken) {
+    const templateId = getCardTemplateId();
+    if (!templateId) return;
+    try {
+      await updateStreamingCard(
+        state.conversationToken,
+        templateId,
+        buildCardData(content, status, note, toolId),
+      );
+    } catch (err) {
+      log.warn('Failed to update DingTalk streaming card:', err);
+    }
     return;
   }
 
-  try {
-    await updateStreamingCard(
-      state.conversationToken,
-      templateId,
-      buildCardData(content, status, note, toolId),
-    );
-  } catch (err) {
-    log.warn('Failed to update DingTalk streaming card:', err);
+  if (state.mode === 'robotCard' && state.cardBizId) {
+    try {
+      await updateRobotInteractiveCard(
+        state.cardBizId,
+        buildCardData(content, status, note, toolId),
+      );
+    } catch (err) {
+      log.warn('Failed to update DingTalk robot interactive card:', err);
+    }
   }
 }
 
@@ -236,6 +273,26 @@ export async function sendFinalMessages(
     }
   }
 
+  if (state?.mode === 'robotCard' && state.cardBizId) {
+    try {
+      const cardNote =
+        parts.length > 1 ? `内容较长，后续将继续发送 (1/${parts.length})` : note;
+      await updateRobotInteractiveCard(
+        state.cardBizId,
+        buildCardData(parts[0], 'done', cardNote, toolId),
+      );
+      streamStates.delete(messageId);
+      for (let i = 1; i < parts.length; i++) {
+        const partNote =
+          i === parts.length - 1 ? note : `继续输出 (${i + 1}/${parts.length})`;
+        await sendTextWithRetry(chatId, formatMessage(parts[i], 'done', partNote, toolId));
+      }
+      return;
+    } catch (err) {
+      log.warn('DingTalk robot card final update failed, falling back to text:', err);
+    }
+  }
+
   streamStates.delete(messageId);
   for (let i = 0; i < parts.length; i++) {
     const partNote =
@@ -254,6 +311,18 @@ export async function sendErrorMessage(
 ): Promise<void> {
   const templateId = getCardTemplateId();
   const state = streamStates.get(messageId);
+  if (state?.mode === 'robotCard' && state.cardBizId) {
+    try {
+      await updateRobotInteractiveCard(
+        state.cardBizId,
+        buildCardData(`错误：${error}`, 'error', '执行失败', toolId),
+      );
+      streamStates.delete(messageId);
+      return;
+    } catch (err) {
+      log.warn('DingTalk robot card error update failed:', err);
+    }
+  }
   if (templateId && state?.mode === 'card' && state.conversationToken) {
     let updatedCard = false;
     try {
