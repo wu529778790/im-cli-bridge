@@ -10,6 +10,8 @@ import { MAX_WEWORK_MESSAGE_LENGTH } from '../constants.js';
 import { randomBytes } from 'node:crypto';
 
 const log = createLogger('WeWorkSender');
+const STREAM_SEND_INTERVAL_MS = 900;
+const STREAM_SAFE_TTL_MS = 5 * 60 * 1000;
 
 /** 当前同步处理中的 req_id（仅用于 commandHandler 等同步调用） */
 let currentReqId: string | null = null;
@@ -85,7 +87,83 @@ function formatWeWorkMessage(
  * Local tracking for stream states
  * WeWork doesn't support message editing, so we track stream IDs locally
  */
-const streamStates = new Map<string, { content: string; chatId: string }>();
+interface StreamState {
+  chatId: string;
+  content: string;
+  createdAt: number;
+  lastSentAt: number;
+  closed: boolean;
+  expired: boolean;
+  flushing: boolean;
+  expireLogged: boolean;
+  pendingUpdate?: {
+    message: string;
+    status: MessageStatus;
+    reqId?: string;
+  };
+}
+
+const streamStates = new Map<string, StreamState>();
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getOrCreateStreamState(streamId: string, chatId: string): StreamState {
+  const existing = streamStates.get(streamId);
+  if (existing) return existing;
+
+  const state: StreamState = {
+    chatId,
+    content: '',
+    createdAt: Date.now(),
+    lastSentAt: 0,
+    closed: false,
+    expired: false,
+    flushing: false,
+    expireLogged: false,
+  };
+  streamStates.set(streamId, state);
+  return state;
+}
+
+function markExpired(state: StreamState, streamId: string): void {
+  state.expired = true;
+  if (!state.expireLogged) {
+    state.expireLogged = true;
+    log.warn(`Stream expired locally, switching to text fallback: streamId=${streamId}`);
+  }
+}
+
+async function flushStreamUpdate(streamId: string, state: StreamState): Promise<void> {
+  if (state.flushing || state.closed || state.expired) return;
+  state.flushing = true;
+
+  try {
+    while (state.pendingUpdate && !state.closed && !state.expired) {
+      const queued = state.pendingUpdate;
+      state.pendingUpdate = undefined;
+
+      if (Date.now() - state.createdAt >= STREAM_SAFE_TTL_MS) {
+        markExpired(state, streamId);
+        break;
+      }
+
+      const elapsed = Date.now() - state.lastSentAt;
+      if (elapsed < STREAM_SEND_INTERVAL_MS) {
+        await sleep(STREAM_SEND_INTERVAL_MS - elapsed);
+      }
+
+      if (state.closed || state.expired) break;
+
+      sendStream(getReqId(queued.reqId), streamId, queued.message, false);
+      state.lastSentAt = Date.now();
+      log.info(`Message updated: ${queued.status}, streamId=${streamId}`);
+    }
+  } finally {
+    state.flushing = false;
+  }
+}
 
 /**
  * Send thinking message to WeWork
@@ -106,7 +184,7 @@ export async function sendThinkingMessage(
     log.info(`Sending thinking message to user ${chatId}, streamId=${streamId}`);
 
     // Store initial stream state
-    streamStates.set(streamId, { content: '', chatId });
+    getOrCreateStreamState(streamId, chatId);
 
     // Send initial stream message (not finished)
     sendStream(getReqId(reqId), streamId, content, false);
@@ -134,15 +212,20 @@ export async function updateMessage(
 ): Promise<void> {
   const title = getToolTitle(toolId, status);
   const message = formatWeWorkMessage(title, content, status, note);
+  const state = getOrCreateStreamState(streamId, chatId);
 
   try {
-    // Update stream state
-    streamStates.set(streamId, { content, chatId });
+    state.chatId = chatId;
+    state.content = content;
+    if (state.closed) return;
 
-    // Send stream update (not finished yet)
-    sendStream(getReqId(reqId), streamId, message, false);
+    if (Date.now() - state.createdAt >= STREAM_SAFE_TTL_MS) {
+      markExpired(state, streamId);
+      return;
+    }
 
-    log.info(`Message updated: ${status}, streamId=${streamId}`);
+    state.pendingUpdate = { message, status, reqId };
+    await flushStreamUpdate(streamId, state);
   } catch (err) {
     log.error('Failed to update message:', err);
     throw err;
@@ -167,10 +250,29 @@ export async function sendFinalMessages(
   const finalMessage = formatWeWorkMessage(title, parts[0], 'done', parts.length > 1 ? `内容较长，已分段发送 (1/${parts.length})` : note);
 
   try {
-    sendStream(getReqId(reqId), streamId, finalMessage, true);
-    log.info(`Final stream message sent, streamId=${streamId}`);
+    const state = streamStates.get(streamId);
+    const shouldFallbackToText =
+      !!state && (state.expired || Date.now() - state.createdAt >= STREAM_SAFE_TTL_MS);
 
-    // Clean up stream state
+    if (state) {
+      state.closed = true;
+      state.pendingUpdate = undefined;
+    }
+
+    if (!shouldFallbackToText) {
+      if (state) {
+        const elapsed = Date.now() - state.lastSentAt;
+        if (elapsed < STREAM_SEND_INTERVAL_MS) {
+          await sleep(STREAM_SEND_INTERVAL_MS - elapsed);
+        }
+      }
+      sendStream(getReqId(reqId), streamId, finalMessage, true);
+      log.info(`Final stream message sent, streamId=${streamId}`);
+    } else {
+      sendText(getReqId(reqId), finalMessage);
+      log.info(`Final stream expired, sent text fallback instead: streamId=${streamId}`);
+    }
+
     streamStates.delete(streamId);
 
     // Send remaining parts as separate messages
