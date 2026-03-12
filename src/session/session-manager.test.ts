@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { join, resolve } from 'node:path';
 import { resolveWorkDirInput } from './session-manager.js';
 
 describe('resolveWorkDirInput', () => {
@@ -12,8 +13,9 @@ describe('resolveWorkDirInput', () => {
       .toBe('d:\\coding\\panhub.shenzjd.com');
   });
 
-  it('resolves relative paths from the current working directory', () => {
-    expect(resolveWorkDirInput('D:\\coding\\open-im', 'coding/panhub.shenzjd.com'))
-      .toBe('D:\\coding\\open-im\\coding\\panhub.shenzjd.com');
+  it('resolves relative paths from the base directory', () => {
+    const baseDir = resolve(process.cwd(), 'test-base');
+    expect(resolveWorkDirInput(baseDir, 'coding/panhub.shenzjd.com'))
+      .toBe(join(baseDir, 'coding', 'panhub.shenzjd.com'));
   });
 });
