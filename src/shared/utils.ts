@@ -1,3 +1,6 @@
+/** 消息头部品牌后缀，用于飞书等平台展示 */
+export const OPEN_IM_BRAND_SUFFIX = ' · 通过 open-im 控制';
+
 /** AI 工具显示名称映射（aiCommand -> 用户友好名称） */
 export const AI_TOOL_DISPLAY_NAMES: Record<string, string> = {
   claude: 'Claude Code',
