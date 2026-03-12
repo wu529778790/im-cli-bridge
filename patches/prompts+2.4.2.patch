@@ -1,0 +1,18 @@
+diff --git a/node_modules/prompts/lib/elements/multiselect.js b/node_modules/prompts/lib/elements/multiselect.js
+index 99b393f..7eabfd9 100644
+--- a/node_modules/prompts/lib/elements/multiselect.js
++++ b/node_modules/prompts/lib/elements/multiselect.js
+@@ -231,10 +231,11 @@ class MultiselectPrompt extends Prompt {
+ 
+   renderDoneOrInstructions() {
+     if (this.done) {
+-      return this.value
++      const items = this.value
+         .filter(e => e.selected)
+         .map(v => v.title)
+-        .join(', ');
++        .join('\n   ');
++      return items ? '\n' + items : items;
+     }
+ 
+     const output = [color.gray(this.hint), this.renderInstructions()];

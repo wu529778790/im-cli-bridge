@@ -13,6 +13,7 @@
     "LICENSE"
   ],
   "scripts": {
+    "postinstall": "patch-package",
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "init": "tsx src/cli.ts init",
@@ -57,6 +58,7 @@
     "@types/qrcode-terminal": "^0.12.2",
     "@types/ws": "^8.5.13",
     "dotenv": "^16.0.0",
+    "patch-package": "^8.0.1",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0",
     "vitest": "4.0.18"

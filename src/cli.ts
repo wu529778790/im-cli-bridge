@@ -97,7 +97,8 @@ async function cmdStart(): Promise<void> {
   const pid = getPid();
 
   if (pid && isRunning(pid)) {
-    console.log(`open-im 已在后台运行 (pid=${pid})`);
+    console.log("\n🟢 open-im 已在后台运行");
+    console.log(`   pid: ${pid}`);
     return;
   } else {
     removePid();  // 清理可能存在的陈旧 PID 文件
@@ -127,7 +128,8 @@ async function cmdStart(): Promise<void> {
   child.unref();
 
   writePid(child.pid!);
-  console.log(`open-im 已在后台启动 (pid=${child.pid})`);
+  console.log("\n🟢 open-im 已在后台启动");
+  console.log(`   pid: ${child.pid}`);
 }
 
 async function cmdStop(): Promise<void> {
@@ -172,7 +174,8 @@ async function cmdStop(): Promise<void> {
   } catch {
     /* ignore */
   }
-  console.log(`open-im 已停止 (pid=${pid})`);
+  console.log("\n🔴 open-im 已停止");
+  console.log(`   pid: ${pid}`);
 }
 
 async function cmdInit(): Promise<void> {
