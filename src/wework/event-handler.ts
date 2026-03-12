@@ -212,7 +212,7 @@ export function setupWeWorkHandlers(
       log.info(`Access granted for sender: ${fromUser}`);
 
       setActiveChatId('wework', fromUser);
-      setChatUser(fromUser, fromUser);
+      setChatUser(fromUser, fromUser, 'wework');
 
       // Handle text messages
       if (msgType === 'text' || msgType === 'mixed') {

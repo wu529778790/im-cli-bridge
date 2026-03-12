@@ -30,6 +30,7 @@ interface ExistingConfig {
       allowedUserIds?: string[];
     };
     wework?: { enabled?: boolean; corpId?: string; secret?: string; allowedUserIds?: string[] };
+    dingtalk?: { enabled?: boolean; clientId?: string; clientSecret?: string; allowedUserIds?: string[] };
   };
   env?: Record<string, string>;
   aiCommand?: string;
@@ -56,6 +57,7 @@ function getConfiguredPlatforms(existing: ExistingConfig | null): string[] {
     { k: "telegram", label: "Telegram" },
     { k: "feishu", label: "飞书" },
     { k: "wework", label: "企业微信" },
+    { k: "dingtalk", label: "钉钉" },
     { k: "wechat", label: "微信" },
   ];
   return names
@@ -67,6 +69,7 @@ function getConfiguredPlatforms(existing: ExistingConfig | null): string[] {
       // 微信支持 AGP 协议（token + guid + userId）或标准协议（appId + appSecret）
       if (k === "wechat") return !!(p.token && p.guid && p.userId) || !!(p.appId && p.appSecret);
       if (k === "wework") return !!(p.corpId && p.secret);
+      if (k === "dingtalk") return !!(p.clientId && p.clientSecret);
       return false;
     })
     .map(({ label }) => label);
@@ -120,6 +123,12 @@ function printManualInstructions(configPath: string): void {
       "secret": "你的企业微信 Secret（可选）",
       "allowedUserIds": ["允许访问的企业微信用户 ID（可选）"]
     },
+    "dingtalk": {
+      "enabled": false,
+      "clientId": "你的钉钉 Client ID（可选）",
+      "clientSecret": "你的钉钉 Client Secret（可选）",
+      "allowedUserIds": ["允许访问的钉钉用户 ID（可选）"]
+    },
     "wechat": {
       "enabled": false,
       "appId": "你的微信 App ID（可选，测试中）",
@@ -130,9 +139,9 @@ function printManualInstructions(configPath: string): void {
   }
 }`);
   console.log("");
-  console.log("提示：至少需要配置 Telegram、Feishu、WeChat 或 WeWork 其中一个平台");
+  console.log("提示：至少需要配置 Telegram、Feishu、WeChat、WeWork 或 DingTalk 其中一个平台");
   console.log(
-    "或设置环境变量: TELEGRAM_BOT_TOKEN=xxx、FEISHU_APP_ID=xxx、WECHAT_APP_ID=xxx 或 WEWORK_CORP_ID=xxx 后再运行",
+    "或设置环境变量: TELEGRAM_BOT_TOKEN=xxx、FEISHU_APP_ID=xxx、WECHAT_APP_ID=xxx、WEWORK_CORP_ID=xxx 或 DINGTALK_CLIENT_ID=xxx 后再运行",
   );
   console.log("");
 }
@@ -303,6 +312,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
   const wc = existing?.platforms?.wechat;
   const hasWc = !!(wc?.token && wc?.guid && wc?.userId) || !!(wc?.appId && wc?.appSecret);
   const hasWw = !!(existing?.platforms?.wework?.corpId && existing?.platforms?.wework?.secret);
+  const hasDt = !!(existing?.platforms?.dingtalk?.clientId && existing?.platforms?.dingtalk?.clientSecret);
 
   // 第一步：选择平台（在选项和提示中显示已配置项）
   const configuredHint =
@@ -328,6 +338,12 @@ export async function runInteractiveSetup(): Promise<boolean> {
             "企业微信 (WeCom/WeWork) - 需要 Bot ID 和 Secret" +
             (hasWw ? " ✓已配置" : ""),
           value: "wework",
+        },
+        {
+          title:
+            "钉钉 (DingTalk) - 需要 Client ID 和 Client Secret" +
+            (hasDt ? " ✓已配置" : ""),
+          value: "dingtalk",
         },
         {
           title:
@@ -361,6 +377,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
           { title: "Telegram" + (hasTg ? " ✓已配置" : ""), value: "telegram", selected: hasTg },
           { title: "飞书 (Feishu)" + (hasFs ? " ✓已配置" : ""), value: "feishu", selected: hasFs },
           { title: "企业微信 (WeWork)" + (hasWw ? " ✓已配置" : ""), value: "wework", selected: hasWw },
+          { title: "钉钉 (DingTalk)" + (hasDt ? " ✓已配置" : ""), value: "dingtalk", selected: hasDt },
           { title: "微信 (WeChat，测试中)" + (hasWc ? " ✓已配置" : ""), value: "wechat", selected: hasWc },
         ],
       },
@@ -527,11 +544,46 @@ export async function runInteractiveSetup(): Promise<boolean> {
     }
   }
 
+  if (selectedPlatforms.includes("dingtalk")) {
+    const dingtalkResp = await prompts(
+      [
+        {
+          type: "text",
+          name: "clientId",
+          message: "钉钉 Client ID / AppKey（从钉钉开放平台获取）",
+          initial: existing?.platforms?.dingtalk?.clientId ?? "",
+          validate: (v: string) => (v.trim() ? true : "Client ID 不能为空"),
+        },
+        {
+          type: "text",
+          name: "clientSecret",
+          message: "钉钉 Client Secret / AppSecret（从钉钉开放平台获取）",
+          initial: existing?.platforms?.dingtalk?.clientSecret ?? "",
+          validate: (v: string) => (v.trim() ? true : "Client Secret 不能为空"),
+        },
+      ],
+      { onCancel },
+    );
+
+    const dtClientId = dingtalkResp.clientId?.trim() || existing?.platforms?.dingtalk?.clientId;
+    const dtClientSecret = dingtalkResp.clientSecret?.trim() || existing?.platforms?.dingtalk?.clientSecret;
+    if (dtClientId && dtClientSecret) {
+      (config.platforms as any).dingtalk = {
+        enabled: true,
+        clientId: dtClientId,
+        clientSecret: dtClientSecret,
+      };
+    } else if (platform === "dingtalk") {
+      return false;
+    }
+  }
+
   // 通用配置：只询问所选平台的白名单，未选平台沿用已有配置
   const tgIds = existing?.platforms?.telegram?.allowedUserIds?.join(", ") ?? "";
   const fsIds = existing?.platforms?.feishu?.allowedUserIds?.join(", ") ?? "";
   const wcIds = existing?.platforms?.wechat?.allowedUserIds?.join(", ") ?? "";
   const wwIds = existing?.platforms?.wework?.allowedUserIds?.join(", ") ?? "";
+  const dtIds = existing?.platforms?.dingtalk?.allowedUserIds?.join(", ") ?? "";
   const aiIdx = ["claude", "codex", "cursor"].indexOf(existing?.aiCommand ?? "claude");
 
   const commonPrompts: prompts.PromptObject[] = [];
@@ -565,6 +617,14 @@ export async function runInteractiveSetup(): Promise<boolean> {
       name: "weworkAllowedUserIds",
       message: "企业微信白名单用户 ID（可选，逗号分隔，留空=所有人可访问）",
       initial: wwIds,
+    });
+  }
+  if (selectedPlatforms.includes("dingtalk")) {
+    commonPrompts.push({
+      type: "text",
+      name: "dingtalkAllowedUserIds",
+      message: "钉钉白名单用户 ID（可选，逗号分隔，留空=所有人可访问）",
+      initial: dtIds,
     });
   }
   commonPrompts.push(
@@ -706,6 +766,9 @@ export async function runInteractiveSetup(): Promise<boolean> {
   const weworkIds = selectedPlatforms.includes("wework")
     ? parseIds(commonResp.weworkAllowedUserIds)
     : parseIds(existing?.platforms?.wework?.allowedUserIds?.join(", "));
+  const dingtalkIds = selectedPlatforms.includes("dingtalk")
+    ? parseIds(commonResp.dingtalkAllowedUserIds)
+    : parseIds(existing?.platforms?.dingtalk?.allowedUserIds?.join(", "));
 
   // 增量合并：以已有配置为底，只覆盖本次选中的平台（不写入根级旧字段 telegramBotToken 等）
   const base = existing
@@ -869,6 +932,23 @@ export async function runInteractiveSetup(): Promise<boolean> {
     (out.platforms as any).wework = { enabled: false, allowedUserIds: weworkIds };
   }
 
+  if (selectedPlatforms.includes("dingtalk")) {
+    (out.platforms as any).dingtalk = {
+      ...(base?.platforms?.dingtalk as object),
+      enabled: true,
+      clientId: (config.platforms as any).dingtalk?.clientId,
+      clientSecret: (config.platforms as any).dingtalk?.clientSecret,
+      allowedUserIds: dingtalkIds,
+    };
+  } else if (base?.platforms?.dingtalk) {
+    (out.platforms as any).dingtalk = {
+      ...base.platforms.dingtalk,
+      allowedUserIds: dingtalkIds.length > 0 ? dingtalkIds : (base.platforms.dingtalk as any).allowedUserIds,
+    };
+  } else {
+    (out.platforms as any).dingtalk = { enabled: false, allowedUserIds: dingtalkIds };
+  }
+
   const dir = dirname(configPath);
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
@@ -884,10 +964,11 @@ const PLATFORM_LABELS: Record<Platform, string> = {
   telegram: "Telegram",
   feishu: "飞书",
   wework: "企业微信",
+  dingtalk: "钉钉",
   wechat: "微信（测试中）",
 };
 
-const ALL_PLATFORMS: Platform[] = ["telegram", "feishu", "wework", "wechat"];
+const ALL_PLATFORMS: Platform[] = ["telegram", "feishu", "wework", "dingtalk", "wechat"];
 
 /**
  * 启动时让用户选择要启用的平台（无论单通道还是多通道）

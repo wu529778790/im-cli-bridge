@@ -8,6 +8,7 @@
 
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { createLogger } from '../logger.js';
+import { getPlatformByChatId } from '../shared/chat-user-map.js';
 
 const log = createLogger('PermissionServer');
 
@@ -34,7 +35,7 @@ let server: Server | null = null;
 let serverPort = DEFAULT_PORT;
 const pendingRequests = new Map<string, PermissionRequest>();
 const requestsByChat = new Map<string, PermissionRequest[]>();
-let messageSender: MessageSender | null = null;
+const messageSenders = new Map<string, MessageSender>();
 
 /**
  * Start the permission HTTP server
@@ -89,8 +90,8 @@ export function stopPermissionServer(): void {
  * Register the message sender for sending permission prompts
  */
 export function registerPermissionSender(_platform: string, sender: MessageSender): void {
-  messageSender = sender;
-  log.info('Message sender registered for permission prompts');
+  messageSenders.set(_platform, sender);
+  log.info(`Message sender registered for permission prompts: ${_platform}`);
 }
 
 /**
@@ -287,8 +288,11 @@ function handlePermissionRequest(req: IncomingMessage, res: ServerResponse): voi
  * Send permission prompt to the user
  */
 async function sendPermissionPrompt(request: PermissionRequest): Promise<void> {
+  const platform = getPlatformByChatId(request.chatId);
+  const messageSender = platform ? messageSenders.get(platform) : null;
+
   if (!messageSender) {
-    log.warn('No message sender registered, cannot send permission prompt');
+    log.warn(`No message sender registered for chat ${request.chatId}, platform=${platform ?? 'unknown'}`);
     return;
   }
 

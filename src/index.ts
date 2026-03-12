@@ -18,6 +18,8 @@ import { sendTextReply as sendWeChatTextReply } from "./wechat/message-sender.js
 import { initWeWork, stopWeWork } from "./wework/client.js";
 import { setupWeWorkHandlers } from "./wework/event-handler.js";
 import { sendProactiveTextReply as sendWeWorkTextReply } from "./wework/message-sender.js";
+import { initDingTalk, stopDingTalk } from "./dingtalk/client.js";
+import { setupDingTalkHandlers } from "./dingtalk/event-handler.js";
 import { initAdapters, cleanupAdapters } from "./adapters/registry.js";
 import { SessionManager } from "./session/session-manager.js";
 import {
@@ -189,6 +191,7 @@ export async function main() {
   let feishuHandle: ReturnType<typeof setupFeishuHandlers> | null = null;
   let wechatHandle: ReturnType<typeof setupWeChatHandlers> | null = null;
   let weworkHandle: ReturnType<typeof setupWeWorkHandlers> | null = null;
+  let dingtalkHandle: ReturnType<typeof setupDingTalkHandlers> | null = null;
 
   // Track successfully initialized platforms
   const successfulPlatforms: string[] = [];
@@ -231,6 +234,16 @@ export async function main() {
       successfulPlatforms.push("wework");
     } catch (err) {
       log.error("Failed to initialize WeWork:", err);
+    }
+  }
+
+  if (config.enabledPlatforms.includes("dingtalk")) {
+    try {
+      dingtalkHandle = setupDingTalkHandlers(config, sessionManager);
+      await initDingTalk(config, dingtalkHandle.handleEvent);
+      successfulPlatforms.push("dingtalk");
+    } catch (err) {
+      log.error("Failed to initialize DingTalk:", err);
     }
   }
 
@@ -288,6 +301,8 @@ export async function main() {
     stopWeChat();
     weworkHandle?.stop();
     stopWeWork();
+    dingtalkHandle?.stop();
+    stopDingTalk();
     stopPermissionServer();
     sessionManager.destroy();
     cleanupAdapters();

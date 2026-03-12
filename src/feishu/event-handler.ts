@@ -524,7 +524,7 @@ export function setupFeishuHandlers(
       log.info(`Access granted for sender: ${senderId}`);
 
       setActiveChatId('feishu', chatId);
-      setChatUser(chatId, senderId);
+      setChatUser(chatId, senderId, 'feishu');
 
       // Handle different message types
       if (msgType === 'text') {

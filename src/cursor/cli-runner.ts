@@ -220,19 +220,8 @@ export function runCursor(
       } else if (subtype === 'completed') {
         const toolCall = event.tool_call as Record<string, unknown> | undefined;
         if (toolCall?.shellToolCall || toolCall?.bashToolCall) {
-          const shell = (toolCall.shellToolCall ?? toolCall.bashToolCall) as Record<string, unknown>;
-          const result = shell?.result as Record<string, unknown> | undefined;
-          const success = result?.success as { exitCode?: number; stdout?: string; stderr?: string } | undefined;
-          if (success) {
-            const out = success.stdout ?? success.stderr ?? '';
-            if (out) {
-              accumulated += (accumulated ? '\n\n' : '') + '```\n' + out + '\n```';
-              callbacks.onText(accumulated);
-            }
-            const exitMsg = `\n\n✓ 命令执行完成 (exit ${success.exitCode ?? 0})`;
-            accumulated += exitMsg;
-            callbacks.onText(accumulated);
-          }
+          // Shell execution is already surfaced via tool notifications.
+          // Avoid appending raw command output into the user-facing reply.
         }
       }
       return;

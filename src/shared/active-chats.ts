@@ -6,6 +6,7 @@ import { APP_HOME } from '../constants.js';
 const ACTIVE_CHATS_FILE = join(APP_HOME, 'data', 'active-chats.json');
 
 interface Data {
+  dingtalk?: string;
   feishu?: string;
   telegram?: string;
   wechat?: string;
@@ -38,11 +39,11 @@ export function loadActiveChats(): void {
   }
 }
 
-export function getActiveChatId(platform: 'feishu' | 'telegram' | 'wechat' | 'wework'): string | undefined {
+export function getActiveChatId(platform: 'dingtalk' | 'feishu' | 'telegram' | 'wechat' | 'wework'): string | undefined {
   return data[platform];
 }
 
-export function setActiveChatId(platform: 'feishu' | 'telegram' | 'wechat' | 'wework', chatId: string): void {
+export function setActiveChatId(platform: 'dingtalk' | 'feishu' | 'telegram' | 'wechat' | 'wework', chatId: string): void {
   if (data[platform] === chatId) return;
   data[platform] = chatId;
   scheduleSave();
