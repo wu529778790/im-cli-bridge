@@ -528,13 +528,13 @@ export async function sendRobotInteractiveCard(
   const body: Record<string, unknown> = {
     cardTemplateId: 'StandardCard',
     cardBizId,
+    outTrackId: cardBizId,
     robotCode,
     cardData: cardDataStr,
   };
 
   if (isSingle && target.senderStaffId) {
-    // 钉钉文档：singleChatReceiver 为单聊接收者 JSON 串，支持 userId 或 unionId
-    body.singleChatReceiver = JSON.stringify({ userId: target.senderStaffId });
+    body.singleChatReceiver = JSON.stringify({ userid: target.senderStaffId });
   } else {
     body.openConversationId = chatId;
   }
