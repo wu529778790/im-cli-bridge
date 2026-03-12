@@ -100,11 +100,33 @@ async function callOpenApi(path: string, body: Record<string, unknown>): Promise
     throw new Error(`DingTalk OpenAPI failed: ${res.status} ${text}`);
   }
 
+  let parsed: Record<string, unknown>;
   try {
-    return JSON.parse(text) as unknown;
+    parsed = JSON.parse(text) as Record<string, unknown>;
   } catch {
     return text;
   }
+
+  const errorCode = parsed.errorcode ?? parsed.errcode;
+  const success = parsed.success;
+  if (
+    errorCode === 0 ||
+    errorCode === '0' ||
+    success === true ||
+    (errorCode === undefined && success === undefined)
+  ) {
+    return parsed;
+  }
+
+  const errorMessage =
+    typeof parsed.errmsg === 'string'
+      ? parsed.errmsg
+      : typeof parsed.errormsg === 'string'
+        ? parsed.errormsg
+        : typeof parsed.message === 'string'
+          ? parsed.message
+          : text;
+  throw new Error(`DingTalk OpenAPI business error: ${String(errorCode)} ${errorMessage}`);
 }
 
 function normalizeConversationType(type?: string): string | undefined {
@@ -146,7 +168,12 @@ function buildProactiveAttempts(
     });
   };
 
-  if (normalizedType === '2' || normalizedType === 'group' || normalizedType === 'groupchat') {
+  if (
+    normalizedType === '1' ||
+    normalizedType === '2' ||
+    normalizedType === 'group' ||
+    normalizedType === 'groupchat'
+  ) {
     pushGroup();
     return attempts;
   }
@@ -162,9 +189,9 @@ function buildProactiveAttempts(
     return attempts;
   }
 
-  // 文档里 conversationType 的取值描述并不统一；未知时优先尝试单聊，再回退群聊。
-  pushSingle();
+  // 文档里 conversationType 的取值描述并不完全统一；未知时优先按原会话发群，避免误私发给个人。
   pushGroup();
+  pushSingle();
   return attempts;
 }
 

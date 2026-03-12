@@ -25,6 +25,19 @@ interface Data {
 let data: Data = {};
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
+function isValidDingTalkActiveTarget(value: unknown): value is DingTalkActiveTarget {
+  if (!value || typeof value !== 'object') return false;
+  const target = value as Record<string, unknown>;
+  return (
+    typeof target.chatId === 'string' &&
+    target.chatId.length > 0 &&
+    (target.userId === undefined || typeof target.userId === 'string') &&
+    (target.conversationType === undefined || typeof target.conversationType === 'string') &&
+    (target.robotCode === undefined || typeof target.robotCode === 'string') &&
+    typeof target.updatedAt === 'number'
+  );
+}
+
 function scheduleSave(): void {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
@@ -42,6 +55,9 @@ export function loadActiveChats(): void {
   try {
     if (existsSync(ACTIVE_CHATS_FILE)) {
       data = JSON.parse(readFileSync(ACTIVE_CHATS_FILE, 'utf-8'));
+      if (!isValidDingTalkActiveTarget(data.dingtalkTarget)) {
+        delete data.dingtalkTarget;
+      }
     }
   } catch {
     data = {};
@@ -59,7 +75,7 @@ export function setActiveChatId(platform: 'dingtalk' | 'feishu' | 'telegram' | '
 }
 
 export function getDingTalkActiveTarget(): DingTalkActiveTarget | undefined {
-  return data.dingtalkTarget;
+  return isValidDingTalkActiveTarget(data.dingtalkTarget) ? data.dingtalkTarget : undefined;
 }
 
 export function setDingTalkActiveTarget(

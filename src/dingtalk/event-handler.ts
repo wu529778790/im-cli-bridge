@@ -131,16 +131,6 @@ export function setupDingTalkHandlers(
     const userId = robotMessage.senderStaffId || robotMessage.senderId;
     const text = robotMessage.msgtype === 'text' ? robotMessage.text?.content?.trim() ?? '' : '';
 
-    registerSessionWebhook(chatId, robotMessage.sessionWebhook);
-    setActiveChatId('dingtalk', chatId);
-    setDingTalkActiveTarget({
-      chatId,
-      userId,
-      conversationType: robotMessage.conversationType,
-      robotCode: robotMessage.robotCode,
-    });
-    setChatUser(chatId, userId, 'dingtalk');
-
     log.info(`[MSG] DingTalk message: type=${robotMessage.msgtype}, user=${userId}, chat=${chatId}`);
 
     if (!accessControl.isAllowed(userId)) {
@@ -159,6 +149,16 @@ export function setupDingTalkHandlers(
       ackMessage(callbackId, { ignored: 'empty text' });
       return;
     }
+
+    registerSessionWebhook(chatId, robotMessage.sessionWebhook);
+    setActiveChatId('dingtalk', chatId);
+    setDingTalkActiveTarget({
+      chatId,
+      userId,
+      conversationType: robotMessage.conversationType,
+      robotCode: robotMessage.robotCode,
+    });
+    setChatUser(chatId, userId, 'dingtalk');
 
     try {
       const handled = await commandHandler.dispatch(text, chatId, userId, 'dingtalk', handleAIRequest);
