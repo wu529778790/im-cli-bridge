@@ -5,8 +5,17 @@ import { APP_HOME } from '../constants.js';
 
 const ACTIVE_CHATS_FILE = join(APP_HOME, 'data', 'active-chats.json');
 
+export interface DingTalkActiveTarget {
+  chatId: string;
+  userId?: string;
+  conversationType?: string;
+  robotCode?: string;
+  updatedAt: number;
+}
+
 interface Data {
   dingtalk?: string;
+  dingtalkTarget?: DingTalkActiveTarget;
   feishu?: string;
   telegram?: string;
   wechat?: string;
@@ -15,6 +24,19 @@ interface Data {
 
 let data: Data = {};
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function isValidDingTalkActiveTarget(value: unknown): value is DingTalkActiveTarget {
+  if (!value || typeof value !== 'object') return false;
+  const target = value as Record<string, unknown>;
+  return (
+    typeof target.chatId === 'string' &&
+    target.chatId.length > 0 &&
+    (target.userId === undefined || typeof target.userId === 'string') &&
+    (target.conversationType === undefined || typeof target.conversationType === 'string') &&
+    (target.robotCode === undefined || typeof target.robotCode === 'string') &&
+    typeof target.updatedAt === 'number'
+  );
+}
 
 function scheduleSave(): void {
   if (saveTimer) clearTimeout(saveTimer);
@@ -33,6 +55,9 @@ export function loadActiveChats(): void {
   try {
     if (existsSync(ACTIVE_CHATS_FILE)) {
       data = JSON.parse(readFileSync(ACTIVE_CHATS_FILE, 'utf-8'));
+      if (!isValidDingTalkActiveTarget(data.dingtalkTarget)) {
+        delete data.dingtalkTarget;
+      }
     }
   } catch {
     data = {};
@@ -46,6 +71,36 @@ export function getActiveChatId(platform: 'dingtalk' | 'feishu' | 'telegram' | '
 export function setActiveChatId(platform: 'dingtalk' | 'feishu' | 'telegram' | 'wechat' | 'wework', chatId: string): void {
   if (data[platform] === chatId) return;
   data[platform] = chatId;
+  scheduleSave();
+}
+
+export function getDingTalkActiveTarget(): DingTalkActiveTarget | undefined {
+  return isValidDingTalkActiveTarget(data.dingtalkTarget) ? data.dingtalkTarget : undefined;
+}
+
+export function setDingTalkActiveTarget(
+  target: Omit<DingTalkActiveTarget, 'updatedAt'>,
+): void {
+  if (!target.chatId) return;
+
+  const nextTarget: DingTalkActiveTarget = {
+    ...target,
+    updatedAt: Date.now(),
+  };
+
+  const prevTarget = data.dingtalkTarget;
+  data.dingtalk = target.chatId;
+  data.dingtalkTarget = nextTarget;
+
+  if (
+    prevTarget?.chatId === nextTarget.chatId &&
+    prevTarget?.userId === nextTarget.userId &&
+    prevTarget?.conversationType === nextTarget.conversationType &&
+    prevTarget?.robotCode === nextTarget.robotCode
+  ) {
+    return;
+  }
+
   scheduleSave();
 }
 

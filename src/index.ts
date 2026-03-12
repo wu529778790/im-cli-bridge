@@ -25,6 +25,7 @@ import { SessionManager } from "./session/session-manager.js";
 import {
   loadActiveChats,
   getActiveChatId,
+  getDingTalkActiveTarget,
   flushActiveChats,
 } from "./shared/active-chats.js";
 import { initLogger, createLogger, closeLogger } from "./logger.js";
@@ -45,6 +46,7 @@ async function sendLifecycleNotification(platform: string, message: string) {
   const feishuChatId = getActiveChatId("feishu");
   const wechatChatId = getActiveChatId("wechat");
   const weworkChatId = getActiveChatId("wework");
+  const dingtalkTarget = getDingTalkActiveTarget();
 
   const sendPromises: Promise<void>[] = [];
 
@@ -77,6 +79,16 @@ async function sendLifecycleNotification(platform: string, message: string) {
       sendWeWorkTextReply(weworkChatId, message).catch((err) => {
         log.debug("Failed to send WeWork notification:", err);
       }),
+    );
+  }
+
+  if (platform === "dingtalk" && dingtalkTarget) {
+    sendPromises.push(
+      import("./dingtalk/message-sender.js")
+        .then(({ sendProactiveTextReply }) => sendProactiveTextReply(dingtalkTarget, message))
+        .catch((err) => {
+          log.debug("Failed to send DingTalk notification:", err);
+        }),
     );
   }
 

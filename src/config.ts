@@ -35,6 +35,7 @@ export interface Config {
   weworkWsUrl?: string;    // 企业微信 WebSocket URL（可选，默认使用官方服务）
   dingtalkClientId?: string;
   dingtalkClientSecret?: string;
+  dingtalkCardTemplateId?: string;
 
   // 全局白名单（旧版兼容）
   allowedUserIds: string[];
@@ -90,6 +91,7 @@ export interface Config {
     dingtalk?: {
       enabled: boolean;
       allowedUserIds: string[];
+      cardTemplateId?: string;
     };
   };
 }
@@ -134,6 +136,7 @@ interface FilePlatformDingtalk {
   clientId?: string;
   clientSecret?: string;
   allowedUserIds?: string[];
+  cardTemplateId?: string;
 }
 
 interface FileToolClaude {
@@ -454,6 +457,9 @@ export function loadConfig(): Config {
   const dingtalkClientSecret =
     process.env.DINGTALK_CLIENT_SECRET ??
     fileDingtalk?.clientSecret;
+  const dingtalkCardTemplateId =
+    process.env.DINGTALK_CARD_TEMPLATE_ID ??
+    fileDingtalk?.cardTemplateId;
 
   // 2. 计算启用平台
   const enabledPlatforms: Platform[] = [];
@@ -811,10 +817,12 @@ export function loadConfig(): Config {
       ? {
           enabled: true,
           allowedUserIds: dingtalkAllowedUserIds,
+          cardTemplateId: dingtalkCardTemplateId,
         }
       : {
           enabled: false,
           allowedUserIds: dingtalkAllowedUserIds,
+          cardTemplateId: dingtalkCardTemplateId,
         },
   };
 
@@ -836,6 +844,7 @@ export function loadConfig(): Config {
     weworkWsUrl: weworkWsUrl,
     dingtalkClientId: dingtalkClientId ?? '',
     dingtalkClientSecret: dingtalkClientSecret ?? '',
+    dingtalkCardTemplateId: dingtalkCardTemplateId ?? '',
     allowedUserIds,
     telegramAllowedUserIds,
     feishuAllowedUserIds,

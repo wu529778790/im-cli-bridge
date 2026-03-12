@@ -4,9 +4,11 @@ import { AccessControl } from '../access/access-control.js';
 import type { SessionManager } from '../session/session-manager.js';
 import { RequestQueue } from '../queue/request-queue.js';
 import {
+  configureDingTalkMessageSender,
   sendThinkingMessage,
   updateMessage,
   sendFinalMessages,
+  sendErrorMessage,
   sendTextReply,
   startTypingLoop,
   sendPermissionCard,
@@ -19,7 +21,7 @@ import { CommandHandler } from '../commands/handler.js';
 import { getAdapter } from '../adapters/registry.js';
 import { runAITask, type TaskRunState } from '../shared/ai-task.js';
 import { startTaskCleanup } from '../shared/task-cleanup.js';
-import { setActiveChatId } from '../shared/active-chats.js';
+import { setActiveChatId, setDingTalkActiveTarget } from '../shared/active-chats.js';
 import { setChatUser } from '../shared/chat-user-map.js';
 import { createLogger } from '../logger.js';
 import type { ThreadContext } from '../shared/types.js';
@@ -46,6 +48,15 @@ export function setupDingTalkHandlers(
   config: Config,
   sessionManager: SessionManager,
 ): DingTalkEventHandlerHandle {
+  configureDingTalkMessageSender({
+    cardTemplateId: config.dingtalkCardTemplateId,
+  });
+  if (config.dingtalkCardTemplateId) {
+    log.info('DingTalk AI card streaming enabled');
+  } else {
+    log.info('DingTalk AI card streaming disabled: no cardTemplateId configured');
+  }
+
   const accessControl = new AccessControl(config.dingtalkAllowedUserIds);
   const requestQueue = new RequestQueue();
   const runningTasks = new Map<string, TaskRunState>();
@@ -102,7 +113,7 @@ export function setupDingTalkHandlers(
           await sendFinalMessages(chatId, msgId, content, note ?? '', toolId);
         },
         sendError: async (error) => {
-          await sendTextReply(chatId, `错误：${error}`);
+          await sendErrorMessage(chatId, msgId, error, toolId);
         },
         extraCleanup: () => {
           stopTyping();
@@ -131,10 +142,6 @@ export function setupDingTalkHandlers(
     const userId = robotMessage.senderStaffId || robotMessage.senderId;
     const text = robotMessage.msgtype === 'text' ? robotMessage.text?.content?.trim() ?? '' : '';
 
-    registerSessionWebhook(chatId, robotMessage.sessionWebhook);
-    setActiveChatId('dingtalk', chatId);
-    setChatUser(chatId, userId, 'dingtalk');
-
     log.info(`[MSG] DingTalk message: type=${robotMessage.msgtype}, user=${userId}, chat=${chatId}`);
 
     if (!accessControl.isAllowed(userId)) {
@@ -153,6 +160,16 @@ export function setupDingTalkHandlers(
       ackMessage(callbackId, { ignored: 'empty text' });
       return;
     }
+
+    registerSessionWebhook(chatId, robotMessage.sessionWebhook);
+    setActiveChatId('dingtalk', chatId);
+    setDingTalkActiveTarget({
+      chatId,
+      userId,
+      conversationType: robotMessage.conversationType,
+      robotCode: robotMessage.robotCode,
+    });
+    setChatUser(chatId, userId, 'dingtalk');
 
     try {
       const handled = await commandHandler.dispatch(text, chatId, userId, 'dingtalk', handleAIRequest);

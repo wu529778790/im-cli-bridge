@@ -39,3 +39,4 @@ export const MAX_FEISHU_MESSAGE_LENGTH = 4000;
 /** CardKit 流式内容最大长度（卡片上限约 30KB，留余量） */
 export const MAX_STREAMING_CONTENT_LENGTH = 25000;
 export const MAX_WEWORK_MESSAGE_LENGTH = 2048;
+export const MAX_DINGTALK_MESSAGE_LENGTH = 2048;
