@@ -5,8 +5,17 @@ import { APP_HOME } from '../constants.js';
 
 const ACTIVE_CHATS_FILE = join(APP_HOME, 'data', 'active-chats.json');
 
+export interface DingTalkActiveTarget {
+  chatId: string;
+  userId?: string;
+  conversationType?: string;
+  robotCode?: string;
+  updatedAt: number;
+}
+
 interface Data {
   dingtalk?: string;
+  dingtalkTarget?: DingTalkActiveTarget;
   feishu?: string;
   telegram?: string;
   wechat?: string;
@@ -46,6 +55,36 @@ export function getActiveChatId(platform: 'dingtalk' | 'feishu' | 'telegram' | '
 export function setActiveChatId(platform: 'dingtalk' | 'feishu' | 'telegram' | 'wechat' | 'wework', chatId: string): void {
   if (data[platform] === chatId) return;
   data[platform] = chatId;
+  scheduleSave();
+}
+
+export function getDingTalkActiveTarget(): DingTalkActiveTarget | undefined {
+  return data.dingtalkTarget;
+}
+
+export function setDingTalkActiveTarget(
+  target: Omit<DingTalkActiveTarget, 'updatedAt'>,
+): void {
+  if (!target.chatId) return;
+
+  const nextTarget: DingTalkActiveTarget = {
+    ...target,
+    updatedAt: Date.now(),
+  };
+
+  const prevTarget = data.dingtalkTarget;
+  data.dingtalk = target.chatId;
+  data.dingtalkTarget = nextTarget;
+
+  if (
+    prevTarget?.chatId === nextTarget.chatId &&
+    prevTarget?.userId === nextTarget.userId &&
+    prevTarget?.conversationType === nextTarget.conversationType &&
+    prevTarget?.robotCode === nextTarget.robotCode
+  ) {
+    return;
+  }
+
   scheduleSave();
 }
 

@@ -19,7 +19,7 @@ import { CommandHandler } from '../commands/handler.js';
 import { getAdapter } from '../adapters/registry.js';
 import { runAITask, type TaskRunState } from '../shared/ai-task.js';
 import { startTaskCleanup } from '../shared/task-cleanup.js';
-import { setActiveChatId } from '../shared/active-chats.js';
+import { setActiveChatId, setDingTalkActiveTarget } from '../shared/active-chats.js';
 import { setChatUser } from '../shared/chat-user-map.js';
 import { createLogger } from '../logger.js';
 import type { ThreadContext } from '../shared/types.js';
@@ -133,6 +133,12 @@ export function setupDingTalkHandlers(
 
     registerSessionWebhook(chatId, robotMessage.sessionWebhook);
     setActiveChatId('dingtalk', chatId);
+    setDingTalkActiveTarget({
+      chatId,
+      userId,
+      conversationType: robotMessage.conversationType,
+      robotCode: robotMessage.robotCode,
+    });
     setChatUser(chatId, userId, 'dingtalk');
 
     log.info(`[MSG] DingTalk message: type=${robotMessage.msgtype}, user=${userId}, chat=${chatId}`);

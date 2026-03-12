@@ -6,6 +6,7 @@ import { splitLongContent, getAIToolDisplayName } from '../shared/utils.js';
 import { listDirectories, buildDirectoryKeyboard } from '../commands/handler.js';
 import { MAX_WEWORK_MESSAGE_LENGTH } from '../constants.js';
 import type { ThreadContext } from '../shared/types.js';
+import type { DingTalkActiveTarget } from '../shared/active-chats.js';
 
 const log = createLogger('DingTalkSender');
 
@@ -118,9 +119,13 @@ export async function sendTextReply(
   log.info(`Text reply sent to DingTalk chat ${chatId}`);
 }
 
-export async function sendProactiveTextReply(chatId: string, text: string): Promise<void> {
-  await sendProactiveText(chatId, text);
-  log.info(`Proactive text sent to DingTalk chat ${chatId}`);
+export async function sendProactiveTextReply(
+  target: string | DingTalkActiveTarget,
+  text: string,
+): Promise<void> {
+  await sendProactiveText(target, text);
+  const targetId = typeof target === 'string' ? target : target.chatId;
+  log.info(`Proactive text sent to DingTalk chat ${targetId}`);
 }
 
 export async function sendPermissionCard(
