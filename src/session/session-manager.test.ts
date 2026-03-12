@@ -4,18 +4,18 @@ import { resolveWorkDirInput } from './session-manager.js';
 
 describe('resolveWorkDirInput', () => {
   it('treats drive-prefixed shorthand as rooted on that drive', () => {
-    expect(resolveWorkDirInput('D:\\coding\\open-im', 'd:coding/panhub.shenzjd.com'))
-      .toBe('d:\\coding\\panhub.shenzjd.com');
+    expect(resolveWorkDirInput('C:\\projects\\foo', 'c:projects/subdir'))
+      .toBe('c:\\projects\\subdir');
   });
 
   it('keeps explicit drive-absolute paths absolute', () => {
-    expect(resolveWorkDirInput('D:\\coding\\open-im', 'd:/coding/panhub.shenzjd.com'))
-      .toBe('d:\\coding\\panhub.shenzjd.com');
+    expect(resolveWorkDirInput('C:\\projects\\foo', 'c:/projects/subdir'))
+      .toBe('c:\\projects\\subdir');
   });
 
   it('resolves relative paths from the base directory', () => {
     const baseDir = resolve(process.cwd(), 'test-base');
-    expect(resolveWorkDirInput(baseDir, 'coding/panhub.shenzjd.com'))
-      .toBe(join(baseDir, 'coding', 'panhub.shenzjd.com'));
+    expect(resolveWorkDirInput(baseDir, 'subdir/nested'))
+      .toBe(join(baseDir, 'subdir', 'nested'));
   });
 });
