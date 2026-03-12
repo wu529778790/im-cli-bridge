@@ -6,7 +6,7 @@
 
 - 多平台：支持 Telegram、飞书、企业微信、钉钉、微信（测试中），可同时启用
 - 多 AI 工具：支持 Claude、Codex、Cursor
-- 流式输出：实时回传 AI 回复与工具执行进度
+- 流式输出：实时回传 AI 回复与工具执行进度（目前钉钉暂未实现流式传输）
 - 会话隔离：每个用户独立维护本地会话，`/new` 可重置
 - 常用命令：支持 `/help`、`/new`、`/cd`、`/pwd`、`/status`
 
@@ -30,15 +30,6 @@ open-im start
 ```
 
 配置文件默认保存在 `~/.open-im/config.json`。
-
-## 仓库开发
-
-```bash
-npm run build
-npm run dev
-npm start
-npm stop
-```
 
 ## CLI 命令
 
