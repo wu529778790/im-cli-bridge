@@ -363,7 +363,12 @@ export async function sendProactiveText(
       return;
     } catch (err) {
       lastError = err;
-      log.warn(`DingTalk proactive ${attempt.label} send failed:`, err);
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('robot') || msg.includes('resource.not.found')) {
+        log.debug(`DingTalk proactive ${attempt.label} send failed:`, err);
+      } else {
+        log.warn(`DingTalk proactive ${attempt.label} send failed:`, err);
+      }
     }
   }
 
@@ -392,7 +397,7 @@ export async function prepareStreamingCard(
     try {
       unionId = await resolveUnionIdByUserId(normalizedTarget.senderStaffId);
     } catch (err) {
-      log.warn('Failed to resolve DingTalk unionId from senderStaffId:', err);
+      log.debug('Failed to resolve DingTalk unionId from senderStaffId:', err);
     }
 
     if (unionId) {
@@ -413,7 +418,7 @@ export async function prepareStreamingCard(
     try {
       unionId = await resolveUnionIdByUserId(normalizedTarget.senderStaffId);
     } catch (err) {
-      log.warn('Failed to resolve DingTalk unionId for group (fallback):', err);
+      log.debug('Failed to resolve DingTalk unionId for group (fallback):', err);
     }
     if (unionId) {
       attempts.push({
@@ -432,7 +437,7 @@ export async function prepareStreamingCard(
     try {
       unionId = await resolveUnionIdByUserId(normalizedTarget.senderStaffId);
     } catch (err) {
-      log.warn('Failed to resolve DingTalk unionId for unknown conversation type:', err);
+      log.debug('Failed to resolve DingTalk unionId for unknown conversation type:', err);
     }
 
     if (unionId) {
@@ -461,7 +466,7 @@ export async function prepareStreamingCard(
       break;
     } catch (err) {
       lastError = err;
-      log.warn(`DingTalk prepare attempt failed (${attempt.label}):`, err);
+      log.debug(`DingTalk prepare attempt failed (${attempt.label}):`, err);
     }
   }
 
@@ -517,16 +522,10 @@ export async function createAndDeliverCard(
   }
 
   const isSingle = isSingleConversation(conversationType);
-  const cardParamMap: Record<string, string> = {};
-  for (const [k, v] of Object.entries(cardData)) {
-    if (v !== undefined && v !== null && typeof v !== 'object') {
-      cardParamMap[k] = String(v);
-    }
-  }
-  if (!cardParamMap.title) cardParamMap.title = 'AI';
-  if (!cardParamMap.content && !cardParamMap.displayText) cardParamMap.content = '...';
+  const cardParamMap = buildCardParamMap(cardData);
+  if (!cardParamMap.content && !cardParamMap.lastMessage) cardParamMap.content = '...';
 
-  const lastMsg = String(cardData.displayText ?? cardData.content ?? cardData.title ?? 'AI').slice(0, 50);
+  const lastMsg = String(cardData.lastMessage ?? cardData.displayText ?? cardData.content ?? cardData.title ?? 'AI').slice(0, 50);
 
   const body: Record<string, unknown> = {
     userId: senderStaffId ?? 'system',
@@ -560,17 +559,26 @@ export async function createAndDeliverCard(
   await callOpenApiWithMethod('POST', '/v1.0/card/instances/createAndDeliver', body);
 }
 
+/** 将 cardData 转为 cardParamMap（对象/数组需 JSON 序列化） */
+function buildCardParamMap(cardData: Record<string, unknown>): Record<string, string> {
+  const cardParamMap: Record<string, string> = {};
+  for (const [k, v] of Object.entries(cardData)) {
+    if (v === undefined || v === null) continue;
+    if (typeof v === 'object') {
+      cardParamMap[k] = JSON.stringify(v);
+    } else {
+      cardParamMap[k] = String(v);
+    }
+  }
+  return cardParamMap;
+}
+
 /** 更新卡片实例（用于流式更新） */
 export async function updateCardInstance(
   outTrackId: string,
   cardData: Record<string, unknown>,
 ): Promise<void> {
-  const cardParamMap: Record<string, string> = {};
-  for (const [k, v] of Object.entries(cardData)) {
-    if (v !== undefined && v !== null && typeof v !== 'object') {
-      cardParamMap[k] = String(v);
-    }
-  }
+  const cardParamMap = buildCardParamMap(cardData);
   await callOpenApiWithMethod('PUT', '/v1.0/card/instances', {
     outTrackId,
     cardData: { cardParamMap },

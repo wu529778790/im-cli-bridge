@@ -95,6 +95,10 @@ function getToolTitle(toolId: string, status: MessageStatus): string {
   return `${toolName} - 错误`;
 }
 
+/**
+ * 适配钉钉官方「搜索结果卡片」模板变量结构
+ * 变量：lastMessage, content, resources, users, flowStatus
+ */
 function buildCardData(
   content: string,
   status: MessageStatus,
@@ -106,16 +110,32 @@ function buildCardData(
     content.trim() || (status === 'thinking' ? '正在思考，请稍候...' : status === 'error' ? '执行失败' : '...');
   const safeNote = note?.trim() || '';
 
+  // lastMessage: 卡片摘要，用于会话列表预览
+  const lastMessage =
+    safeContent.length > 50 ? `${safeContent.slice(0, 47)}...` : safeContent || getToolTitle(toolId, status);
+
+  // resources: 对象数组，note 作为来源列表（如 "1. xxx\n2. yyy" 按行解析）
+  const resources: Array<{ title: string }> = [];
+  if (safeNote) {
+    for (const line of safeNote.split('\n')) {
+      const t = line.replace(/^\d+\.\s*/, '').trim();
+      if (t) resources.push({ title: t });
+    }
+    if (resources.length === 0) resources.push({ title: safeNote });
+  }
+
   return {
-    title: getToolTitle(toolId, status),
+    lastMessage,
     content: safeContent,
-    note: safeNote,
-    toolName,
-    status,
+    resources,
+    users: [] as unknown[],
     flowStatus: FLOW_STATUS[status],
-    icon: STATUS_ICONS[status],
+    // 保留兼容字段
+    note: safeNote,
+    status,
+    toolName,
+    title: getToolTitle(toolId, status),
     displayText: formatMessage(safeContent, status, safeNote, toolId),
-    updatedAt: new Date().toISOString(),
   };
 }
 
@@ -163,7 +183,7 @@ export async function sendThinkingMessage(
       );
       streamStates.set(messageId, { chatId, mode: 'card', conversationToken, toolId, target });
     } catch (prepareErr) {
-      log.warn('DingTalk prepare failed, trying createAndDeliver:', prepareErr);
+      log.debug('DingTalk prepare failed, trying createAndDeliver:', prepareErr);
       if (target?.robotCode) {
         try {
           await createAndDeliverCard(
@@ -180,11 +200,13 @@ export async function sendThinkingMessage(
             target,
           });
         } catch (cardErr) {
-          log.warn('DingTalk createAndDeliver failed, falling back to text:', cardErr);
+          log.debug('DingTalk createAndDeliver failed:', cardErr);
           streamStates.set(messageId, { chatId, mode: 'text', toolId, target });
+          log.info('DingTalk 流式卡片不可用，将使用普通文本回复');
         }
       } else {
         streamStates.set(messageId, { chatId, mode: 'text', toolId, target });
+        log.info('DingTalk 流式卡片不可用，将使用普通文本回复');
       }
     }
   } else {
