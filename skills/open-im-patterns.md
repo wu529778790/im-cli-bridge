@@ -57,7 +57,7 @@ src/
 │   ├── stream-parser.ts # Claude 输出流解析
 │   └── types.ts        # Claude 协议类型
 ├── commands/           # 命令处理
-│   └── handler.ts      # /help, /mode, /new 等命令
+│   └── handler.ts      # /help, /new 等命令
 ├── config.ts           # 配置加载和验证
 ├── setup.ts            # 交互式配置向导
 ├── index.ts            # 主服务入口
@@ -216,13 +216,3 @@ log.error('错误');
 - 实现 SQL 注入、XSS、CSRF 防护
 - 检查所有工具调用的权限
 
-## 权限模式
-
-项目支持四种权限模式：
-
-- `ask` - 每次询问
-- `accept-edits` - 自动批准编辑
-- `plan` - 仅分析
-- `yolo` - 跳过所有权限
-
-通过 `/mode` 命令或交互式按钮切换。

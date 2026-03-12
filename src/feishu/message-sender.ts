@@ -4,7 +4,7 @@ import { createLogger } from '../logger.js';
 import { splitLongContent } from '../shared/utils.js';
 import { MAX_FEISHU_MESSAGE_LENGTH } from '../constants.js';
 import { buildCardV2, splitLongContent as cardSplitLongContent, truncateForStreaming } from './card-builder.js';
-import { getAIToolDisplayName } from '../shared/utils.js';
+import { getAIToolDisplayName, OPEN_IM_BRAND_SUFFIX } from '../shared/utils.js';
 import {
   createCard,
   enableStreaming,
@@ -35,7 +35,8 @@ const STATUS_CONFIG: Record<MessageStatus, { icon: string; template: string; tit
 function getToolTitle(toolId: string, status: MessageStatus): string {
   const name = getAIToolDisplayName(toolId);
   const statusText = STATUS_CONFIG[status].title;
-  return status === 'done' ? name : `${name} - ${statusText}`;
+  const base = status === 'done' ? name : `${name} - ${statusText}`;
+  return `${base}${OPEN_IM_BRAND_SUFFIX}`;
 }
 
 /**

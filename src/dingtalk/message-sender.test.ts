@@ -30,13 +30,23 @@ describe('DingTalk message sender', () => {
     const sender = await import('./message-sender.js');
     sender.configureDingTalkMessageSender({ cardTemplateId: 'tpl-1' });
 
-    const messageId = await sender.sendThinkingMessage('cid-1', undefined, 'codex');
+    const messageId = await sender.sendThinkingMessage('cid-1', undefined, 'codex', {
+      chatId: 'cid-1',
+      conversationType: '0',
+      senderStaffId: 'staff-1',
+      senderId: 'sender-1',
+    });
     await sender.updateMessage('cid-1', messageId, '处理中', 'streaming', '执行中', 'codex');
     await sender.sendFinalMessages('cid-1', messageId, '最终结果', '耗时 1s', 'codex');
 
     expect(prepareStreamingCardMock).toHaveBeenCalledTimes(1);
     expect(prepareStreamingCardMock).toHaveBeenCalledWith(
-      'cid-1',
+      {
+        chatId: 'cid-1',
+        conversationType: '0',
+        senderStaffId: 'staff-1',
+        senderId: 'sender-1',
+      },
       'tpl-1',
       expect.objectContaining({
         status: 'thinking',
@@ -144,5 +154,30 @@ describe('DingTalk message sender', () => {
     );
     expect(finishStreamingCardMock).toHaveBeenCalledWith('ctx-finish');
     expect(sendTextMock).not.toHaveBeenCalled();
+  });
+
+  it('passes single chat metadata to prepare call', async () => {
+    prepareStreamingCardMock.mockResolvedValue('ctx-meta');
+
+    const sender = await import('./message-sender.js');
+    sender.configureDingTalkMessageSender({ cardTemplateId: 'tpl-meta' });
+
+    await sender.sendThinkingMessage('cid-meta', undefined, 'claude', {
+      chatId: 'cid-meta',
+      conversationType: '0',
+      senderStaffId: '015038621332843498',
+      senderId: '$:LWCP_v1:$abc',
+    });
+
+    expect(prepareStreamingCardMock).toHaveBeenCalledWith(
+      {
+        chatId: 'cid-meta',
+        conversationType: '0',
+        senderStaffId: '015038621332843498',
+        senderId: '$:LWCP_v1:$abc',
+      },
+      'tpl-meta',
+      expect.any(Object),
+    );
   });
 });

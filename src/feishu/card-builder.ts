@@ -4,7 +4,7 @@
  */
 
 import { MAX_STREAMING_CONTENT_LENGTH, MAX_FEISHU_MESSAGE_LENGTH } from '../constants.js';
-import { splitLongContent as sharedSplitLongContent, truncateText, getAIToolDisplayName } from '../shared/utils.js';
+import { splitLongContent as sharedSplitLongContent, truncateText, getAIToolDisplayName, OPEN_IM_BRAND_SUFFIX } from '../shared/utils.js';
 
 export type CardStatus = 'processing' | 'thinking' | 'streaming' | 'done' | 'error';
 
@@ -26,13 +26,16 @@ const HEADER_TEMPLATES: Record<CardStatus, string> = {
 };
 
 function getHeaderTitle(status: CardStatus, toolName: string): string {
-  switch (status) {
-    case 'processing': return `${toolName} - 处理中...`;
-    case 'thinking':   return `${toolName} - 思考中...`;
-    case 'streaming':  return toolName;
-    case 'done':       return toolName;
-    case 'error':      return `${toolName} - 错误`;
-  }
+  const base = (() => {
+    switch (status) {
+      case 'processing': return `${toolName} - 处理中...`;
+      case 'thinking':   return `${toolName} - 思考中...`;
+      case 'streaming':  return toolName;
+      case 'done':       return toolName;
+      case 'error':      return `${toolName} - 错误`;
+    }
+  })();
+  return `${base}${OPEN_IM_BRAND_SUFFIX}`;
 }
 
 export function truncateForStreaming(text: string): string {

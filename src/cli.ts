@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { main, needsSetup, runInteractiveSetup } from "./index.js";
 import { loadConfig } from "./config.js";
 import { runPlatformSelectionPrompt } from "./setup.js";
+import { checkAndUpdate } from "./check-update.js";
 import { APP_HOME, SHUTDOWN_PORT } from "./constants.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -97,7 +98,8 @@ async function cmdStart(): Promise<void> {
   const pid = getPid();
 
   if (pid && isRunning(pid)) {
-    console.log(`open-im 已在后台运行 (pid=${pid})`);
+    console.log("\n🟢 open-im 已在后台运行");
+    console.log(`   pid: ${pid}`);
     return;
   } else {
     removePid();  // 清理可能存在的陈旧 PID 文件
@@ -105,6 +107,12 @@ async function cmdStart(): Promise<void> {
 
   if (!(await validateOrSetup())) {
     process.exit(1);
+  }
+
+  // 检查并自动更新到最新版本
+  const { updated } = await checkAndUpdate();
+  if (updated) {
+    process.exit(0);
   }
 
   // 有 TTY 时在父进程让用户选择要启用的平台，再启动子进程
@@ -127,7 +135,8 @@ async function cmdStart(): Promise<void> {
   child.unref();
 
   writePid(child.pid!);
-  console.log(`open-im 已在后台启动 (pid=${child.pid})`);
+  console.log("\n🟢 open-im 已在后台启动");
+  console.log(`   pid: ${child.pid}`);
 }
 
 async function cmdStop(): Promise<void> {
@@ -172,7 +181,8 @@ async function cmdStop(): Promise<void> {
   } catch {
     /* ignore */
   }
-  console.log(`open-im 已停止 (pid=${pid})`);
+  console.log("\n🔴 open-im 已停止");
+  console.log(`   pid: ${pid}`);
 }
 
 async function cmdInit(): Promise<void> {

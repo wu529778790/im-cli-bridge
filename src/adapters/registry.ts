@@ -17,7 +17,7 @@ export function initAdapters(config: Config): void {
       console.log('🚀 使用标准 Claude 适配器');
       adapters.set('claude', new ClaudeAdapter(config.claudeCliPath, {
         useProcessPool: true,
-        idleTimeoutMs: 2 * 60 * 1000, // 2 minutes
+        idleTimeoutMs: 2 * 60 * 1000,
       }));
     }
   } else if (config.aiCommand === 'cursor') {
@@ -33,11 +33,8 @@ export function getAdapter(aiCommand: string): ToolAdapter | undefined {
   return adapters.get(aiCommand);
 }
 
-/**
- * Cleanup all adapter resources.
- */
 export function cleanupAdapters(): void {
   ClaudeAdapter.destroy();
-  ClaudeSDKAdapter.destroy();  // 清理 SDK 查询
+  ClaudeSDKAdapter.destroy();
   adapters.clear();
 }
