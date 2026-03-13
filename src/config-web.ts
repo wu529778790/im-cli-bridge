@@ -358,7 +358,7 @@ const PAGE_HTML = String.raw`<!doctype html>
             </article>
           </div>
         </section>
-        <section class="section" id="dashboardSection" style="margin-top:16px;">
+        <section class="section" id="quickActionsSection" style="margin-top:16px;">
           <div class="panel-head"><h2 id="quickActionsTitle">Quick Actions</h2></div>
           <div class="actions" style="margin-top:16px;">
             <button id="refreshHealth" class="secondary">Refresh Health Status</button>
@@ -572,9 +572,6 @@ const PAGE_HTML = String.raw`<!doctype html>
           clientId: "Client ID / AppKey",
           clientSecret: "Client Secret / AppSecret",
           dingtalkHelp: '获取凭证：访问钉钉开放平台创建企业内部应用，启用机器人 Stream Mode，获取 Client ID 和 Client Secret',
-          secret: "Secret",
-          clientId: "Client ID / AppKey",
-          clientSecret: "Client Secret / AppSecret",
           cardTemplateId: "卡片模板 ID",
           optional: "可选",
           commaSeparatedIds: "用逗号分隔多个 ID",
@@ -821,8 +818,8 @@ const PAGE_HTML = String.raw`<!doctype html>
           setBusy(false);
         }
         setInterval(() => {
-          refreshStatus().catch(() => {});
-          updateDashboard().catch(() => {});
+          refreshStatus().catch((err) => console.warn("[config-web] Failed to refresh status:", err));
+          updateDashboard().catch((err) => console.warn("[config-web] Failed to update dashboard:", err));
         }, 10000);
         ids.forEach((id) => {
           const node = el(id);
@@ -904,7 +901,7 @@ const PAGE_HTML = String.raw`<!doctype html>
           testBtn.disabled = false;
         }
       }
-      el("langButton").onclick = () => { currentLang = currentLang === "zh" ? "en" : "zh"; localStorage.setItem(storageKey, currentLang); applyLanguage(); updateVisualState(); refreshStatus().catch(() => {}); };
+      el("langButton").onclick = () => { currentLang = currentLang === "zh" ? "en" : "zh"; localStorage.setItem(storageKey, currentLang); applyLanguage(); updateVisualState(); refreshStatus().catch((err) => console.warn("[config-web] Failed to refresh status after language change:", err)); };
       el("validateButton").onclick = validate; el("saveButton").onclick = save; el("startButton").onclick = startService; el("stopButton").onclick = stopService;
       ["telegram","feishu","qq","wework","dingtalk"].forEach((platform) => {
         const testBtn = el("test-" + platform);

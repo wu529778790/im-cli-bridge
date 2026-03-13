@@ -517,7 +517,9 @@ export function setupFeishuHandlers(
       // Access control check
       if (!accessControl.isAllowed(senderId)) {
         log.warn(`Access denied for sender: ${senderId}`);
-        sendTextReply(chatId, '抱歉，您没有访问权限。\n您的 ID: ' + senderId).catch(() => {});
+        sendTextReply(chatId, '抱歉，您没有访问权限。\n您的 ID: ' + senderId).catch((err) => {
+          log.warn('[feishu] Failed to send access denied message:', err);
+        });
         return;
       }
 
@@ -567,9 +569,13 @@ export function setupFeishuHandlers(
         });
 
         if (enqueueResult === 'rejected') {
-          sendTextReply(chatId, '请求队列已满，请稍后再试。').catch(() => {});
+          sendTextReply(chatId, '请求队列已满，请稍后再试。').catch((err) => {
+            log.warn('[feishu] Failed to send queue full message:', err);
+          });
         } else if (enqueueResult === 'queued') {
-          sendTextReply(chatId, '您的请求已排队等待。').catch(() => {});
+          sendTextReply(chatId, '您的请求已排队等待。').catch((err) => {
+            log.warn('[feishu] Failed to send queue waiting message:', err);
+          });
         }
       } else if (msgType === 'post') {
         // Feishu rich text/post messages - extract text content
@@ -641,9 +647,13 @@ export function setupFeishuHandlers(
         });
 
         if (enqueueResult === 'rejected') {
-          sendTextReply(chatId, '请求队列已满，请稍后再试。').catch(() => {});
+          sendTextReply(chatId, '请求队列已满，请稍后再试。').catch((err) => {
+            log.warn('[feishu] Failed to send queue full message:', err);
+          });
         } else if (enqueueResult === 'queued') {
-          sendTextReply(chatId, '您的请求已排队等待。').catch(() => {});
+          sendTextReply(chatId, '您的请求已排队等待。').catch((err) => {
+            log.warn('[feishu] Failed to send queue waiting message:', err);
+          });
         }
       } else if (msgType === 'image') {
         const imageKey = content.image_key as string;
@@ -660,7 +670,9 @@ export function setupFeishuHandlers(
             imagePath = await downloadFeishuImage(c, imageKey);
           } catch (err) {
             log.error('Failed to download image:', err);
-            sendTextReply(chatId, '图片下载失败。').catch(() => {});
+            sendTextReply(chatId, '图片下载失败。').catch((err) => {
+              log.warn('[feishu] Failed to send image download failed message:', err);
+            });
             return;
           }
 

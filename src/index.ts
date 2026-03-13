@@ -287,7 +287,9 @@ export async function main() {
       successfulPlatforms,
       sessionManager,
     );
-    await sendLifecycleNotification(platform, startupMsg).catch(() => {});
+    await sendLifecycleNotification(platform, startupMsg).catch((err) => {
+      log.warn(`Failed to send startup notification to ${platform}:`, err);
+    });
   }
 
   const startedAt = Date.now();
@@ -303,7 +305,9 @@ export async function main() {
 
     // Send notification only to successfully initialized platforms
     for (const platform of successfulPlatforms) {
-      await sendLifecycleNotification(platform, shutdownMsg).catch(() => {});
+      await sendLifecycleNotification(platform, shutdownMsg).catch((err) => {
+        log.warn(`Failed to send shutdown notification to ${platform}:`, err);
+      });
     }
 
     shutdownServer?.close();

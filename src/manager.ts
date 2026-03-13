@@ -8,8 +8,8 @@ async function main(): Promise<void> {
   writeManagerReady();
 
   const shutdown = async () => {
-    await web.close().catch(() => {});
-    await stopBackgroundService().catch(() => {});
+    await web.close().catch((err) => console.warn("[manager] Failed to close web server:", err));
+    await stopBackgroundService().catch((err) => console.warn("[manager] Failed to stop background service:", err));
     removeManagerReady();
     removeManagerPid();
     process.exit(0);
