@@ -109,9 +109,32 @@ function extractMediaPayload(data: WeWorkCallbackMessage, kind: MediaKind): WeWo
   return null;
 }
 
+function buildWeWorkMediaContext(text: string, payload: WeWorkMediaPayload | null): string | undefined {
+  const lines: string[] = [];
+  if (text) {
+    lines.push(text);
+  }
+  if (!payload) {
+    return lines.length > 0 ? lines.join('\n') : undefined;
+  }
+
+  if (payload.filename) {
+    lines.push(`Filename: ${payload.filename}`);
+  }
+  if (payload.fileext) {
+    lines.push(`Extension: ${payload.fileext}`);
+  }
+  if (typeof payload.duration === 'number') {
+    lines.push(`DurationMs: ${payload.duration}`);
+  }
+
+  return lines.length > 0 ? lines.join('\n') : undefined;
+}
+
 async function buildMediaPrompt(data: WeWorkCallbackMessage, kind: MediaKind): Promise<string | null> {
   const text = extractTextContent(data);
   const payload = extractMediaPayload(data, kind);
+  const contextText = buildWeWorkMediaContext(text, payload);
 
   if (kind === 'image') {
     const imagePayload = payload ?? extractImagePayload(data);
@@ -124,7 +147,7 @@ async function buildMediaPrompt(data: WeWorkCallbackMessage, kind: MediaKind): P
         source: 'WeWork',
         kind: 'image',
         localPath: savedPath,
-        text,
+        text: contextText,
       });
     } else if (typeof imagePayload.url === 'string' && imagePayload.url.length > 0) {
       try {
@@ -136,7 +159,7 @@ async function buildMediaPrompt(data: WeWorkCallbackMessage, kind: MediaKind): P
           source: 'WeWork',
           kind: 'image',
           localPath: savedPath,
-          text,
+          text: contextText,
         });
       } catch {
         imageReference = `Remote image URL: ${imagePayload.url}`;
@@ -146,7 +169,7 @@ async function buildMediaPrompt(data: WeWorkCallbackMessage, kind: MediaKind): P
     return buildMediaMetadataPrompt({
       source: 'WeWork',
       kind: 'image',
-      text,
+      text: contextText,
       metadata: {
         reference: imageReference || 'No direct image bytes were included; only metadata is available.',
         payload: imagePayload,
@@ -166,7 +189,7 @@ async function buildMediaPrompt(data: WeWorkCallbackMessage, kind: MediaKind): P
         source: 'WeWork',
         kind,
         localPath: savedPath,
-        text,
+        text: contextText,
       });
     } catch {
       // Fall back to metadata-only prompt.
@@ -176,7 +199,7 @@ async function buildMediaPrompt(data: WeWorkCallbackMessage, kind: MediaKind): P
   return buildMediaMetadataPrompt({
     source: 'WeWork',
     kind,
-    text,
+    text: contextText,
     metadata: payload ?? 'none',
     guidance:
       'If the media content is not directly accessible, explain that clearly and ask the user for a text summary, transcript, or a resend via a channel with native media support.',
