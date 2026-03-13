@@ -102,6 +102,26 @@ async function sendIncrementalContent(
       const splitAt = flushAll
         ? Math.min(state.pendingText.length, STREAM_CHUNK_LENGTH)
         : findPreferredSplit(state.pendingText, STREAM_CHUNK_LENGTH);
+      // 修复：即使 splitAt <= 0，如果还有 pendingText，也应该继续处理
+      // 防止最后一个分块被跳过导致 lastSentLength 没有更新
+      if (splitAt <= 0 && state.pendingText.length > 0) {
+        // 如果无法找到合适的分割点，但有内容待发送，强制分割
+        const part = state.pendingText.trim();
+        state.pendingText = "";
+        if (part) {
+          const text = buildStreamChunk(
+            toolId,
+            part,
+            hasNewNote ? note : undefined,
+            !state.sentStreamChunk,
+          );
+          await sendRaw(state.chatId, text, state.replyToMessageId);
+          if (hasNewNote) noteSent = true;
+          state.sentStreamChunk = true;
+        }
+        break;
+      }
+
       if (splitAt <= 0) break;
 
       const part = state.pendingText.slice(0, splitAt).trim();
