@@ -241,11 +241,11 @@ const PAGE_HTML = String.raw`<!doctype html>
       .hero,.toolbar,.section,.footer{padding:20px 22px;border-bottom:1px solid var(--line)}.hero{background:linear-gradient(120deg,rgba(19,35,26,.96),rgba(26,106,68,.92));color:#f7f0df}
       .hero h1,.hero p{margin:0}.hero h1{font-size:clamp(2rem,4vw,3.4rem);line-height:.95}.hero p{margin-top:12px;max-width:720px}
       .pill{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.62);font-size:.9rem}
-      .toolbar,.grid,.two-col,.footer,.actions{display:grid;gap:14px}.status-row{display:flex;flex-wrap:wrap;gap:10px}.grid{grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+      .toolbar,.grid,.two-col,.footer,.actions{display:grid;gap:14px}.status-row{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between}.status-group{display:flex;flex-wrap:wrap;gap:10px}.grid{grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
       .panel{padding:16px;border:1px solid var(--line);background:rgba(255,255,255,.46);transition:opacity .18s ease,transform .18s ease}.panel.off{opacity:.58}.panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
       h2,h3{margin:0}label{display:grid;gap:6px;color:var(--muted);font-size:.92rem}input,select,textarea{width:100%;padding:11px 12px;border:1px solid rgba(19,35,26,.14);background:rgba(255,255,255,.84);font:inherit;color:var(--ink)}
       textarea{min-height:74px;resize:vertical}.two-col{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}.toggle{display:inline-flex;align-items:center;gap:10px;color:var(--ink)}.toggle input{width:18px;height:18px}
-      .actions{display:flex;flex-wrap:wrap;gap:10px}button{border:0;padding:12px 16px;font:inherit;cursor:pointer;color:#fff7eb;background:var(--ink)}button.secondary{background:var(--green)}button.warning{background:var(--orange)}button.danger{background:var(--red)}button:disabled{opacity:.5;cursor:wait}
+      .actions{display:flex;flex-wrap:wrap;gap:10px}button{border:0;padding:12px 16px;font:inherit;cursor:pointer;color:#fff7eb;background:var(--ink)}button.secondary{background:var(--green)}button.warning{background:var(--orange)}button.danger{background:var(--red)}button.ghost{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.28)}button:disabled{opacity:.5;cursor:wait}
       .message{min-height:24px;color:var(--muted)}.message.success{color:var(--green)}.message.error{color:var(--red)}.mono{font-family:Consolas,monospace}.summary{color:var(--muted)}.note{border-left:4px solid var(--orange)}
     </style>
   </head>
@@ -253,12 +253,15 @@ const PAGE_HTML = String.raw`<!doctype html>
     <div class="shell">
       <div class="frame">
         <section class="hero">
-          <div class="pill">open-im local control</div>
-          <h1>Configure fast. Start clean.</h1>
-          <p>Local-only configuration for Telegram, Feishu, WeWork, and DingTalk. No accounts. No remote state. No database.</p>
+          <div class="status-row">
+            <div class="pill" id="heroBadge">open-im local control</div>
+            <button id="langButton" class="ghost" type="button">中文</button>
+          </div>
+          <h1 id="heroTitle">Configure fast. Start clean.</h1>
+          <p id="heroBody">Local-only configuration for Telegram, Feishu, WeWork, and DingTalk. No accounts. No remote state. No database.</p>
         </section>
         <section class="toolbar">
-          <div class="status-row">
+          <div class="status-group">
             <div class="pill mono" id="configPath"></div>
             <div class="pill" id="serviceState"></div>
             <div class="pill" id="modeBadge"></div>
@@ -267,7 +270,7 @@ const PAGE_HTML = String.raw`<!doctype html>
           <div class="summary" id="liveSummary"></div>
         </section>
         <section class="section">
-          <div class="panel-head"><h2>Platforms</h2><div>Disabled platforms keep their saved values.</div></div>
+          <div class="panel-head"><h2 id="platformsTitle">Platforms</h2><div id="platformsHint">Disabled platforms keep their saved values.</div></div>
           <div class="grid">
             <article class="panel" id="telegram-panel">
               <div class="panel-head"><h3>Telegram</h3><label class="toggle"><input id="telegram-enabled" type="checkbox" /> Enabled</label></div>
@@ -297,8 +300,8 @@ const PAGE_HTML = String.raw`<!doctype html>
           </div>
         </section>
         <section class="section">
-          <div class="panel-head"><h2>AI Tooling</h2><div>WeChat is intentionally excluded from this first version.</div></div>
-          <article class="panel note">Claude credentials are still read from environment variables or <span class="mono">~/.claude/settings.json</span>. This page manages local bridge config, not Claude account auth.</article>
+          <div class="panel-head"><h2 id="aiTitle">AI Tooling</h2><div id="aiHint">WeChat is intentionally excluded from this first version.</div></div>
+          <article class="panel note" id="claudeNote">Claude credentials are still read from environment variables or ~/.claude/settings.json. This page manages local bridge config, not Claude account auth.</article>
           <article class="panel">
             <div class="two-col">
               <label>Default AI tool<select id="ai-aiCommand"><option value="claude">claude</option><option value="codex">codex</option><option value="cursor">cursor</option></select></label>
@@ -332,8 +335,186 @@ const PAGE_HTML = String.raw`<!doctype html>
     <script>
       const ids = ["telegram-enabled","telegram-botToken","telegram-proxy","telegram-allowedUserIds","feishu-enabled","feishu-appId","feishu-appSecret","feishu-allowedUserIds","wework-enabled","wework-corpId","wework-secret","wework-allowedUserIds","dingtalk-enabled","dingtalk-clientId","dingtalk-clientSecret","dingtalk-cardTemplateId","dingtalk-allowedUserIds","ai-aiCommand","ai-claudeCliPath","ai-claudeWorkDir","ai-claudeSkipPermissions","ai-claudeTimeoutMs","ai-claudeModel","ai-cursorCliPath","ai-codexCliPath","ai-codexProxy","ai-hookPort","ai-logLevel","ai-useSdkMode"];
       const el = (id) => document.getElementById(id);
+      const storageKey = "open-im-web-lang";
+      const texts = {
+        en: {
+          pageTitle: "open-im local control",
+          heroBadge: "open-im local control",
+          heroTitle: "Configure fast. Start clean.",
+          heroBody: "Local-only configuration for Telegram, Feishu, WeWork, and DingTalk. No accounts. No remote state. No database.",
+          langButton: "中文",
+          mode: "Flow",
+          platformsTitle: "Platforms",
+          platformsHint: "Disabled platforms keep their saved values.",
+          enabled: "Enabled",
+          botToken: "Bot token",
+          proxy: "Proxy",
+          allowedUserIds: "Allowed user IDs",
+          appId: "App ID",
+          appSecret: "App Secret",
+          corpId: "Corp ID / Bot ID",
+          secret: "Secret",
+          clientId: "Client ID / AppKey",
+          clientSecret: "Client Secret / AppSecret",
+          cardTemplateId: "Card template ID",
+          optional: "Optional",
+          commaSeparatedIds: "Comma-separated IDs",
+          aiTitle: "AI Tooling",
+          aiHint: "WeChat is intentionally excluded from this first version.",
+          claudeNote: "Claude credentials are still read from environment variables or ~/.claude/settings.json. This page manages local bridge config, not Claude account auth.",
+          aiTool: "Default AI tool",
+          workDir: "Default work directory",
+          claudeCli: "Claude CLI path",
+          cursorCli: "Cursor CLI path",
+          codexCli: "Codex CLI path",
+          codexProxy: "Codex proxy",
+          claudeTimeout: "Claude timeout (ms)",
+          claudeModel: "Claude model",
+          hookPort: "Hook port",
+          logLevel: "Log level",
+          autoApprove: "Auto-approve tool permissions",
+          sdkMode: "Use Claude SDK mode",
+          validate: "Validate",
+          save: "Save config",
+          start: "Start bridge",
+          stop: "Stop bridge",
+          bridgeRunning: "Bridge running (pid {pid})",
+          bridgeStopped: "Bridge stopped",
+          bridgeActive: "Bridge worker is active.",
+          bridgeInactive: "Bridge worker is currently stopped.",
+          summaryEnabled: "Enabled platforms: {platforms} | AI tool: {tool}",
+          summaryEmpty: "No platform enabled yet | AI tool: {tool}",
+          ready: "Control surface ready.",
+          validationOk: "Configuration looks internally consistent.",
+          saveOk: "Configuration saved.",
+          startOk: "Bridge started.",
+          stopOk: "Bridge stopped.",
+        },
+        zh: {
+          pageTitle: "open-im 本地控制台",
+          heroBadge: "open-im 本地控制台",
+          heroTitle: "先配清楚，再稳启动。",
+          heroBody: "本地页面配置 Telegram、飞书、企业微信和钉钉。不做账号体系，不存远端状态，不接数据库。",
+          langButton: "EN",
+          mode: "流程",
+          platformsTitle: "平台配置",
+          platformsHint: "关闭的平台会保留已保存的值。",
+          enabled: "启用",
+          botToken: "Bot Token",
+          proxy: "代理",
+          allowedUserIds: "允许的用户 ID",
+          appId: "App ID",
+          appSecret: "App Secret",
+          corpId: "Corp ID / Bot ID",
+          secret: "Secret",
+          clientId: "Client ID / AppKey",
+          clientSecret: "Client Secret / AppSecret",
+          cardTemplateId: "卡片模板 ID",
+          optional: "可选",
+          commaSeparatedIds: "用逗号分隔多个 ID",
+          aiTitle: "AI 工具配置",
+          aiHint: "第一版暂时不包含 WeChat。",
+          claudeNote: "Claude 凭证仍然从环境变量或 ~/.claude/settings.json 读取。这个页面只管理本地桥接配置，不负责 Claude 账号登录。",
+          aiTool: "默认 AI 工具",
+          workDir: "默认工作目录",
+          claudeCli: "Claude CLI 路径",
+          cursorCli: "Cursor CLI 路径",
+          codexCli: "Codex CLI 路径",
+          codexProxy: "Codex 代理",
+          claudeTimeout: "Claude 超时（毫秒）",
+          claudeModel: "Claude 模型",
+          hookPort: "Hook 端口",
+          logLevel: "日志级别",
+          autoApprove: "自动允许工具权限",
+          sdkMode: "使用 Claude SDK 模式",
+          validate: "校验配置",
+          save: "保存配置",
+          start: "启动桥接",
+          stop: "停止桥接",
+          bridgeRunning: "桥接运行中（pid {pid}）",
+          bridgeStopped: "桥接已停止",
+          bridgeActive: "桥接 worker 正在运行。",
+          bridgeInactive: "桥接 worker 当前已停止。",
+          summaryEnabled: "已启用平台：{platforms} | AI 工具：{tool}",
+          summaryEmpty: "暂未启用平台 | AI 工具：{tool}",
+          ready: "控制台已就绪。",
+          validationOk: "配置校验通过。",
+          saveOk: "配置已保存。",
+          startOk: "桥接已启动。",
+          stopOk: "桥接已停止。",
+        }
+      };
+      let currentMeta = null;
+      let currentLang = (localStorage.getItem(storageKey) || "").startsWith("zh") ? "zh" : ((navigator.language || "").startsWith("zh") ? "zh" : "en");
+      const t = (key, params={}) => {
+        const source = texts[currentLang] || texts.en;
+        return Object.keys(params).reduce((result, name) => result.replaceAll("{" + name + "}", String(params[name])), source[key] || key);
+      };
       const setMessage = (text, type="") => { const node = el("message"); node.textContent = text; node.className = ("message " + type).trim(); };
-      const setBusy = (busy) => ["validateButton","saveButton","startButton","stopButton"].forEach((id) => { el(id).disabled = busy; });
+      const setBusy = (busy) => ["validateButton","saveButton","startButton","stopButton","langButton"].forEach((id) => { el(id).disabled = busy; });
+      function applyLanguage(meta) {
+        if (meta) currentMeta = meta;
+        document.documentElement.lang = currentLang === "zh" ? "zh-CN" : "en";
+        document.title = t("pageTitle");
+        el("heroBadge").textContent = t("heroBadge");
+        el("heroTitle").textContent = t("heroTitle");
+        el("heroBody").textContent = t("heroBody");
+        el("langButton").textContent = t("langButton");
+        el("platformsTitle").textContent = t("platformsTitle");
+        el("platformsHint").textContent = t("platformsHint");
+        el("aiTitle").textContent = t("aiTitle");
+        el("aiHint").textContent = t("aiHint");
+        el("claudeNote").childNodes[0].textContent = t("claudeNote");
+        el("telegram-panel").querySelector(".toggle").lastChild.textContent = " " + t("enabled");
+        el("feishu-panel").querySelector(".toggle").lastChild.textContent = " " + t("enabled");
+        el("wework-panel").querySelector(".toggle").lastChild.textContent = " " + t("enabled");
+        el("dingtalk-panel").querySelector(".toggle").lastChild.textContent = " " + t("enabled");
+        const telegramLabels = el("telegram-panel").querySelectorAll(":scope > label");
+        telegramLabels[0].childNodes[0].textContent = t("botToken");
+        telegramLabels[1].childNodes[0].textContent = t("proxy");
+        telegramLabels[2].childNodes[0].textContent = t("allowedUserIds");
+        const feishuLabels = el("feishu-panel").querySelectorAll(":scope > label");
+        feishuLabels[0].childNodes[0].textContent = t("appId");
+        feishuLabels[1].childNodes[0].textContent = t("appSecret");
+        feishuLabels[2].childNodes[0].textContent = t("allowedUserIds");
+        const weworkLabels = el("wework-panel").querySelectorAll(":scope > label");
+        weworkLabels[0].childNodes[0].textContent = t("corpId");
+        weworkLabels[1].childNodes[0].textContent = t("secret");
+        weworkLabels[2].childNodes[0].textContent = t("allowedUserIds");
+        const dingtalkLabels = el("dingtalk-panel").querySelectorAll(":scope > label");
+        dingtalkLabels[0].childNodes[0].textContent = t("clientId");
+        dingtalkLabels[1].childNodes[0].textContent = t("clientSecret");
+        dingtalkLabels[2].childNodes[0].textContent = t("cardTemplateId");
+        dingtalkLabels[3].childNodes[0].textContent = t("allowedUserIds");
+        el("telegram-allowedUserIds").placeholder = t("commaSeparatedIds");
+        el("feishu-allowedUserIds").placeholder = t("commaSeparatedIds");
+        el("wework-allowedUserIds").placeholder = t("commaSeparatedIds");
+        el("dingtalk-allowedUserIds").placeholder = t("commaSeparatedIds");
+        el("dingtalk-cardTemplateId").placeholder = t("optional");
+        const aiLabels = document.querySelectorAll(".two-col > label");
+        aiLabels[0].childNodes[0].textContent = t("aiTool");
+        aiLabels[1].childNodes[0].textContent = t("workDir");
+        aiLabels[2].childNodes[0].textContent = t("claudeCli");
+        aiLabels[3].childNodes[0].textContent = t("cursorCli");
+        aiLabels[4].childNodes[0].textContent = t("codexCli");
+        aiLabels[5].childNodes[0].textContent = t("codexProxy");
+        aiLabels[6].childNodes[0].textContent = t("claudeTimeout");
+        aiLabels[7].childNodes[0].textContent = t("claudeModel");
+        aiLabels[8].childNodes[0].textContent = t("hookPort");
+        aiLabels[9].childNodes[0].textContent = t("logLevel");
+        el("ai-codexProxy").placeholder = t("optional");
+        el("ai-claudeModel").placeholder = t("optional");
+        const aiToggles = document.querySelectorAll(".actions .toggle");
+        aiToggles[0].lastChild.textContent = " " + t("autoApprove");
+        aiToggles[1].lastChild.textContent = " " + t("sdkMode");
+        el("validateButton").textContent = t("validate");
+        el("saveButton").textContent = t("save");
+        el("startButton").textContent = t("start");
+        el("stopButton").textContent = t("stop");
+        if (currentMeta) {
+          el("modeBadge").textContent = t("mode") + ": " + currentMeta.mode;
+        }
+      }
       function updateVisualState() {
         const enabled = [];
         [["telegram","Telegram"],["feishu","Feishu"],["wework","WeWork"],["dingtalk","DingTalk"]].forEach(([key,label]) => {
@@ -343,18 +524,19 @@ const PAGE_HTML = String.raw`<!doctype html>
         });
         const aiTool = el("ai-aiCommand").value;
         el("liveSummary").textContent = enabled.length
-          ? ("Enabled platforms: " + enabled.join(", ") + " | AI tool: " + aiTool)
-          : ("No platform enabled yet | AI tool: " + aiTool);
+          ? t("summaryEnabled", { platforms: enabled.join(currentLang === "zh" ? "、" : ", "), tool: aiTool })
+          : t("summaryEmpty", { tool: aiTool });
       }
       const payload = () => ({ platforms: { telegram: { enabled: el("telegram-enabled").checked, botToken: el("telegram-botToken").value, proxy: el("telegram-proxy").value, allowedUserIds: el("telegram-allowedUserIds").value }, feishu: { enabled: el("feishu-enabled").checked, appId: el("feishu-appId").value, appSecret: el("feishu-appSecret").value, allowedUserIds: el("feishu-allowedUserIds").value }, wework: { enabled: el("wework-enabled").checked, corpId: el("wework-corpId").value, secret: el("wework-secret").value, allowedUserIds: el("wework-allowedUserIds").value }, dingtalk: { enabled: el("dingtalk-enabled").checked, clientId: el("dingtalk-clientId").value, clientSecret: el("dingtalk-clientSecret").value, cardTemplateId: el("dingtalk-cardTemplateId").value, allowedUserIds: el("dingtalk-allowedUserIds").value } }, ai: { aiCommand: el("ai-aiCommand").value, claudeCliPath: el("ai-claudeCliPath").value, claudeWorkDir: el("ai-claudeWorkDir").value, claudeSkipPermissions: el("ai-claudeSkipPermissions").checked, claudeTimeoutMs: Number(el("ai-claudeTimeoutMs").value || "0"), claudeModel: el("ai-claudeModel").value, cursorCliPath: el("ai-cursorCliPath").value, codexCliPath: el("ai-codexCliPath").value, codexProxy: el("ai-codexProxy").value, hookPort: Number(el("ai-hookPort").value || "0"), logLevel: el("ai-logLevel").value, useSdkMode: el("ai-useSdkMode").checked } });
       async function request(path, options={}) { const response = await fetch(path, { headers: { "content-type": "application/json" }, ...options }); const body = await response.json(); if (!response.ok) throw new Error(body.error || "Request failed"); return body; }
-      function fill(data, meta) { el("configPath").textContent = meta.configPath; el("modeBadge").textContent = "Flow: " + meta.mode; el("telegram-enabled").checked = data.platforms.telegram.enabled; el("telegram-botToken").value = data.platforms.telegram.botToken; el("telegram-proxy").value = data.platforms.telegram.proxy; el("telegram-allowedUserIds").value = data.platforms.telegram.allowedUserIds; el("feishu-enabled").checked = data.platforms.feishu.enabled; el("feishu-appId").value = data.platforms.feishu.appId; el("feishu-appSecret").value = data.platforms.feishu.appSecret; el("feishu-allowedUserIds").value = data.platforms.feishu.allowedUserIds; el("wework-enabled").checked = data.platforms.wework.enabled; el("wework-corpId").value = data.platforms.wework.corpId; el("wework-secret").value = data.platforms.wework.secret; el("wework-allowedUserIds").value = data.platforms.wework.allowedUserIds; el("dingtalk-enabled").checked = data.platforms.dingtalk.enabled; el("dingtalk-clientId").value = data.platforms.dingtalk.clientId; el("dingtalk-clientSecret").value = data.platforms.dingtalk.clientSecret; el("dingtalk-cardTemplateId").value = data.platforms.dingtalk.cardTemplateId; el("dingtalk-allowedUserIds").value = data.platforms.dingtalk.allowedUserIds; el("ai-aiCommand").value = data.ai.aiCommand; el("ai-claudeCliPath").value = data.ai.claudeCliPath; el("ai-claudeWorkDir").value = data.ai.claudeWorkDir; el("ai-claudeSkipPermissions").checked = data.ai.claudeSkipPermissions; el("ai-claudeTimeoutMs").value = String(data.ai.claudeTimeoutMs); el("ai-claudeModel").value = data.ai.claudeModel; el("ai-cursorCliPath").value = data.ai.cursorCliPath; el("ai-codexCliPath").value = data.ai.codexCliPath; el("ai-codexProxy").value = data.ai.codexProxy; el("ai-hookPort").value = String(data.ai.hookPort); el("ai-logLevel").value = data.ai.logLevel; el("ai-useSdkMode").checked = data.ai.useSdkMode; updateVisualState(); }
-      async function refreshStatus() { const data = await request("/api/service/status"); el("serviceState").textContent = data.running ? ("Bridge running (pid " + data.pid + ")") : "Bridge stopped"; el("statusMeta").textContent = data.running ? "Bridge worker is active." : "Bridge worker is currently stopped."; }
-      async function boot() { setBusy(true); try { const data = await request("/api/config"); fill(data.payload, data.meta); await refreshStatus(); setMessage("Control surface ready.", "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } setInterval(() => { refreshStatus().catch(() => {}); }, 5000); ids.forEach((id) => { const node = el(id); if (node) node.addEventListener("input", updateVisualState); if (node) node.addEventListener("change", updateVisualState); }); }
-      async function validate() { setBusy(true); try { const data = await request("/api/config/validate", { method: "POST", body: JSON.stringify(payload()) }); setMessage(data.message, "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
-      async function save() { setBusy(true); try { const data = await request("/api/config/save?final=1", { method: "POST", body: JSON.stringify(payload()) }); setMessage(data.message, "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
-      async function startService() { setBusy(true); try { await request("/api/config/save", { method: "POST", body: JSON.stringify(payload()) }); const data = await request("/api/service/start", { method: "POST" }); await refreshStatus(); setMessage(data.message, "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
-      async function stopService() { setBusy(true); try { const data = await request("/api/service/stop", { method: "POST" }); await refreshStatus(); setMessage(data.message, "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
+      function fill(data, meta) { el("configPath").textContent = meta.configPath; applyLanguage(meta); el("telegram-enabled").checked = data.platforms.telegram.enabled; el("telegram-botToken").value = data.platforms.telegram.botToken; el("telegram-proxy").value = data.platforms.telegram.proxy; el("telegram-allowedUserIds").value = data.platforms.telegram.allowedUserIds; el("feishu-enabled").checked = data.platforms.feishu.enabled; el("feishu-appId").value = data.platforms.feishu.appId; el("feishu-appSecret").value = data.platforms.feishu.appSecret; el("feishu-allowedUserIds").value = data.platforms.feishu.allowedUserIds; el("wework-enabled").checked = data.platforms.wework.enabled; el("wework-corpId").value = data.platforms.wework.corpId; el("wework-secret").value = data.platforms.wework.secret; el("wework-allowedUserIds").value = data.platforms.wework.allowedUserIds; el("dingtalk-enabled").checked = data.platforms.dingtalk.enabled; el("dingtalk-clientId").value = data.platforms.dingtalk.clientId; el("dingtalk-clientSecret").value = data.platforms.dingtalk.clientSecret; el("dingtalk-cardTemplateId").value = data.platforms.dingtalk.cardTemplateId; el("dingtalk-allowedUserIds").value = data.platforms.dingtalk.allowedUserIds; el("ai-aiCommand").value = data.ai.aiCommand; el("ai-claudeCliPath").value = data.ai.claudeCliPath; el("ai-claudeWorkDir").value = data.ai.claudeWorkDir; el("ai-claudeSkipPermissions").checked = data.ai.claudeSkipPermissions; el("ai-claudeTimeoutMs").value = String(data.ai.claudeTimeoutMs); el("ai-claudeModel").value = data.ai.claudeModel; el("ai-cursorCliPath").value = data.ai.cursorCliPath; el("ai-codexCliPath").value = data.ai.codexCliPath; el("ai-codexProxy").value = data.ai.codexProxy; el("ai-hookPort").value = String(data.ai.hookPort); el("ai-logLevel").value = data.ai.logLevel; el("ai-useSdkMode").checked = data.ai.useSdkMode; updateVisualState(); }
+      async function refreshStatus() { const data = await request("/api/service/status"); el("serviceState").textContent = data.running ? t("bridgeRunning", { pid: data.pid }) : t("bridgeStopped"); el("statusMeta").textContent = data.running ? t("bridgeActive") : t("bridgeInactive"); }
+      async function boot() { setBusy(true); try { applyLanguage(); const data = await request("/api/config"); fill(data.payload, data.meta); await refreshStatus(); setMessage(t("ready"), "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } setInterval(() => { refreshStatus().catch(() => {}); }, 5000); ids.forEach((id) => { const node = el(id); if (node) node.addEventListener("input", updateVisualState); if (node) node.addEventListener("change", updateVisualState); }); }
+      async function validate() { setBusy(true); try { await request("/api/config/validate", { method: "POST", body: JSON.stringify(payload()) }); setMessage(t("validationOk"), "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
+      async function save() { setBusy(true); try { await request("/api/config/save?final=1", { method: "POST", body: JSON.stringify(payload()) }); setMessage(t("saveOk"), "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
+      async function startService() { setBusy(true); try { await request("/api/config/save", { method: "POST", body: JSON.stringify(payload()) }); await request("/api/service/start", { method: "POST" }); await refreshStatus(); setMessage(t("startOk"), "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
+      async function stopService() { setBusy(true); try { await request("/api/service/stop", { method: "POST" }); await refreshStatus(); setMessage(t("stopOk"), "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
+      el("langButton").onclick = () => { currentLang = currentLang === "zh" ? "en" : "zh"; localStorage.setItem(storageKey, currentLang); applyLanguage(); updateVisualState(); refreshStatus().catch(() => {}); };
       el("validateButton").onclick = validate; el("saveButton").onclick = save; el("startButton").onclick = startService; el("stopButton").onclick = stopService; boot();
     </script>
   </body>
