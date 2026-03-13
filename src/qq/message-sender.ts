@@ -11,6 +11,7 @@ interface StreamState {
   replyToMessageId?: string;
   lastSentLength: number;
   lastToolNote?: string;
+  pendingText: string;
   sentStreamChunk: boolean;
 }
 
@@ -54,6 +55,7 @@ function getOrCreateStreamState(
     replyToMessageId,
     lastSentLength: 0,
     sentStreamChunk: false,
+    pendingText: "",
   };
   streamStates.set(messageId, state);
   return state;
@@ -65,12 +67,27 @@ function buildStreamChunk(toolId: string, content: string, note?: string, withHe
   return `${header}${header ? "\n" : ""}${content}${noteBlock}`.trim();
 }
 
+function findPreferredSplit(text: string, limit: number): number {
+  const normalizedLimit = Math.min(text.length, limit);
+  const boundaries = ["\n\n", "\n", "。", "！", "？", ". ", "! ", "? ", "，", "、", " "];
+  const minimumUsefulSplit = Math.min(80, Math.floor(normalizedLimit / 3));
+
+  for (const boundary of boundaries) {
+    const index = text.lastIndexOf(boundary, normalizedLimit);
+    if (index >= minimumUsefulSplit) {
+      return index + boundary.length;
+    }
+  }
+
+  return text.length >= limit ? normalizedLimit : 0;
+}
+
 async function sendIncrementalContent(
   state: StreamState,
-  messageId: string,
   toolId: string,
   content: string,
   note?: string,
+  flushAll = false,
 ): Promise<void> {
   const delta = content.slice(state.lastSentLength);
   const hasNewNote = !!note && note !== state.lastToolNote;
@@ -78,19 +95,32 @@ async function sendIncrementalContent(
   if (!delta && !hasNewNote) return;
 
   if (delta) {
-    const parts = splitLongContent(delta, STREAM_CHUNK_LENGTH);
-    for (let i = 0; i < parts.length; i++) {
+    state.pendingText += delta;
+    let noteSent = false;
+
+    while (state.pendingText.length > 0) {
+      const splitAt = flushAll
+        ? Math.min(state.pendingText.length, STREAM_CHUNK_LENGTH)
+        : findPreferredSplit(state.pendingText, STREAM_CHUNK_LENGTH);
+      if (splitAt <= 0) break;
+
+      const part = state.pendingText.slice(0, splitAt).trim();
+      state.pendingText = state.pendingText.slice(splitAt).trimStart();
+      if (!part) continue;
+
       const text = buildStreamChunk(
         toolId,
-        parts[i],
-        i === parts.length - 1 && hasNewNote ? note : undefined,
-        !state.sentStreamChunk && i === 0,
+        part,
+        state.pendingText.length === 0 && hasNewNote ? note : undefined,
+        !state.sentStreamChunk,
       );
       await sendRaw(state.chatId, text, state.replyToMessageId);
+      if (state.pendingText.length === 0 && hasNewNote) noteSent = true;
       state.sentStreamChunk = true;
     }
+
     state.lastSentLength = content.length;
-    if (hasNewNote) state.lastToolNote = note;
+    if (noteSent) state.lastToolNote = note;
     return;
   }
 
@@ -124,7 +154,7 @@ export async function updateMessage(
 ): Promise<void> {
   if (status !== "streaming" && status !== "thinking") return;
   const state = getOrCreateStreamState(messageId, chatId);
-  await sendIncrementalContent(state, messageId, toolId, content, note);
+  await sendIncrementalContent(state, toolId, content, note);
 }
 
 export async function sendFinalMessages(
@@ -135,7 +165,7 @@ export async function sendFinalMessages(
   toolId = "claude",
 ): Promise<void> {
   const state = getOrCreateStreamState(messageId, chatId);
-  await sendIncrementalContent(state, messageId, toolId, fullContent);
+  await sendIncrementalContent(state, toolId, fullContent, undefined, true);
 
   const completionText = note
     ? `[${toolId}] done\n${note}`
