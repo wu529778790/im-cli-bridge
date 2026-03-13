@@ -372,6 +372,7 @@ const PAGE_HTML = String.raw`<!doctype html>
           claudeModel: "Claude model",
           hookPort: "Hook port",
           logLevel: "Log level",
+          logLevelDefault: "default (app default)",
           autoApprove: "Auto-approve tool permissions",
           sdkMode: "Use Claude SDK mode",
           validate: "Validate",
@@ -425,6 +426,7 @@ const PAGE_HTML = String.raw`<!doctype html>
           claudeModel: "Claude 模型",
           hookPort: "Hook 端口",
           logLevel: "日志级别",
+          logLevelDefault: "default（程序默认）",
           autoApprove: "自动允许工具权限",
           sdkMode: "使用 Claude SDK 模式",
           validate: "校验配置",
@@ -502,6 +504,15 @@ const PAGE_HTML = String.raw`<!doctype html>
         aiLabels[7].childNodes[0].textContent = t("claudeModel");
         aiLabels[8].childNodes[0].textContent = t("hookPort");
         aiLabels[9].childNodes[0].textContent = t("logLevel");
+        const logLevelOptions = el("ai-logLevel").options;
+        logLevelOptions[0].text = t("logLevelDefault");
+        logLevelOptions[1].text = "DEBUG";
+        logLevelOptions[2].text = "INFO";
+        logLevelOptions[3].text = "WARN";
+        logLevelOptions[4].text = "ERROR";
+        if (!el("ai-logLevel").value) {
+          el("ai-logLevel").value = "default";
+        }
         el("ai-codexProxy").placeholder = t("optional");
         el("ai-claudeModel").placeholder = t("optional");
         const aiToggles = document.querySelectorAll(".actions .toggle");
@@ -529,7 +540,7 @@ const PAGE_HTML = String.raw`<!doctype html>
       }
       const payload = () => ({ platforms: { telegram: { enabled: el("telegram-enabled").checked, botToken: el("telegram-botToken").value, proxy: el("telegram-proxy").value, allowedUserIds: el("telegram-allowedUserIds").value }, feishu: { enabled: el("feishu-enabled").checked, appId: el("feishu-appId").value, appSecret: el("feishu-appSecret").value, allowedUserIds: el("feishu-allowedUserIds").value }, wework: { enabled: el("wework-enabled").checked, corpId: el("wework-corpId").value, secret: el("wework-secret").value, allowedUserIds: el("wework-allowedUserIds").value }, dingtalk: { enabled: el("dingtalk-enabled").checked, clientId: el("dingtalk-clientId").value, clientSecret: el("dingtalk-clientSecret").value, cardTemplateId: el("dingtalk-cardTemplateId").value, allowedUserIds: el("dingtalk-allowedUserIds").value } }, ai: { aiCommand: el("ai-aiCommand").value, claudeCliPath: el("ai-claudeCliPath").value, claudeWorkDir: el("ai-claudeWorkDir").value, claudeSkipPermissions: el("ai-claudeSkipPermissions").checked, claudeTimeoutMs: Number(el("ai-claudeTimeoutMs").value || "0"), claudeModel: el("ai-claudeModel").value, cursorCliPath: el("ai-cursorCliPath").value, codexCliPath: el("ai-codexCliPath").value, codexProxy: el("ai-codexProxy").value, hookPort: Number(el("ai-hookPort").value || "0"), logLevel: el("ai-logLevel").value, useSdkMode: el("ai-useSdkMode").checked } });
       async function request(path, options={}) { const response = await fetch(path, { headers: { "content-type": "application/json" }, ...options }); const body = await response.json(); if (!response.ok) throw new Error(body.error || "Request failed"); return body; }
-      function fill(data, meta) { el("configPath").textContent = meta.configPath; applyLanguage(meta); el("telegram-enabled").checked = data.platforms.telegram.enabled; el("telegram-botToken").value = data.platforms.telegram.botToken; el("telegram-proxy").value = data.platforms.telegram.proxy; el("telegram-allowedUserIds").value = data.platforms.telegram.allowedUserIds; el("feishu-enabled").checked = data.platforms.feishu.enabled; el("feishu-appId").value = data.platforms.feishu.appId; el("feishu-appSecret").value = data.platforms.feishu.appSecret; el("feishu-allowedUserIds").value = data.platforms.feishu.allowedUserIds; el("wework-enabled").checked = data.platforms.wework.enabled; el("wework-corpId").value = data.platforms.wework.corpId; el("wework-secret").value = data.platforms.wework.secret; el("wework-allowedUserIds").value = data.platforms.wework.allowedUserIds; el("dingtalk-enabled").checked = data.platforms.dingtalk.enabled; el("dingtalk-clientId").value = data.platforms.dingtalk.clientId; el("dingtalk-clientSecret").value = data.platforms.dingtalk.clientSecret; el("dingtalk-cardTemplateId").value = data.platforms.dingtalk.cardTemplateId; el("dingtalk-allowedUserIds").value = data.platforms.dingtalk.allowedUserIds; el("ai-aiCommand").value = data.ai.aiCommand; el("ai-claudeCliPath").value = data.ai.claudeCliPath; el("ai-claudeWorkDir").value = data.ai.claudeWorkDir; el("ai-claudeSkipPermissions").checked = data.ai.claudeSkipPermissions; el("ai-claudeTimeoutMs").value = String(data.ai.claudeTimeoutMs); el("ai-claudeModel").value = data.ai.claudeModel; el("ai-cursorCliPath").value = data.ai.cursorCliPath; el("ai-codexCliPath").value = data.ai.codexCliPath; el("ai-codexProxy").value = data.ai.codexProxy; el("ai-hookPort").value = String(data.ai.hookPort); el("ai-logLevel").value = data.ai.logLevel; el("ai-useSdkMode").checked = data.ai.useSdkMode; updateVisualState(); }
+      function fill(data, meta) { el("configPath").textContent = meta.configPath; applyLanguage(meta); el("telegram-enabled").checked = data.platforms.telegram.enabled; el("telegram-botToken").value = data.platforms.telegram.botToken; el("telegram-proxy").value = data.platforms.telegram.proxy; el("telegram-allowedUserIds").value = data.platforms.telegram.allowedUserIds; el("feishu-enabled").checked = data.platforms.feishu.enabled; el("feishu-appId").value = data.platforms.feishu.appId; el("feishu-appSecret").value = data.platforms.feishu.appSecret; el("feishu-allowedUserIds").value = data.platforms.feishu.allowedUserIds; el("wework-enabled").checked = data.platforms.wework.enabled; el("wework-corpId").value = data.platforms.wework.corpId; el("wework-secret").value = data.platforms.wework.secret; el("wework-allowedUserIds").value = data.platforms.wework.allowedUserIds; el("dingtalk-enabled").checked = data.platforms.dingtalk.enabled; el("dingtalk-clientId").value = data.platforms.dingtalk.clientId; el("dingtalk-clientSecret").value = data.platforms.dingtalk.clientSecret; el("dingtalk-cardTemplateId").value = data.platforms.dingtalk.cardTemplateId; el("dingtalk-allowedUserIds").value = data.platforms.dingtalk.allowedUserIds; el("ai-aiCommand").value = data.ai.aiCommand; el("ai-claudeCliPath").value = data.ai.claudeCliPath; el("ai-claudeWorkDir").value = data.ai.claudeWorkDir; el("ai-claudeSkipPermissions").checked = data.ai.claudeSkipPermissions; el("ai-claudeTimeoutMs").value = String(data.ai.claudeTimeoutMs); el("ai-claudeModel").value = data.ai.claudeModel; el("ai-cursorCliPath").value = data.ai.cursorCliPath; el("ai-codexCliPath").value = data.ai.codexCliPath; el("ai-codexProxy").value = data.ai.codexProxy; el("ai-hookPort").value = String(data.ai.hookPort); el("ai-logLevel").value = data.ai.logLevel || "default"; el("ai-useSdkMode").checked = data.ai.useSdkMode; updateVisualState(); }
       async function refreshStatus() { const data = await request("/api/service/status"); el("serviceState").textContent = data.running ? t("bridgeRunning", { pid: data.pid }) : t("bridgeStopped"); el("statusMeta").textContent = data.running ? t("bridgeActive") : t("bridgeInactive"); }
       async function boot() { setBusy(true); try { applyLanguage(); const data = await request("/api/config"); fill(data.payload, data.meta); await refreshStatus(); setMessage(t("ready"), "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } setInterval(() => { refreshStatus().catch(() => {}); }, 5000); ids.forEach((id) => { const node = el(id); if (node) node.addEventListener("input", updateVisualState); if (node) node.addEventListener("change", updateVisualState); }); }
       async function validate() { setBusy(true); try { await request("/api/config/validate", { method: "POST", body: JSON.stringify(payload()) }); setMessage(t("validationOk"), "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
