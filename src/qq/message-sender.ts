@@ -86,7 +86,7 @@ async function sendIncrementalContent(
         i === parts.length - 1 && hasNewNote ? note : undefined,
         !state.sentStreamChunk && i === 0,
       );
-      await sendRaw(state.chatId, text, state.replyToMessageId ?? messageId);
+      await sendRaw(state.chatId, text, state.replyToMessageId);
       state.sentStreamChunk = true;
     }
     state.lastSentLength = content.length;
@@ -94,7 +94,7 @@ async function sendIncrementalContent(
     return;
   }
 
-  await sendRaw(state.chatId, `[${toolId}] ${note}`, state.replyToMessageId ?? messageId);
+  await sendRaw(state.chatId, `[${toolId}] ${note}`, state.replyToMessageId);
   state.lastToolNote = note;
 }
 
@@ -111,7 +111,7 @@ export async function sendTextReply(chatId: string, text: string): Promise<void>
 export async function sendThinkingMessage(chatId: string, _replyToMessageId?: string, toolId = "claude"): Promise<string> {
   const sentMessageId = await sendRaw(chatId, `[${toolId}] thinking...`, _replyToMessageId);
   const messageId = sentMessageId ?? `${Date.now()}`;
-  getOrCreateStreamState(messageId, chatId, sentMessageId ?? _replyToMessageId);
+  getOrCreateStreamState(messageId, chatId, _replyToMessageId);
   return messageId;
 }
 
@@ -124,7 +124,7 @@ export async function updateMessage(
   toolId = "claude",
 ): Promise<void> {
   if (status !== "streaming" && status !== "thinking") return;
-  const state = getOrCreateStreamState(messageId, chatId, messageId);
+  const state = getOrCreateStreamState(messageId, chatId);
   await sendIncrementalContent(state, messageId, toolId, content, note);
 }
 
@@ -135,7 +135,7 @@ export async function sendFinalMessages(
   note: string,
   toolId = "claude",
 ): Promise<void> {
-  const state = getOrCreateStreamState(messageId, chatId, messageId);
+  const state = getOrCreateStreamState(messageId, chatId);
   await sendIncrementalContent(state, messageId, toolId, fullContent);
 
   const completionText = note
@@ -145,15 +145,16 @@ export async function sendFinalMessages(
       : `[${toolId}]\n${fullContent}`;
 
   for (const part of splitLongContent(completionText, MAX_QQ_MESSAGE_LENGTH)) {
-    await sendRaw(chatId, part, state.replyToMessageId ?? messageId);
+    await sendRaw(chatId, part, state.replyToMessageId);
   }
 
   streamStates.delete(messageId);
 }
 
 export async function sendErrorMessage(chatId: string, messageId: string, error: string, toolId = "claude"): Promise<void> {
+  const replyToMessageId = streamStates.get(messageId)?.replyToMessageId;
   streamStates.delete(messageId);
-  await sendRaw(chatId, `[${toolId}] error\n${error}`, messageId);
+  await sendRaw(chatId, `[${toolId}] error\n${error}`, replyToMessageId);
 }
 
 export async function sendDirectorySelection(chatId: string, currentDir: string): Promise<void> {
