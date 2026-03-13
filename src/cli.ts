@@ -84,6 +84,32 @@ async function cmdStop(): Promise<void> {
   console.log(`  pid: ${result.pid}`);
 }
 
+async function cmdRestart(): Promise<void> {
+  const status = getManagerStatus();
+  if (status.pid) {
+    await stopBackgroundService();
+    const stopped = await stopManagerProcess();
+    console.log("\nopen-im stopped.");
+    console.log(`  pid: ${stopped.pid}`);
+  } else {
+    console.log("open-im is not running in the background. Starting a new instance.");
+  }
+
+  if (!(await ensureConfigured("start"))) {
+    process.exit(1);
+  }
+
+  const { updated } = await checkAndUpdate();
+  if (updated) {
+    process.exit(0);
+  }
+
+  const child = await startManagerProcess(process.cwd());
+  console.log("\nopen-im restarted in the background.");
+  console.log(`  pid: ${child.pid}`);
+  console.log(`  config page: ${getWebConfigUrl()}`);
+}
+
 async function cmdInit(): Promise<void> {
   console.log("\nopen-im CLI setup\n");
 
@@ -114,6 +140,7 @@ Usage: open-im <command>
 Commands:
   start    Run the full app in the background and serve the local config page
   stop     Stop the full app
+  restart  Restart the full app in the background
   init     Run CLI setup
   dev      Run in the foreground for debugging
 
@@ -132,6 +159,7 @@ const cmd = process.argv[2];
 const commands: Record<string, () => Promise<void>> = {
   start: cmdStart,
   stop: cmdStop,
+  restart: cmdRestart,
   init: cmdInit,
   dev: cmdDev,
 };

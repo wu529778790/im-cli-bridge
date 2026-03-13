@@ -18,6 +18,7 @@
     "init": "tsx src/cli.ts init",
     "start": "node dist/cli.js start",
     "stop": "node dist/cli.js stop",
+    "restart": "node dist/cli.js restart",
     "test": "vitest run",
     "test:watch": "vitest watch",
     "prepublishOnly": "npm run build"
