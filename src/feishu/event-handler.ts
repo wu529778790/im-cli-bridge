@@ -656,9 +656,18 @@ export function setupFeishuHandlers(
 
           const workDir = sessionManager.getWorkDir(senderId);
           const convId = sessionManager.getConvId(senderId);
-          requestQueue.enqueue(senderId, convId, prompt, async (p) => {
+          const enqueueResult = requestQueue.enqueue(senderId, convId, prompt, async (p) => {
             await handleAIRequest(senderId, chatId, p, workDir, convId, undefined, messageId);
           });
+          if (enqueueResult === 'rejected') {
+            sendTextReply(chatId, 'Request queue is full. Please try again later.').catch((sendErr) => {
+              log.warn('[feishu] Failed to send queue full message for image:', sendErr);
+            });
+          } else if (enqueueResult === 'queued') {
+            sendTextReply(chatId, 'Your request is queued.').catch((sendErr) => {
+              log.warn('[feishu] Failed to send queued message for image:', sendErr);
+            });
+          }
         } catch (err) {
           log.error('Error processing image message:', err);
         }
@@ -696,9 +705,18 @@ export function setupFeishuHandlers(
 
           const workDir = sessionManager.getWorkDir(senderId);
           const convId = sessionManager.getConvId(senderId);
-          requestQueue.enqueue(senderId, convId, prompt, async (p) => {
+          const enqueueResult = requestQueue.enqueue(senderId, convId, prompt, async (p) => {
             await handleAIRequest(senderId, chatId, p, workDir, convId, undefined, messageId);
           });
+          if (enqueueResult === 'rejected') {
+            sendTextReply(chatId, 'Request queue is full. Please try again later.').catch((sendErr) => {
+              log.warn(`[feishu] Failed to send queue full message for ${msgType}:`, sendErr);
+            });
+          } else if (enqueueResult === 'queued') {
+            sendTextReply(chatId, 'Your request is queued.').catch((sendErr) => {
+              log.warn(`[feishu] Failed to send queued message for ${msgType}:`, sendErr);
+            });
+          }
         } catch (err) {
           log.error(`Error processing ${msgType} message:`, err);
           sendTextReply(chatId, `${msgType} 资源下载失败。`).catch((sendErr) => {

@@ -129,7 +129,7 @@ export function setupTelegramHandlers(
     kind: string,
     localPath: string,
     text?: string,
-  ): Promise<void> {
+  ): Promise<"running" | "queued" | "rejected"> {
     const prompt = buildSavedMediaPrompt({
       source: "Telegram",
       kind,
@@ -138,7 +138,7 @@ export function setupTelegramHandlers(
     });
     const workDir = sessionManager.getWorkDir(userId);
     const convId = sessionManager.getConvId(userId);
-    requestQueue.enqueue(userId, convId, prompt, async (nextPrompt) => {
+    return requestQueue.enqueue(userId, convId, prompt, async (nextPrompt) => {
       await handleAIRequest(userId, chatId, nextPrompt, workDir, convId);
     });
   }
@@ -487,7 +487,12 @@ export function setupTelegramHandlers(
       return;
     }
 
-    await enqueueSavedMedia(userId, chatId, "image", imagePath, contextText);
+    const enqueueResult = await enqueueSavedMedia(userId, chatId, "image", imagePath, contextText);
+    if (enqueueResult === "rejected") {
+      await sendTextReply(chatId, "Request queue is full. Please try again later.");
+    } else if (enqueueResult === "queued") {
+      await sendTextReply(chatId, "Your request is queued.");
+    }
   });
 
   bot.on(message("document"), async (ctx) => {
@@ -513,7 +518,12 @@ export function setupTelegramHandlers(
         document.file_name ?? document.file_id,
         "bin",
       );
-      await enqueueSavedMedia(userId, chatId, "document", path, contextText);
+      const enqueueResult = await enqueueSavedMedia(userId, chatId, "document", path, contextText);
+      if (enqueueResult === "rejected") {
+        await sendTextReply(chatId, "Request queue is full. Please try again later.");
+      } else if (enqueueResult === "queued") {
+        await sendTextReply(chatId, "Your request is queued.");
+      }
     } catch (err) {
       log.error("Failed to download document:", err);
       await sendTextReply(chatId, "Document download failed.");
@@ -545,7 +555,12 @@ export function setupTelegramHandlers(
         audio.file_name ?? audio.file_id,
         "mp3",
       );
-      await enqueueSavedMedia(userId, chatId, "audio", path, contextText);
+      const enqueueResult = await enqueueSavedMedia(userId, chatId, "audio", path, contextText);
+      if (enqueueResult === "rejected") {
+        await sendTextReply(chatId, "Request queue is full. Please try again later.");
+      } else if (enqueueResult === "queued") {
+        await sendTextReply(chatId, "Your request is queued.");
+      }
     } catch (err) {
       log.error("Failed to download audio:", err);
       await sendTextReply(chatId, "Audio download failed.");
@@ -573,7 +588,12 @@ export function setupTelegramHandlers(
         voice.file_unique_id ?? voice.file_id,
         "ogg",
       );
-      await enqueueSavedMedia(userId, chatId, "voice", path, contextText);
+      const enqueueResult = await enqueueSavedMedia(userId, chatId, "voice", path, contextText);
+      if (enqueueResult === "rejected") {
+        await sendTextReply(chatId, "Request queue is full. Please try again later.");
+      } else if (enqueueResult === "queued") {
+        await sendTextReply(chatId, "Your request is queued.");
+      }
     } catch (err) {
       log.error("Failed to download voice message:", err);
       await sendTextReply(chatId, "Voice download failed.");
@@ -605,7 +625,12 @@ export function setupTelegramHandlers(
         video.file_name ?? video.file_unique_id ?? video.file_id,
         "mp4",
       );
-      await enqueueSavedMedia(userId, chatId, "video", path, contextText);
+      const enqueueResult = await enqueueSavedMedia(userId, chatId, "video", path, contextText);
+      if (enqueueResult === "rejected") {
+        await sendTextReply(chatId, "Request queue is full. Please try again later.");
+      } else if (enqueueResult === "queued") {
+        await sendTextReply(chatId, "Your request is queued.");
+      }
     } catch (err) {
       log.error("Failed to download video:", err);
       await sendTextReply(chatId, "Video download failed.");
