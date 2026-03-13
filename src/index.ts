@@ -2,7 +2,8 @@ import { createServer } from "node:http";
 import { writeFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { loadConfig, needsSetup } from "./config.js";
-import { runInteractiveSetup, runPlatformSelectionPrompt, runClaudeApiSetup } from "./setup.js";
+import { runInteractiveSetup, runClaudeApiSetup } from "./setup.js";
+import { runWebConfigFlow } from "./config-web.js";
 
 // 导出供 cli.ts 使用
 export { needsSetup, runInteractiveSetup };
@@ -142,7 +143,9 @@ function buildStartupMessage(
 
 export async function main() {
   if (needsSetup()) {
-    const saved = await runInteractiveSetup();
+    const saved = process.stdin.isTTY
+      ? (await runWebConfigFlow({ mode: "dev", cwd: process.cwd() })) === "saved"
+      : await runInteractiveSetup();
     if (!saved) process.exit(1);
   }
 
@@ -165,12 +168,6 @@ export async function main() {
     }
   }
 
-  // 有 TTY 时让用户选择要启用的平台（无论单通道还是多通道）
-  if (process.stdin.isTTY) {
-    const updated = await runPlatformSelectionPrompt(config);
-    if (!updated) process.exit(0);
-    config = updated;
-  }
   initLogger(config.logDir, config.logLevel);
   loadActiveChats();
   initPermissionModes();
@@ -290,7 +287,9 @@ export async function main() {
       successfulPlatforms,
       sessionManager,
     );
-    await sendLifecycleNotification(platform, startupMsg).catch(() => {});
+    await sendLifecycleNotification(platform, startupMsg).catch((err) => {
+      log.warn(`Failed to send startup notification to ${platform}:`, err);
+    });
   }
 
   const startedAt = Date.now();
@@ -306,7 +305,9 @@ export async function main() {
 
     // Send notification only to successfully initialized platforms
     for (const platform of successfulPlatforms) {
-      await sendLifecycleNotification(platform, shutdownMsg).catch(() => {});
+      await sendLifecycleNotification(platform, shutdownMsg).catch((err) => {
+        log.warn(`Failed to send shutdown notification to ${platform}:`, err);
+      });
     }
 
     shutdownServer?.close();

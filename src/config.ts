@@ -38,7 +38,6 @@ export interface Config {
   dingtalkCardTemplateId?: string;
   qqAppId?: string;
   qqSecret?: string;
-  qqSandbox: boolean;
 
   // 全局白名单（旧版兼容）
   allowedUserIds: string[];
@@ -79,7 +78,6 @@ export interface Config {
     };
     qq?: {
       enabled: boolean;
-      sandbox?: boolean;
       allowedUserIds: string[];
     };
     wechat?: {
@@ -104,14 +102,14 @@ export interface Config {
   };
 }
 
-interface FilePlatformTelegram {
+export interface FilePlatformTelegram {
   enabled?: boolean;
   botToken?: string;
   allowedUserIds?: string[];
   proxy?: string;
 }
 
-interface FilePlatformFeishu {
+export interface FilePlatformFeishu {
   enabled?: boolean;
   appId?: string;
   appSecret?: string;
@@ -122,7 +120,6 @@ interface FilePlatformQQ {
   enabled?: boolean;
   appId?: string;
   secret?: string;
-  sandbox?: boolean;
   allowedUserIds?: string[];
 }
 
@@ -139,7 +136,7 @@ interface FilePlatformWechat {
   allowedUserIds?: string[];
 }
 
-interface FilePlatformWework {
+export interface FilePlatformWework {
   enabled?: boolean;
   corpId?: string;  // Bot ID
   secret?: string;
@@ -147,7 +144,7 @@ interface FilePlatformWework {
   allowedUserIds?: string[];
 }
 
-interface FilePlatformDingtalk {
+export interface FilePlatformDingtalk {
   enabled?: boolean;
   clientId?: string;
   clientSecret?: string;
@@ -155,7 +152,7 @@ interface FilePlatformDingtalk {
   cardTemplateId?: string;
 }
 
-interface FileToolClaude {
+export interface FileToolClaude {
   cliPath?: string;
   workDir?: string;
   skipPermissions?: boolean;
@@ -163,13 +160,13 @@ interface FileToolClaude {
   model?: string;
 }
 
-interface FileToolCursor {
+export interface FileToolCursor {
   cliPath?: string;
   /** 是否跳过权限确认（默认 true，与 tools.claude 共用权限服务器） */
   skipPermissions?: boolean;
 }
 
-interface FileToolCodex {
+export interface FileToolCodex {
   cliPath?: string;
   workDir?: string;
   /** 是否跳过权限确认（默认 true） */
@@ -178,7 +175,7 @@ interface FileToolCodex {
   proxy?: string;
 }
 
-interface FileConfig {
+export interface FileConfig {
   telegramBotToken?: string;
   feishuAppId?: string;
   feishuAppSecret?: string;
@@ -207,7 +204,7 @@ interface FileConfig {
   useSdkMode?: boolean;
 }
 
-const CONFIG_PATH = join(APP_HOME, 'config.json');
+export const CONFIG_PATH = join(APP_HOME, 'config.json');
 const CODEX_AUTH_PATHS = [
   join(homedir(), '.codex', 'auth.json'),
   join(homedir(), '.config', 'codex', 'auth.json'),
@@ -301,7 +298,7 @@ function ensureToolsSkipPermissions(raw: Record<string, unknown>): boolean {
   return changed;
 }
 
-function loadFileConfig(): FileConfig {
+export function loadFileConfig(): FileConfig {
   try {
     const raw = JSON.parse(readFileSync(CONFIG_PATH, 'utf-8')) as Record<string, unknown>;
     if (!raw || typeof raw !== 'object') return {};
@@ -318,6 +315,12 @@ function loadFileConfig(): FileConfig {
   } catch {
     return {};
   }
+}
+
+export function saveFileConfig(raw: FileConfig): void {
+  const dir = dirname(CONFIG_PATH);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  writeFileSync(CONFIG_PATH, JSON.stringify(raw, null, 2), 'utf-8');
 }
 
 /** 获取用户主目录（兼容不同运行环境，如 launchd、systemd 等） */
@@ -442,10 +445,6 @@ export function loadConfig(): Config {
   const qqSecret =
     process.env.QQ_BOT_SECRET ??
     fileQQ?.secret;
-  const qqSandbox =
-    process.env.QQ_BOT_SANDBOX !== undefined
-      ? process.env.QQ_BOT_SANDBOX === '1' || process.env.QQ_BOT_SANDBOX === 'true'
-      : fileQQ?.sandbox ?? false;
 
   // 微信支持两种协议：
   // 1. AGP 协议：token + guid + userId（推荐）
@@ -820,12 +819,10 @@ export function loadConfig(): Config {
     qq: qqEnabled
       ? {
           enabled: true,
-          sandbox: qqSandbox,
           allowedUserIds: qqAllowedUserIds,
         }
       : {
           enabled: false,
-          sandbox: qqSandbox,
           allowedUserIds: qqAllowedUserIds,
         },
     wechat: wechatEnabled
@@ -878,7 +875,6 @@ export function loadConfig(): Config {
     feishuAppSecret: feishuAppSecret ?? '',
     qqAppId: qqAppId ?? '',
     qqSecret: qqSecret ?? '',
-    qqSandbox,
     wechatAppId: wechatAppId ?? '',
     wechatAppSecret: wechatAppSecret ?? '',
     wechatToken: wechatToken,

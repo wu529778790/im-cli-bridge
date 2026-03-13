@@ -1,223 +1,131 @@
 #!/usr/bin/env node
 
-import { spawn, execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import { main, needsSetup, runInteractiveSetup } from "./index.js";
 import { loadConfig } from "./config.js";
-import { runPlatformSelectionPrompt } from "./setup.js";
 import { checkAndUpdate } from "./check-update.js";
-import { APP_HOME, SHUTDOWN_PORT } from "./constants.js";
+import { getWebConfigUrl, runWebConfigFlow } from "./config-web.js";
+import { getManagerStatus, startManagerProcess, stopManagerProcess } from "./manager-control.js";
+import { stopBackgroundService } from "./service-control.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const PID_FILE = join(APP_HOME, "open-im.pid");
-const PORT_FILE = join(APP_HOME, "open-im.port");
-const INDEX_JS = join(__dirname, "index.js");
-
-// ============================================================================
-// PID 文件管理
-// ============================================================================
-
-function getPid(): number | null {
-  if (!existsSync(PID_FILE)) return null;
-  try {
-    const pid = parseInt(readFileSync(PID_FILE, "utf-8").trim(), 10);
-    return isNaN(pid) ? null : pid;
-  } catch {
-    return null;
-  }
-}
-
-function writePid(pid: number): void {
-  try {
-    writeFileSync(PID_FILE, String(pid), "utf-8");
-  } catch (err) {
-    console.error("无法写入 PID 文件:", err);
-  }
-}
-
-function removePid(): void {
-  try {
-    if (existsSync(PID_FILE)) unlinkSync(PID_FILE);
-  } catch {
-    /* ignore */
-  }
-}
-
-function isRunning(pid: number): boolean {
-  try {
-    // Windows 下使用 tasklist 检查进程是否存在
-    if (process.platform === 'win32') {
-      const result = execFileSync('tasklist', ['/FI', `PID eq ${pid}`, '/NH'], {
-        stdio: 'pipe',
-        windowsHide: true
-      }).toString();
-      return result.includes(String(pid));
-    }
-    // Unix 系统使用 kill 0 信号检查
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// ============================================================================
-// 配置校验
-// ============================================================================
-
-async function validateOrSetup(): Promise<boolean> {
-  if (needsSetup()) {
-    console.log("\n━━━ open-im 首次配置 ━━━\n");
-    console.log("检测到尚未配置，将先进入配置向导...\n");
-    const saved = await runInteractiveSetup();
-    if (!saved) {
-      console.log("配置未完成，已取消启动。");
+async function ensureConfigured(mode: "init" | "start" | "dev"): Promise<boolean> {
+  if (mode === "init") {
+    if (!process.stdin.isTTY) {
+      console.error("CLI setup requires an interactive terminal.");
       return false;
     }
-    console.log("");
+
+    const saved = await runInteractiveSetup();
+    if (!saved) return false;
+
+    try {
+      loadConfig();
+      return true;
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      return false;
+    }
   }
+
+  if (!needsSetup()) {
+    try {
+      loadConfig();
+      return true;
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  const result = await runWebConfigFlow({ mode, cwd: process.cwd() });
+  if (result !== "saved") return false;
 
   try {
     loadConfig();
     return true;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error("配置无效或缺少必要字段:", msg);
-    console.log("\n请运行以下命令重新配置:\n  npx @wu529778790/open-im init");
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
     return false;
   }
 }
 
-// ============================================================================
-// 命令处理
-// ============================================================================
-
 async function cmdStart(): Promise<void> {
-  const pid = getPid();
-
-  if (pid && isRunning(pid)) {
-    console.log("\n🟢 open-im 已在后台运行");
-    console.log(`   pid: ${pid}`);
+  const status = getManagerStatus();
+  if (status.running && status.pid) {
+    console.log("\nopen-im is already running in the background.");
+    console.log(`  pid: ${status.pid}`);
+    console.log(`  config page: ${getWebConfigUrl()}`);
     return;
-  } else {
-    removePid();  // 清理可能存在的陈旧 PID 文件
   }
 
-  if (!(await validateOrSetup())) {
+  if (!(await ensureConfigured("start"))) {
     process.exit(1);
   }
 
-  // 检查并自动更新到最新版本
   const { updated } = await checkAndUpdate();
   if (updated) {
     process.exit(0);
   }
 
-  // 有 TTY 时在父进程让用户选择要启用的平台，再启动子进程
-  let config = loadConfig();
-  if (process.stdin.isTTY) {
-    const updated = await runPlatformSelectionPrompt(config);
-    if (!updated) {
-      console.log("已取消启动。");
-      process.exit(0);
-    }
-  }
-
-  const child = spawn(process.execPath, [INDEX_JS], {
-    detached: true,
-    stdio: "ignore",
-    cwd: process.cwd(),
-    env: process.env,
-    windowsHide: process.platform === "win32",
-  });
-  child.unref();
-
-  writePid(child.pid!);
-  console.log("\n🟢 open-im 已在后台启动");
-  console.log(`   pid: ${child.pid}`);
+  const child = await startManagerProcess(process.cwd());
+  console.log("\nopen-im started in the background.");
+  console.log(`  pid: ${child.pid}`);
+  console.log(`  config page: ${getWebConfigUrl()}`);
 }
 
 async function cmdStop(): Promise<void> {
-  const pid = getPid();
-  if (!pid) {
-    console.log("open-im 未在后台运行");
-    return;
-  }
-  if (!isRunning(pid)) {
-    removePid();
-    console.log("open-im 进程已不存在");
+  const status = getManagerStatus();
+  if (!status.pid) {
+    console.log("open-im is not running in the background.");
     return;
   }
 
-  const port = existsSync(PORT_FILE)
-    ? parseInt(readFileSync(PORT_FILE, "utf-8").trim(), 10) || SHUTDOWN_PORT
-    : SHUTDOWN_PORT;
-
-  try {
-    const res = await fetch(`http://127.0.0.1:${port}/shutdown`, {
-      signal: AbortSignal.timeout(3000),
-    });
-    if (res.ok) {
-      for (let i = 0; i < 50; i++) {
-        await new Promise((r) => setTimeout(r, 100));
-        if (!isRunning(pid)) break;
-      }
-    }
-  } catch {
-    // HTTP 失败则用 SIGTERM 兜底
-    process.kill(pid, "SIGTERM");
-    await new Promise((r) => setTimeout(r, 500));
-  }
-
-  if (isRunning(pid)) {
-    process.kill(pid, "SIGKILL");
-  }
-
-  removePid();
-  try {
-    if (existsSync(PORT_FILE)) unlinkSync(PORT_FILE);
-  } catch {
-    /* ignore */
-  }
-  console.log("\n🔴 open-im 已停止");
-  console.log(`   pid: ${pid}`);
+  await stopBackgroundService();
+  const result = await stopManagerProcess();
+  console.log("\nopen-im stopped.");
+  console.log(`  pid: ${result.pid}`);
 }
 
 async function cmdInit(): Promise<void> {
-  console.log("\n━━━ open-im 配置向导 ━━━\n");
-  const saved = await runInteractiveSetup();
-  if (saved) {
-    console.log("\n✅ 配置完成！");
-    console.log("\n现在可以运行以下命令启动服务：");
-    console.log("  open-im start   # 后台运行");
-    console.log("  open-im dev     # 前台运行（调试）");
-  } else {
-    console.log("\n❌ 配置未完成，已取消。");
+  console.log("\nopen-im CLI setup\n");
+
+  const saved = await ensureConfigured("init");
+  if (!saved) {
+    console.log("\nConfiguration was not completed.");
     process.exit(1);
   }
+
+  console.log("\nConfiguration saved.");
+  console.log("\nYou can start the app with:");
+  console.log("  open-im start");
+  console.log("  open-im dev");
+}
+
+async function cmdDev(): Promise<void> {
+  if (!(await ensureConfigured("dev"))) {
+    console.log("Configuration was not completed.");
+    process.exit(1);
+  }
+  await main();
 }
 
 function showHelp(exitCode = 0): void {
   console.log(`
-用法: open-im <command>
+Usage: open-im <command>
 
-命令:
-  start    后台运行服务
-  stop     停止后台服务
-  init     配置向导（首次或追加配置，保留已有平台配置并更新 config.json）
-  dev      前台运行（调试模式），Ctrl+C 停止
+Commands:
+  start    Run the full app in the background and serve the local config page
+  stop     Stop the full app
+  init     Run CLI setup
+  dev      Run in the foreground for debugging
 
-选项:
-  -h, --help    显示此帮助信息
+Local config page:
+  http://127.0.0.1:39282
+  start keeps it available; dev opens it only during initial setup
+
+Options:
+  -h, --help    Show this help message
 `);
   process.exit(exitCode);
 }
-
-// ============================================================================
-// 命令路由
-// ============================================================================
 
 const cmd = process.argv[2];
 
@@ -225,13 +133,13 @@ const commands: Record<string, () => Promise<void>> = {
   start: cmdStart,
   stop: cmdStop,
   init: cmdInit,
-  dev: main,
+  dev: cmdDev,
 };
 
 if (cmd === "--help" || cmd === "-h") {
   showHelp(0);
 } else if (cmd === undefined) {
-  main().catch((err) => {
+  cmdDev().catch((err) => {
     console.error(err);
     process.exit(1);
   });
@@ -241,6 +149,6 @@ if (cmd === "--help" || cmd === "-h") {
     process.exit(1);
   });
 } else {
-  console.error(`未知命令: ${cmd}`);
+  console.error(`Unknown command: ${cmd}`);
   showHelp(1);
 }

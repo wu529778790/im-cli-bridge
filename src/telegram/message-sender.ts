@@ -248,7 +248,9 @@ export async function sendModeKeyboard(
 export function startTypingLoop(chatId: string): () => void {
   const bot = getBot();
   const interval = setInterval(() => {
-    bot.telegram.sendChatAction(Number(chatId), "typing").catch(() => {});
+    bot.telegram.sendChatAction(Number(chatId), "typing").catch((err) => {
+      log.warn(`[telegram] Failed to send typing action to ${chatId}:`, err);
+    });
   }, 4000);
   return () => clearInterval(interval);
 }
