@@ -28,6 +28,7 @@ import type { ThreadContext } from '../shared/types.js';
 import type { DingTalkStreamingTarget } from './client.js';
 import { buildImageFallbackMessage, buildUnsupportedInboundMessage } from '../channels/capabilities.js';
 import { buildMediaMetadataPrompt } from '../shared/media-prompt.js';
+import { downloadMediaFromUrl } from '../shared/media-storage.js';
 
 const log = createLogger('DingTalkHandler');
 const DINGTALK_THROTTLE_MS = 1000;
@@ -75,14 +76,33 @@ function extractMediaPayload(message: DingTalkRobotPayload, kind: DingTalkInboun
   return null;
 }
 
-function buildMediaPrompt(message: DingTalkRobotPayload, kind: DingTalkInboundKind): string | null {
+async function buildMediaPrompt(message: DingTalkRobotPayload, kind: DingTalkInboundKind): Promise<string | null> {
   const payload = extractMediaPayload(message, kind);
   if (!payload) return null;
+
+  const remoteUrl = [
+    payload.url,
+    payload.downloadUrl,
+    payload.download_url,
+    payload.picUrl,
+  ].find((value): value is string => typeof value === 'string' && value.length > 0);
+  let localPath: string | undefined;
+  if (remoteUrl) {
+    try {
+      localPath = await downloadMediaFromUrl(remoteUrl, {
+        basenameHint: typeof payload.fileName === 'string' ? payload.fileName : undefined,
+        fallbackExtension: kind === 'image' ? 'jpg' : 'bin',
+      });
+    } catch {
+      localPath = undefined;
+    }
+  }
 
   const sanitized = {
     msgtype: message.msgtype,
     conversationType: message.conversationType,
     senderNick: message.senderNick,
+    localPath,
     payload,
   };
 
@@ -235,7 +255,7 @@ export function setupDingTalkHandlers(
 
     if (message.msgtype !== 'text') {
       const kind = toInboundKind(message.msgtype);
-      const prompt = buildMediaPrompt(message, kind);
+      const prompt = await buildMediaPrompt(message, kind);
       if (!prompt) {
         await sendTextReply(chatId, buildUnsupportedInboundMessage('dingtalk', kind));
         ackMessage(callbackId, { ignored: message.msgtype });
