@@ -20,15 +20,15 @@ const PLATFORM_LABELS: Record<Platform, string> = {
 
 export const CHANNEL_CAPABILITIES: Record<Platform, ChannelCapabilities> = {
   telegram: {
-    inbound: { text: "native", image: "native", file: "none", voice: "none", video: "none" },
+    inbound: { text: "native", image: "native", file: "native", voice: "native", video: "native" },
     outbound: { streamEdit: "native", streamPush: "fallback", image: "native", card: "native", typing: "native" },
   },
   feishu: {
-    inbound: { text: "native", image: "native", file: "none", voice: "none", video: "none" },
+    inbound: { text: "native", image: "native", file: "native", voice: "fallback", video: "fallback" },
     outbound: { streamEdit: "native", streamPush: "fallback", image: "native", card: "native", typing: "native" },
   },
   qq: {
-    inbound: { text: "native", image: "none", file: "none", voice: "none", video: "none" },
+    inbound: { text: "native", image: "fallback", file: "fallback", voice: "none", video: "none" },
     outbound: { streamEdit: "native", streamPush: "fallback", image: "fallback", card: "fallback", typing: "fallback" },
   },
   wechat: {
@@ -36,11 +36,11 @@ export const CHANNEL_CAPABILITIES: Record<Platform, ChannelCapabilities> = {
     outbound: { streamEdit: "native", streamPush: "fallback", image: "fallback", card: "native", typing: "native" },
   },
   wework: {
-    inbound: { text: "native", image: "fallback", file: "none", voice: "none", video: "none" },
+    inbound: { text: "native", image: "fallback", file: "fallback", voice: "fallback", video: "fallback" },
     outbound: { streamEdit: "native", streamPush: "fallback", image: "fallback", card: "native", typing: "native" },
   },
   dingtalk: {
-    inbound: { text: "native", image: "none", file: "none", voice: "none", video: "none" },
+    inbound: { text: "native", image: "fallback", file: "fallback", voice: "fallback", video: "fallback" },
     outbound: { streamEdit: "native", streamPush: "fallback", image: "fallback", card: "native", typing: "native" },
   },
 };

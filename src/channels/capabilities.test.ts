@@ -8,9 +8,11 @@ import {
 describe("channel capabilities", () => {
   it("defines core inbound and outbound capabilities for every channel", () => {
     expect(CHANNEL_CAPABILITIES.telegram.inbound.image).toBe("native");
+    expect(CHANNEL_CAPABILITIES.telegram.inbound.file).toBe("native");
     expect(CHANNEL_CAPABILITIES.feishu.outbound.card).toBe("native");
-    expect(CHANNEL_CAPABILITIES.wework.inbound.image).toBe("fallback");
-    expect(CHANNEL_CAPABILITIES.dingtalk.inbound.file).toBe("none");
+    expect(CHANNEL_CAPABILITIES.qq.inbound.image).toBe("fallback");
+    expect(CHANNEL_CAPABILITIES.wework.inbound.video).toBe("fallback");
+    expect(CHANNEL_CAPABILITIES.dingtalk.inbound.file).toBe("fallback");
   });
 
   it("builds actionable fallback copy for unsupported inbound messages", () => {
