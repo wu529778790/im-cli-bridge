@@ -26,10 +26,15 @@ import { WECHAT_THROTTLE_MS } from '../constants.js';
 import { setActiveChatId } from '../shared/active-chats.js';
 import { setChatUser } from '../shared/chat-user-map.js';
 import { createLogger } from '../logger.js';
-import type { AGPEnvelope, SessionPromptPayload } from './types.js';
+import type { AGPEnvelope, SessionPromptPayload, WeChatIncomingMessage } from './types.js';
 import { buildImageFallbackMessage } from '../channels/capabilities.js';
+import { buildSavedMediaPrompt } from '../shared/media-analysis-prompt.js';
+import { buildMediaMetadataPrompt } from '../shared/media-prompt.js';
+import { buildMediaContext } from '../shared/media-context.js';
+import { downloadMediaFromUrl } from '../shared/media-storage.js';
 
 const log = createLogger('WeChatHandler');
+type WeChatInboundMediaKind = 'image' | 'file' | 'voice' | 'video';
 
 export interface WeChatEventHandlerHandle {
   stop: () => void;
@@ -56,6 +61,67 @@ export function setupWeChatHandlers(
   });
 
   registerPermissionSender('wechat', { sendTextReply, sendPermissionCard });
+
+  function parseWeChatIncomingMessage(raw: string): WeChatIncomingMessage | null {
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      if (typeof parsed.msg_type !== 'string') {
+        return null;
+      }
+      return parsed as unknown as WeChatIncomingMessage;
+    } catch {
+      return null;
+    }
+  }
+
+  async function buildWeChatMediaPrompt(message: WeChatIncomingMessage): Promise<string | null> {
+    const kind = message.msg_type as WeChatInboundMediaKind;
+    if (!['image', 'file', 'voice', 'video'].includes(kind)) {
+      return null;
+    }
+
+    const mediaUrl = kind === 'image' ? message.image_url : message.file_url;
+    const contextText = buildMediaContext({
+      FromUser: message.from_user_name || message.from_user_id,
+      MessageType: message.msg_type,
+    }, message.content || undefined);
+
+    if (typeof mediaUrl === 'string' && mediaUrl.length > 0) {
+      try {
+        const savedPath = await downloadMediaFromUrl(mediaUrl, {
+          basenameHint: message.msg_id,
+          fallbackExtension:
+            kind === 'image'
+              ? 'jpg'
+              : kind === 'voice'
+                ? 'ogg'
+                : kind === 'video'
+                  ? 'mp4'
+                  : 'bin',
+        });
+        return buildSavedMediaPrompt({
+          source: 'WeChat',
+          kind,
+          localPath: savedPath,
+          text: contextText,
+        });
+      } catch {
+        // Fall through to metadata-only prompt.
+      }
+    }
+
+    return buildMediaMetadataPrompt({
+      source: 'WeChat',
+      kind,
+      text: contextText,
+      metadata: {
+        msg_id: message.msg_id,
+        from_user_id: message.from_user_id,
+        image_url: message.image_url,
+        file_url: message.file_url,
+      },
+    });
+  }
 
   async function handleAIRequest(
     userId: string,
@@ -167,7 +233,9 @@ export function setupWeChatHandlers(
     const payload = envelope.payload;
     const userId = envelope.user_id ?? envelope.guid ?? 'unknown';
     const chatId = payload.session_id;
-    const text = payload.content?.trim() ?? '';
+    const rawContent = payload.content?.trim() ?? '';
+    const inboundMessage = parseWeChatIncomingMessage(rawContent);
+    const text = inboundMessage ? inboundMessage.content?.trim() ?? '' : rawContent;
 
     log.info(`[SESSION_PROMPT] userId=${userId}, chatId=${chatId}, text="${text}"`);
 
@@ -180,21 +248,33 @@ export function setupWeChatHandlers(
     setActiveChatId('wechat', chatId);
     setChatUser(chatId, userId, 'wechat');
 
-    try {
-      const handled = await commandHandler.dispatch(text, chatId, userId, 'wechat', handleAIRequest);
-      if (handled) {
-        log.info(`Command handled for message: ${text}`);
-        return;
-      }
-    } catch (err) {
-      log.error('Error in commandHandler.dispatch:', err);
-    }
-
     const workDir = sessionManager.getWorkDir(userId);
     const convId = sessionManager.getConvId(userId);
-    const enqueueResult = requestQueue.enqueue(userId, convId, text, async (prompt) => {
+    let prompt = text;
+    if (inboundMessage && inboundMessage.msg_type !== 'text') {
+      const mediaPrompt = await buildWeChatMediaPrompt(inboundMessage);
+      if (mediaPrompt) {
+        prompt = mediaPrompt;
+      }
+    } else {
+      try {
+        const handled = await commandHandler.dispatch(text, chatId, userId, 'wechat', handleAIRequest);
+        if (handled) {
+          log.info(`Command handled for message: ${text}`);
+          return;
+        }
+      } catch (err) {
+        log.error('Error in commandHandler.dispatch:', err);
+      }
+    }
+
+    if (!prompt) {
+      return;
+    }
+
+    const enqueueResult = requestQueue.enqueue(userId, convId, prompt, async (nextPrompt) => {
       log.info(`Executing AI request for: ${prompt}`);
-      await handleAIRequest(userId, chatId, prompt, workDir, convId);
+      await handleAIRequest(userId, chatId, nextPrompt, workDir, convId);
     });
 
     if (enqueueResult === 'rejected') {

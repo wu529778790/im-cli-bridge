@@ -32,7 +32,7 @@ export const CHANNEL_CAPABILITIES: Record<Platform, ChannelCapabilities> = {
     outbound: { streamEdit: "native", streamPush: "fallback", image: "fallback", card: "fallback", typing: "fallback" },
   },
   wechat: {
-    inbound: { text: "native", image: "none", file: "none", voice: "none", video: "none" },
+    inbound: { text: "native", image: "fallback", file: "fallback", voice: "fallback", video: "fallback" },
     outbound: { streamEdit: "native", streamPush: "fallback", image: "fallback", card: "native", typing: "native" },
   },
   wework: {
