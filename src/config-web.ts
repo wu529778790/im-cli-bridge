@@ -333,7 +333,41 @@ const PAGE_HTML = String.raw`<!doctype html>
           <h1 id="heroTitle">Configure fast. Start clean.</h1>
           <p id="heroBody">Local-only configuration for Telegram, Feishu, WeWork, and DingTalk. No accounts. No remote state. No database.</p>
         </section>
-        <section class="toolbar">
+        <section class="section" id="dashboardSection">
+          <div class="panel-head"><h2 id="dashboardTitle">Dashboard</h2><div id="dashboardSubtitle">Platform health status</div></div>
+          <div class="grid" id="healthGrid" style="margin-top:16px;">
+            <article class="panel" id="health-telegram">
+              <div class="panel-head"><h3>Telegram</h3><div class="pill" id="health-telegram-status">Checking...</div></div>
+              <div class="summary" id="health-telegram-message" style="margin-top:8px;"></div>
+            </article>
+            <article class="panel" id="health-feishu">
+              <div class="panel-head"><h3>Feishu</h3><div class="pill" id="health-feishu-status">Checking...</div></div>
+              <div class="summary" id="health-feishu-message" style="margin-top:8px;"></div>
+            </article>
+            <article class="panel" id="health-qq">
+              <div class="panel-head"><h3>QQ</h3><div class="pill" id="health-qq-status">Checking...</div></div>
+              <div class="summary" id="health-qq-message" style="margin-top:8px;"></div>
+            </article>
+            <article class="panel" id="health-wework">
+              <div class="panel-head"><h3>WeWork</h3><div class="pill" id="health-wework-status">Checking...</div></div>
+              <div class="summary" id="health-wework-message" style="margin-top:8px;"></div>
+            </article>
+            <article class="panel" id="health-dingtalk">
+              <div class="panel-head"><h3>DingTalk</h3><div class="pill" id="health-dingtalk-status">Checking...</div></div>
+              <div class="summary" id="health-dingtalk-message" style="margin-top:8px;"></div>
+            </article>
+          </div>
+        </section>
+        <section class="section" id="dashboardSection" style="margin-top:16px;">
+          <div class="panel-head"><h2 id="quickActionsTitle">Quick Actions</h2></div>
+          <div class="actions" style="margin-top:16px;">
+            <button id="refreshHealth" class="secondary">Refresh Health Status</button>
+            <button id="viewConfig" class="secondary">View Configuration</button>
+            <button id="startFromDashboard">Start Service</button>
+            <button id="stopFromDashboard" class="danger">Stop Service</button>
+          </div>
+        </section>
+        <section class="toolbar" style="display:none;" id="configToolbar">
           <div class="status-group">
             <div class="pill mono" id="configPath"></div>
             <div class="pill" id="serviceState"></div>
@@ -342,7 +376,7 @@ const PAGE_HTML = String.raw`<!doctype html>
           <div id="statusMeta"></div>
           <div class="summary" id="liveSummary"></div>
         </section>
-        <section class="section">
+        <section class="section" id="configSection" style="display:none;">
           <div class="panel-head"><h2 id="platformsTitle">Platforms</h2><div id="platformsHint">Disabled platforms keep their saved values.</div></div>
           <div class="grid">
             <article class="panel" id="telegram-panel">
@@ -433,6 +467,16 @@ const PAGE_HTML = String.raw`<!doctype html>
           heroBody: "",
           langButton: "中文",
           mode: "Flow",
+          dashboardTitle: "Dashboard",
+          dashboardSubtitle: "Platform health status",
+          quickActionsTitle: "Quick Actions",
+          refreshHealth: "Refresh Health Status",
+          viewConfig: "View Configuration",
+          healthChecking: "Checking...",
+          healthy: "Healthy",
+          unhealthy: "Issues Found",
+          notConfigured: "Not Configured",
+          disabled: "Disabled",
           platformsTitle: "Platforms",
           platformsHint: "Disabled platforms keep their saved values.",
           enabled: "Enabled",
@@ -500,6 +544,16 @@ const PAGE_HTML = String.raw`<!doctype html>
           heroBody: "",
           langButton: "EN",
           mode: "流程",
+          dashboardTitle: "仪表盘",
+          dashboardSubtitle: "平台健康状态",
+          quickActionsTitle: "快速操作",
+          refreshHealth: "刷新健康状态",
+          viewConfig: "查看配置",
+          healthChecking: "检查中...",
+          healthy: "健康",
+          unhealthy: "发现问题",
+          notConfigured: "未配置",
+          disabled: "已禁用",
           platformsTitle: "平台配置",
           platformsHint: "关闭的平台会保留已保存的值。",
           enabled: "启用",
@@ -659,6 +713,13 @@ const PAGE_HTML = String.raw`<!doctype html>
         if (currentMeta) {
           el("modeBadge").textContent = t("mode") + ": " + currentMeta.mode;
         }
+        el("dashboardTitle").textContent = t("dashboardTitle");
+        el("dashboardSubtitle").textContent = t("dashboardSubtitle");
+        el("quickActionsTitle").textContent = t("quickActionsTitle");
+        el("refreshHealth").textContent = t("refreshHealth");
+        el("viewConfig").textContent = t("viewConfig");
+        el("startFromDashboard").textContent = t("start");
+        el("stopFromDashboard").textContent = t("stop");
       }
       function updateVisualState() {
         const enabled = [];
@@ -672,11 +733,105 @@ const PAGE_HTML = String.raw`<!doctype html>
           ? t("summaryEnabled", { platforms: enabled.join(currentLang === "zh" ? "、" : ", "), tool: aiTool })
           : t("summaryEmpty", { tool: aiTool });
       }
+      async function updateDashboard() {
+        try {
+          const data = await request("/api/health");
+          const platforms = data.platforms || {};
+          const serviceStatus = data.serviceStatus || {};
+
+          ["telegram","feishu","qq","wework","dingtalk"].forEach((platform) => {
+            const statusDiv = el("health-" + platform + "-status");
+            const messageDiv = el("health-" + platform + "-message");
+            const panelDiv = el("health-" + platform);
+
+            if (!statusDiv || !messageDiv || !panelDiv) return;
+
+            const platformData = platforms[platform] || {};
+            let statusText = "";
+            let statusClass = "";
+            let messageText = platformData.message || "";
+
+            if (!platformData.configured) {
+              statusText = t("notConfigured");
+              statusClass = "off";
+              panelDiv.classList.add("off");
+            } else if (!platformData.enabled) {
+              statusText = t("disabled");
+              statusClass = "off";
+              panelDiv.classList.add("off");
+            } else if (platformData.healthy) {
+              statusText = t("healthy");
+              statusClass = "success";
+              panelDiv.classList.remove("off");
+            } else {
+              statusText = t("unhealthy");
+              statusClass = "error";
+              panelDiv.classList.remove("off");
+            }
+
+            statusDiv.textContent = statusText;
+            if (statusClass === "success") {
+              statusDiv.style.backgroundColor = "var(--green)";
+            } else if (statusClass === "error") {
+              statusDiv.style.backgroundColor = "var(--red)";
+            } else if (statusClass === "off") {
+              statusDiv.style.backgroundColor = "var(--muted)";
+            } else {
+              statusDiv.style.backgroundColor = "var(--orange)";
+            }
+            messageDiv.textContent = messageText;
+          });
+
+          // 更新服务状态
+          if (serviceStatus.running) {
+            el("serviceState")?.remove();
+          }
+        } catch (error) {
+          console.error("Failed to update dashboard:", error);
+        }
+      }
+      function showDashboard() {
+        el("configSection").style.display = "none";
+        el("configToolbar").style.display = "none";
+        el("dashboardSection").style.display = "block";
+        updateDashboard();
+      }
+      function showConfig() {
+        el("dashboardSection").style.display = "none";
+        el("configSection").style.display = "block";
+        el("configToolbar").style.display = "block";
+      }
       const payload = () => ({ platforms: { telegram: { enabled: el("telegram-enabled").checked, botToken: el("telegram-botToken").value, proxy: el("telegram-proxy").value, allowedUserIds: el("telegram-allowedUserIds").value }, feishu: { enabled: el("feishu-enabled").checked, appId: el("feishu-appId").value, appSecret: el("feishu-appSecret").value, allowedUserIds: el("feishu-allowedUserIds").value }, qq: { enabled: el("qq-enabled").checked, appId: el("qq-appId").value, secret: el("qq-secret").value, allowedUserIds: el("qq-allowedUserIds").value }, wework: { enabled: el("wework-enabled").checked, corpId: el("wework-corpId").value, secret: el("wework-secret").value, allowedUserIds: el("wework-allowedUserIds").value }, dingtalk: { enabled: el("dingtalk-enabled").checked, clientId: el("dingtalk-clientId").value, clientSecret: el("dingtalk-clientSecret").value, cardTemplateId: el("dingtalk-cardTemplateId").value, allowedUserIds: el("dingtalk-allowedUserIds").value } }, ai: { aiCommand: el("ai-aiCommand").value, claudeCliPath: el("ai-claudeCliPath").value, claudeWorkDir: el("ai-claudeWorkDir").value, claudeSkipPermissions: el("ai-claudeSkipPermissions").checked, claudeTimeoutMs: Number(el("ai-claudeTimeoutMs").value || "0"), claudeModel: el("ai-claudeModel").value, cursorCliPath: el("ai-cursorCliPath").value, codexCliPath: el("ai-codexCliPath").value, codexProxy: el("ai-codexProxy").value, hookPort: Number(el("ai-hookPort").value || "0"), logLevel: el("ai-logLevel").value, useSdkMode: el("ai-useSdkMode").checked } });
       async function request(path, options={}) { const response = await fetch(path, { headers: { "content-type": "application/json" }, ...options }); const body = await response.json(); if (!response.ok) throw new Error(body.error || "Request failed"); return body; }
       function fill(data, meta) { el("configPath").textContent = meta.configPath; applyLanguage(meta); el("telegram-enabled").checked = data.platforms.telegram.enabled; el("telegram-botToken").value = data.platforms.telegram.botToken; el("telegram-proxy").value = data.platforms.telegram.proxy; el("telegram-allowedUserIds").value = data.platforms.telegram.allowedUserIds; el("feishu-enabled").checked = data.platforms.feishu.enabled; el("feishu-appId").value = data.platforms.feishu.appId; el("feishu-appSecret").value = data.platforms.feishu.appSecret; el("feishu-allowedUserIds").value = data.platforms.feishu.allowedUserIds; el("qq-enabled").checked = data.platforms.qq.enabled; el("qq-appId").value = data.platforms.qq.appId; el("qq-secret").value = data.platforms.qq.secret; el("qq-allowedUserIds").value = data.platforms.qq.allowedUserIds; el("wework-enabled").checked = data.platforms.wework.enabled; el("wework-corpId").value = data.platforms.wework.corpId; el("wework-secret").value = data.platforms.wework.secret; el("wework-allowedUserIds").value = data.platforms.wework.allowedUserIds; el("dingtalk-enabled").checked = data.platforms.dingtalk.enabled; el("dingtalk-clientId").value = data.platforms.dingtalk.clientId; el("dingtalk-clientSecret").value = data.platforms.dingtalk.clientSecret; el("dingtalk-cardTemplateId").value = data.platforms.dingtalk.cardTemplateId; el("dingtalk-allowedUserIds").value = data.platforms.dingtalk.allowedUserIds; el("ai-aiCommand").value = data.ai.aiCommand; el("ai-claudeCliPath").value = data.ai.claudeCliPath; el("ai-claudeWorkDir").value = data.ai.claudeWorkDir; el("ai-claudeSkipPermissions").checked = data.ai.claudeSkipPermissions; el("ai-claudeTimeoutMs").value = String(data.ai.claudeTimeoutMs); el("ai-claudeModel").value = data.ai.claudeModel; el("ai-cursorCliPath").value = data.ai.cursorCliPath; el("ai-codexCliPath").value = data.ai.codexCliPath; el("ai-codexProxy").value = data.ai.codexProxy; el("ai-hookPort").value = String(data.ai.hookPort); el("ai-logLevel").value = data.ai.logLevel || "default"; el("ai-useSdkMode").checked = data.ai.useSdkMode; updateVisualState(); }
       async function refreshStatus() { const data = await request("/api/service/status"); el("serviceState").textContent = data.running ? t("bridgeRunning", { pid: data.pid }) : t("bridgeStopped"); el("statusMeta").textContent = data.running ? t("bridgeActive") : t("bridgeInactive"); }
-      async function boot() { setBusy(true); try { applyLanguage(); const data = await request("/api/config"); fill(data.payload, data.meta); await refreshStatus(); setMessage(t("ready"), "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } setInterval(() => { refreshStatus().catch(() => {}); }, 5000); ids.forEach((id) => { const node = el(id); if (node) node.addEventListener("input", updateVisualState); if (node) node.addEventListener("change", updateVisualState); }); }
+      async function boot() {
+        setBusy(true);
+        try {
+          applyLanguage();
+          const data = await request("/api/config");
+          fill(data.payload, data.meta);
+          await refreshStatus();
+          showDashboard();
+          await updateDashboard();
+          setMessage(t("ready"), "success");
+        } catch (error) {
+          setMessage(error.message || String(error), "error");
+        } finally {
+          setBusy(false);
+        }
+        setInterval(() => {
+          refreshStatus().catch(() => {});
+          updateDashboard().catch(() => {});
+        }, 10000);
+        ids.forEach((id) => {
+          const node = el(id);
+          if (node) {
+            node.addEventListener("input", updateVisualState);
+            node.addEventListener("change", updateVisualState);
+          }
+        });
+      }
       async function validate() { setBusy(true); try { await request("/api/config/validate", { method: "POST", body: JSON.stringify(payload()) }); setMessage(t("validationOk"), "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
       async function save() { setBusy(true); try { await request("/api/config/save?final=1", { method: "POST", body: JSON.stringify(payload()) }); setMessage(t("saveOk"), "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
       async function startService() { setBusy(true); try { await request("/api/config/save", { method: "POST", body: JSON.stringify(payload()) }); await request("/api/service/start", { method: "POST" }); await refreshStatus(); setMessage(t("startOk"), "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
@@ -757,6 +912,10 @@ const PAGE_HTML = String.raw`<!doctype html>
           testBtn.onclick = () => testPlatform(platform);
         }
       });
+      el("refreshHealth").onclick = () => { updateDashboard(); };
+      el("viewConfig").onclick = () => { showConfig(); };
+      el("startFromDashboard").onclick = startService;
+      el("stopFromDashboard").onclick = stopService;
       boot();
     </script>
   </body>
@@ -833,6 +992,54 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
 
       if (request.method === "GET" && requestUrl.pathname === "/api/service/status") {
         json(response, 200, getServiceStatus());
+        return;
+      }
+
+      if (request.method === "GET" && requestUrl.pathname === "/api/health") {
+        const config = loadConfig();
+        const platforms: Record<string, { configured: boolean; enabled: boolean; healthy: boolean; message?: string }> = {};
+
+        // 检查 Telegram
+        platforms.telegram = {
+          configured: !!config.telegramBotToken,
+          enabled: config.enabledPlatforms.includes("telegram"),
+          healthy: !!config.telegramBotToken,
+          message: config.telegramBotToken ? "Token configured" : "Token not configured"
+        };
+
+        // 检查 Feishu
+        platforms.feishu = {
+          configured: !!(config.feishuAppId && config.feishuAppSecret),
+          enabled: config.enabledPlatforms.includes("feishu"),
+          healthy: !!(config.feishuAppId && config.feishuAppSecret),
+          message: (config.feishuAppId && config.feishuAppSecret) ? "App ID and Secret configured" : "Missing credentials"
+        };
+
+        // 检查 QQ
+        platforms.qq = {
+          configured: !!(config.qqAppId && config.qqSecret),
+          enabled: config.enabledPlatforms.includes("qq"),
+          healthy: !!(config.qqAppId && config.qqSecret),
+          message: (config.qqAppId && config.qqSecret) ? "App ID and Secret configured" : "Missing credentials"
+        };
+
+        // 检查 WeWork
+        platforms.wework = {
+          configured: !!(config.weworkCorpId && config.weworkSecret),
+          enabled: config.enabledPlatforms.includes("wework"),
+          healthy: !!(config.weworkCorpId && config.weworkSecret),
+          message: (config.weworkCorpId && config.weworkSecret) ? "Corp ID and Secret configured" : "Missing credentials"
+        };
+
+        // 检查 DingTalk
+        platforms.dingtalk = {
+          configured: !!(config.dingtalkClientId && config.dingtalkClientSecret),
+          enabled: config.enabledPlatforms.includes("dingtalk"),
+          healthy: !!(config.dingtalkClientId && config.dingtalkClientSecret),
+          message: (config.dingtalkClientId && config.dingtalkClientSecret) ? "Client ID and Secret configured" : "Missing credentials"
+        };
+
+        json(response, 200, { platforms, serviceStatus: getServiceStatus() });
         return;
       }
 

@@ -458,16 +458,15 @@ export async function runInteractiveSetup(): Promise<boolean> {
           name: "appId",
           message: "QQ Bot App ID",
           initial: existing?.platforms?.qq?.appId ?? "",
-          validate: (v: string) => (v.trim() ? true : "App ID 涓嶈兘涓虹┖"),
+          validate: (v: string) => (v.trim() ? true : "App ID 不能为空"),
         },
         {
           type: "text",
           name: "secret",
           message: "QQ Bot Secret",
           initial: existing?.platforms?.qq?.secret ?? "",
-          validate: (v: string) => (v.trim() ? true : "Secret 涓嶈兘涓虹┖"),
+          validate: (v: string) => (v.trim() ? true : "Secret 不能为空"),
         },
-        {
       ],
       { onCancel },
     );
