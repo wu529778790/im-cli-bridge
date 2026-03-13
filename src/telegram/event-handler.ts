@@ -1,5 +1,3 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import type { Telegraf } from "telegraf";
 import { message } from "telegraf/filters";
 import type { Config } from "../config.js";
@@ -24,12 +22,13 @@ import { CommandHandler } from "../commands/handler.js";
 import { getAdapter } from "../adapters/registry.js";
 import { runAITask, type TaskRunState } from "../shared/ai-task.js";
 import { startTaskCleanup } from "../shared/task-cleanup.js";
-import { TELEGRAM_THROTTLE_MS, IMAGE_DIR } from "../constants.js";
+import { TELEGRAM_THROTTLE_MS } from "../constants.js";
 import { setActiveChatId } from "../shared/active-chats.js";
 import { setChatUser } from "../shared/chat-user-map.js";
 import { setPermissionMode } from "../permission-mode/session-mode.js";
 import { MODE_LABELS } from "../permission-mode/types.js";
 import { createLogger } from "../logger.js";
+import { downloadMediaFromUrl } from "../shared/media-storage.js";
 
 const log = createLogger("TgHandler");
 
@@ -80,16 +79,12 @@ async function downloadTelegramPhoto(
   bot: Telegraf,
   fileId: string,
 ): Promise<string> {
-  await mkdir(IMAGE_DIR, { recursive: true });
   const fileLink = await bot.telegram.getFileLink(fileId);
-  const res = await fetch(fileLink.href, {
-    signal: AbortSignal.timeout(30000),
-  });
-  const buffer = Buffer.from(await res.arrayBuffer());
   const safeId = fileId.replace(/[^a-zA-Z0-9_-]/g, "_");
-  const imagePath = join(IMAGE_DIR, `${Date.now()}-${safeId.slice(-8)}.jpg`);
-  await writeFile(imagePath, buffer);
-  return imagePath;
+  return downloadMediaFromUrl(fileLink.href, {
+    basenameHint: safeId.slice(-8),
+    fallbackExtension: "jpg",
+  });
 }
 
 export interface TelegramEventHandlerHandle {

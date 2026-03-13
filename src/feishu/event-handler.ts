@@ -1,5 +1,3 @@
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import { Client } from '@larksuiteoapi/node-sdk';
 import type { Config } from '../config.js';
 import { AccessControl } from '../access/access-control.js';
@@ -31,16 +29,15 @@ import { runAITask, type TaskRunState } from '../shared/ai-task.js';
 import { buildCardV2 } from './card-builder.js';
 import { disableStreaming, updateCardFull, destroySession } from './cardkit-manager.js';
 import { startTaskCleanup } from '../shared/task-cleanup.js';
-import { CARDKIT_THROTTLE_MS, IMAGE_DIR } from '../constants.js';
+import { CARDKIT_THROTTLE_MS } from '../constants.js';
 import { setActiveChatId } from '../shared/active-chats.js';
 import { setChatUser } from '../shared/chat-user-map.js';
 import { createLogger } from '../logger.js';
+import { downloadMediaFromUrl } from '../shared/media-storage.js';
 
 const log = createLogger('FeishuHandler');
 
 async function downloadFeishuImage(client: Client, imageKey: string): Promise<string> {
-  await mkdir(IMAGE_DIR, { recursive: true });
-
   // Get tenant access token
   const tokenResp = await client.auth.tenantAccessToken.internal({
     data: {
@@ -78,20 +75,11 @@ async function downloadFeishuImage(client: Client, imageKey: string): Promise<st
   if (!imageUrl) {
     throw new Error('No image URL found in response');
   }
-
-  const imgResp = await fetch(imageUrl, {
-    signal: AbortSignal.timeout(30000),
-  });
-
-  if (!imgResp.ok) {
-    throw new Error(`Failed to download image: ${imgResp.statusText}`);
-  }
-
-  const buffer = Buffer.from(await imgResp.arrayBuffer());
   const safeId = imageKey.replace(/[^a-zA-Z0-9_-]/g, '_');
-  const imagePath = join(IMAGE_DIR, `${Date.now()}-${safeId.slice(-8)}.jpg`);
-  await writeFile(imagePath, buffer);
-  return imagePath;
+  return downloadMediaFromUrl(imageUrl, {
+    basenameHint: safeId.slice(-8),
+    fallbackExtension: 'jpg',
+  });
 }
 
 /**
