@@ -29,7 +29,7 @@ import type { ThreadContext } from '../shared/types.js';
 import type { WeWorkCallbackMessage } from './types.js';
 import { buildImageFallbackMessage, buildUnsupportedInboundMessage } from '../channels/capabilities.js';
 import { buildMediaMetadataPrompt } from '../shared/media-prompt.js';
-import { saveBase64Media } from '../shared/media-storage.js';
+import { downloadMediaFromUrl, saveBase64Media } from '../shared/media-storage.js';
 import { buildSavedMediaPrompt } from '../shared/media-analysis-prompt.js';
 
 const log = createLogger('WeWorkHandler');
@@ -127,7 +127,20 @@ async function buildMediaPrompt(data: WeWorkCallbackMessage, kind: MediaKind): P
         text,
       });
     } else if (typeof imagePayload.url === 'string' && imagePayload.url.length > 0) {
-      imageReference = `Remote image URL: ${imagePayload.url}`;
+      try {
+        const savedPath = await downloadMediaFromUrl(imagePayload.url, {
+          basenameHint: imagePayload.md5,
+          fallbackExtension: 'jpg',
+        });
+        return buildSavedMediaPrompt({
+          source: 'WeWork',
+          kind: 'image',
+          localPath: savedPath,
+          text,
+        });
+      } catch {
+        imageReference = `Remote image URL: ${imagePayload.url}`;
+      }
     }
 
     return buildMediaMetadataPrompt({
@@ -141,6 +154,23 @@ async function buildMediaPrompt(data: WeWorkCallbackMessage, kind: MediaKind): P
       guidance:
         'Analyze the image if a local path or accessible URL is available. Otherwise explain the limitation and ask the user to resend via Telegram/Feishu or provide more context.',
     });
+  }
+
+  if (payload?.url) {
+    try {
+      const savedPath = await downloadMediaFromUrl(payload.url, {
+        basenameHint: payload.filename ?? payload.md5,
+        fallbackExtension: kind === 'voice' ? 'ogg' : kind === 'video' ? 'mp4' : 'bin',
+      });
+      return buildSavedMediaPrompt({
+        source: 'WeWork',
+        kind,
+        localPath: savedPath,
+        text,
+      });
+    } catch {
+      // Fall back to metadata-only prompt.
+    }
   }
 
   return buildMediaMetadataPrompt({
