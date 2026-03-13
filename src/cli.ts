@@ -3,7 +3,7 @@
 import { main, needsSetup, runInteractiveSetup } from "./index.js";
 import { loadConfig } from "./config.js";
 import { checkAndUpdate } from "./check-update.js";
-import { runWebConfigFlow } from "./config-web.js";
+import { getWebConfigUrl, runWebConfigFlow } from "./config-web.js";
 import { getServiceStatus, removePid, startBackgroundService, stopBackgroundService } from "./service-control.js";
 
 async function ensureConfigured(mode: "init" | "start" | "dev"): Promise<boolean> {
@@ -57,9 +57,12 @@ async function cmdStart(): Promise<void> {
     process.exit(0);
   }
 
+  process.env.OPEN_IM_AUTO_OPEN_CONFIG_ONCE = "1";
   const child = startBackgroundService(process.cwd());
+  delete process.env.OPEN_IM_AUTO_OPEN_CONFIG_ONCE;
   console.log("\n🟢 open-im 已在后台启动");
   console.log(`   pid: ${child.pid}`);
+  console.log(`   配置页: ${getWebConfigUrl()}`);
 }
 
 async function cmdStop(): Promise<void> {

@@ -4,6 +4,8 @@ import { homedir, tmpdir } from "node:os";
 export const APP_HOME = join(homedir(), ".open-im");
 /** 优雅关闭 HTTP 端口（stop 命令通过此端口触发 shutdown） */
 export const SHUTDOWN_PORT = 39281;
+/** 本地 Web 配置页固定端口 */
+export const WEB_CONFIG_PORT = 39282;
 export const IMAGE_DIR = join(tmpdir(), "open-im-images");
 
 export const TERMINAL_ONLY_COMMANDS = new Set([

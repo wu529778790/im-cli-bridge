@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { URL } from "node:url";
+import { WEB_CONFIG_PORT } from "./constants.js";
 import { CONFIG_PATH, loadConfig, loadFileConfig, saveFileConfig, type FileConfig } from "./config.js";
 import { getServiceStatus, startBackgroundService, stopBackgroundService } from "./service-control.js";
 
@@ -30,10 +31,10 @@ interface WebConfigPayload {
     cursorCliPath: string;
     codexCliPath: string;
     codexProxy: string;
-    defaultPermissionMode: "ask" | "accept-edits" | "plan" | "yolo";
+    defaultPermissionMode?: "ask" | "accept-edits" | "plan" | "yolo";
     hookPort: number;
-    logDir: string;
-    logLevel: "DEBUG" | "INFO" | "WARN" | "ERROR";
+    logDir?: string;
+    logLevel: "default" | "DEBUG" | "INFO" | "WARN" | "ERROR";
     useSdkMode: boolean;
   };
 }
@@ -107,10 +108,10 @@ function buildInitialPayload(file: FileConfig): WebConfigPayload {
       cursorCliPath: file.tools?.cursor?.cliPath ?? "agent",
       codexCliPath: file.tools?.codex?.cliPath ?? "codex",
       codexProxy: file.tools?.codex?.proxy ?? "",
-      defaultPermissionMode: file.defaultPermissionMode ?? "ask",
+    defaultPermissionMode: file.defaultPermissionMode ?? "ask",
       hookPort: file.hookPort ?? 35801,
       logDir: file.logDir ?? "",
-      logLevel: (file.logLevel as "DEBUG" | "INFO" | "WARN" | "ERROR") ?? "INFO",
+      logLevel: (file.logLevel as "DEBUG" | "INFO" | "WARN" | "ERROR") ?? "default",
       useSdkMode: file.useSdkMode ?? true,
     },
   };
@@ -137,10 +138,10 @@ function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConf
   return {
     ...existing,
     aiCommand: payload.ai.aiCommand,
-    defaultPermissionMode: payload.ai.defaultPermissionMode,
+    defaultPermissionMode: payload.ai.defaultPermissionMode ?? existing.defaultPermissionMode ?? "ask",
     hookPort: payload.ai.hookPort,
-    logDir: clean(payload.ai.logDir),
-    logLevel: payload.ai.logLevel,
+    logDir: payload.ai.logDir === undefined ? existing.logDir : clean(payload.ai.logDir),
+    logLevel: payload.ai.logLevel === "default" ? undefined : payload.ai.logLevel,
     useSdkMode: payload.ai.useSdkMode,
     tools: {
       claude: {
@@ -212,6 +213,19 @@ function openBrowser(url: string): void {
     return;
   }
   spawn("xdg-open", [url], { detached: true, stdio: "ignore" }).unref();
+}
+
+export function getWebConfigPort(): number {
+  const fromEnv = process.env.OPEN_IM_WEB_PORT ? parseInt(process.env.OPEN_IM_WEB_PORT, 10) : NaN;
+  return Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : WEB_CONFIG_PORT;
+}
+
+export function getWebConfigUrl(): string {
+  return `http://127.0.0.1:${getWebConfigPort()}`;
+}
+
+export function openWebConfigUrl(): void {
+  openBrowser(getWebConfigUrl());
 }
 
 const PAGE_HTML = String.raw`<!doctype html>
@@ -295,10 +309,8 @@ const PAGE_HTML = String.raw`<!doctype html>
               <label>Codex proxy<input id="ai-codexProxy" class="mono" placeholder="Optional" /></label>
               <label>Claude timeout (ms)<input id="ai-claudeTimeoutMs" type="number" min="1" /></label>
               <label>Claude model<input id="ai-claudeModel" placeholder="Optional" /></label>
-              <label>Permission mode<select id="ai-defaultPermissionMode"><option value="ask">ask</option><option value="accept-edits">accept-edits</option><option value="plan">plan</option><option value="yolo">yolo</option></select></label>
               <label>Hook port<input id="ai-hookPort" type="number" min="1" /></label>
-              <label>Log directory<input id="ai-logDir" class="mono" /></label>
-              <label>Log level<select id="ai-logLevel"><option value="DEBUG">DEBUG</option><option value="INFO">INFO</option><option value="WARN">WARN</option><option value="ERROR">ERROR</option></select></label>
+              <label>Log level<select id="ai-logLevel"><option value="default">default</option><option value="DEBUG">DEBUG</option><option value="INFO">INFO</option><option value="WARN">WARN</option><option value="ERROR">ERROR</option></select></label>
             </div>
             <div class="actions" style="margin-top:14px">
               <label class="toggle"><input id="ai-claudeSkipPermissions" type="checkbox" /> Auto-approve tool permissions</label>
@@ -318,7 +330,7 @@ const PAGE_HTML = String.raw`<!doctype html>
       </div>
     </div>
     <script>
-      const ids = ["telegram-enabled","telegram-botToken","telegram-proxy","telegram-allowedUserIds","feishu-enabled","feishu-appId","feishu-appSecret","feishu-allowedUserIds","wework-enabled","wework-corpId","wework-secret","wework-allowedUserIds","dingtalk-enabled","dingtalk-clientId","dingtalk-clientSecret","dingtalk-cardTemplateId","dingtalk-allowedUserIds","ai-aiCommand","ai-claudeCliPath","ai-claudeWorkDir","ai-claudeSkipPermissions","ai-claudeTimeoutMs","ai-claudeModel","ai-cursorCliPath","ai-codexCliPath","ai-codexProxy","ai-defaultPermissionMode","ai-hookPort","ai-logDir","ai-logLevel","ai-useSdkMode"];
+      const ids = ["telegram-enabled","telegram-botToken","telegram-proxy","telegram-allowedUserIds","feishu-enabled","feishu-appId","feishu-appSecret","feishu-allowedUserIds","wework-enabled","wework-corpId","wework-secret","wework-allowedUserIds","dingtalk-enabled","dingtalk-clientId","dingtalk-clientSecret","dingtalk-cardTemplateId","dingtalk-allowedUserIds","ai-aiCommand","ai-claudeCliPath","ai-claudeWorkDir","ai-claudeSkipPermissions","ai-claudeTimeoutMs","ai-claudeModel","ai-cursorCliPath","ai-codexCliPath","ai-codexProxy","ai-hookPort","ai-logLevel","ai-useSdkMode"];
       const el = (id) => document.getElementById(id);
       const setMessage = (text, type="") => { const node = el("message"); node.textContent = text; node.className = ("message " + type).trim(); };
       const setBusy = (busy) => ["validateButton","saveButton","startButton","stopButton"].forEach((id) => { el(id).disabled = busy; });
@@ -334,9 +346,9 @@ const PAGE_HTML = String.raw`<!doctype html>
           ? ("Enabled platforms: " + enabled.join(", ") + " | AI tool: " + aiTool)
           : ("No platform enabled yet | AI tool: " + aiTool);
       }
-      const payload = () => ({ platforms: { telegram: { enabled: el("telegram-enabled").checked, botToken: el("telegram-botToken").value, proxy: el("telegram-proxy").value, allowedUserIds: el("telegram-allowedUserIds").value }, feishu: { enabled: el("feishu-enabled").checked, appId: el("feishu-appId").value, appSecret: el("feishu-appSecret").value, allowedUserIds: el("feishu-allowedUserIds").value }, wework: { enabled: el("wework-enabled").checked, corpId: el("wework-corpId").value, secret: el("wework-secret").value, allowedUserIds: el("wework-allowedUserIds").value }, dingtalk: { enabled: el("dingtalk-enabled").checked, clientId: el("dingtalk-clientId").value, clientSecret: el("dingtalk-clientSecret").value, cardTemplateId: el("dingtalk-cardTemplateId").value, allowedUserIds: el("dingtalk-allowedUserIds").value } }, ai: { aiCommand: el("ai-aiCommand").value, claudeCliPath: el("ai-claudeCliPath").value, claudeWorkDir: el("ai-claudeWorkDir").value, claudeSkipPermissions: el("ai-claudeSkipPermissions").checked, claudeTimeoutMs: Number(el("ai-claudeTimeoutMs").value || "0"), claudeModel: el("ai-claudeModel").value, cursorCliPath: el("ai-cursorCliPath").value, codexCliPath: el("ai-codexCliPath").value, codexProxy: el("ai-codexProxy").value, defaultPermissionMode: el("ai-defaultPermissionMode").value, hookPort: Number(el("ai-hookPort").value || "0"), logDir: el("ai-logDir").value, logLevel: el("ai-logLevel").value, useSdkMode: el("ai-useSdkMode").checked } });
+      const payload = () => ({ platforms: { telegram: { enabled: el("telegram-enabled").checked, botToken: el("telegram-botToken").value, proxy: el("telegram-proxy").value, allowedUserIds: el("telegram-allowedUserIds").value }, feishu: { enabled: el("feishu-enabled").checked, appId: el("feishu-appId").value, appSecret: el("feishu-appSecret").value, allowedUserIds: el("feishu-allowedUserIds").value }, wework: { enabled: el("wework-enabled").checked, corpId: el("wework-corpId").value, secret: el("wework-secret").value, allowedUserIds: el("wework-allowedUserIds").value }, dingtalk: { enabled: el("dingtalk-enabled").checked, clientId: el("dingtalk-clientId").value, clientSecret: el("dingtalk-clientSecret").value, cardTemplateId: el("dingtalk-cardTemplateId").value, allowedUserIds: el("dingtalk-allowedUserIds").value } }, ai: { aiCommand: el("ai-aiCommand").value, claudeCliPath: el("ai-claudeCliPath").value, claudeWorkDir: el("ai-claudeWorkDir").value, claudeSkipPermissions: el("ai-claudeSkipPermissions").checked, claudeTimeoutMs: Number(el("ai-claudeTimeoutMs").value || "0"), claudeModel: el("ai-claudeModel").value, cursorCliPath: el("ai-cursorCliPath").value, codexCliPath: el("ai-codexCliPath").value, codexProxy: el("ai-codexProxy").value, hookPort: Number(el("ai-hookPort").value || "0"), logLevel: el("ai-logLevel").value, useSdkMode: el("ai-useSdkMode").checked } });
       async function request(path, options={}) { const response = await fetch(path, { headers: { "content-type": "application/json" }, ...options }); const body = await response.json(); if (!response.ok) throw new Error(body.error || "Request failed"); return body; }
-      function fill(data, meta) { el("configPath").textContent = meta.configPath; el("modeBadge").textContent = "Flow: " + meta.mode; el("telegram-enabled").checked = data.platforms.telegram.enabled; el("telegram-botToken").value = data.platforms.telegram.botToken; el("telegram-proxy").value = data.platforms.telegram.proxy; el("telegram-allowedUserIds").value = data.platforms.telegram.allowedUserIds; el("feishu-enabled").checked = data.platforms.feishu.enabled; el("feishu-appId").value = data.platforms.feishu.appId; el("feishu-appSecret").value = data.platforms.feishu.appSecret; el("feishu-allowedUserIds").value = data.platforms.feishu.allowedUserIds; el("wework-enabled").checked = data.platforms.wework.enabled; el("wework-corpId").value = data.platforms.wework.corpId; el("wework-secret").value = data.platforms.wework.secret; el("wework-allowedUserIds").value = data.platforms.wework.allowedUserIds; el("dingtalk-enabled").checked = data.platforms.dingtalk.enabled; el("dingtalk-clientId").value = data.platforms.dingtalk.clientId; el("dingtalk-clientSecret").value = data.platforms.dingtalk.clientSecret; el("dingtalk-cardTemplateId").value = data.platforms.dingtalk.cardTemplateId; el("dingtalk-allowedUserIds").value = data.platforms.dingtalk.allowedUserIds; el("ai-aiCommand").value = data.ai.aiCommand; el("ai-claudeCliPath").value = data.ai.claudeCliPath; el("ai-claudeWorkDir").value = data.ai.claudeWorkDir; el("ai-claudeSkipPermissions").checked = data.ai.claudeSkipPermissions; el("ai-claudeTimeoutMs").value = String(data.ai.claudeTimeoutMs); el("ai-claudeModel").value = data.ai.claudeModel; el("ai-cursorCliPath").value = data.ai.cursorCliPath; el("ai-codexCliPath").value = data.ai.codexCliPath; el("ai-codexProxy").value = data.ai.codexProxy; el("ai-defaultPermissionMode").value = data.ai.defaultPermissionMode; el("ai-hookPort").value = String(data.ai.hookPort); el("ai-logDir").value = data.ai.logDir; el("ai-logLevel").value = data.ai.logLevel; el("ai-useSdkMode").checked = data.ai.useSdkMode; updateVisualState(); }
+      function fill(data, meta) { el("configPath").textContent = meta.configPath; el("modeBadge").textContent = "Flow: " + meta.mode; el("telegram-enabled").checked = data.platforms.telegram.enabled; el("telegram-botToken").value = data.platforms.telegram.botToken; el("telegram-proxy").value = data.platforms.telegram.proxy; el("telegram-allowedUserIds").value = data.platforms.telegram.allowedUserIds; el("feishu-enabled").checked = data.platforms.feishu.enabled; el("feishu-appId").value = data.platforms.feishu.appId; el("feishu-appSecret").value = data.platforms.feishu.appSecret; el("feishu-allowedUserIds").value = data.platforms.feishu.allowedUserIds; el("wework-enabled").checked = data.platforms.wework.enabled; el("wework-corpId").value = data.platforms.wework.corpId; el("wework-secret").value = data.platforms.wework.secret; el("wework-allowedUserIds").value = data.platforms.wework.allowedUserIds; el("dingtalk-enabled").checked = data.platforms.dingtalk.enabled; el("dingtalk-clientId").value = data.platforms.dingtalk.clientId; el("dingtalk-clientSecret").value = data.platforms.dingtalk.clientSecret; el("dingtalk-cardTemplateId").value = data.platforms.dingtalk.cardTemplateId; el("dingtalk-allowedUserIds").value = data.platforms.dingtalk.allowedUserIds; el("ai-aiCommand").value = data.ai.aiCommand; el("ai-claudeCliPath").value = data.ai.claudeCliPath; el("ai-claudeWorkDir").value = data.ai.claudeWorkDir; el("ai-claudeSkipPermissions").checked = data.ai.claudeSkipPermissions; el("ai-claudeTimeoutMs").value = String(data.ai.claudeTimeoutMs); el("ai-claudeModel").value = data.ai.claudeModel; el("ai-cursorCliPath").value = data.ai.cursorCliPath; el("ai-codexCliPath").value = data.ai.codexCliPath; el("ai-codexProxy").value = data.ai.codexProxy; el("ai-hookPort").value = String(data.ai.hookPort); el("ai-logLevel").value = data.ai.logLevel; el("ai-useSdkMode").checked = data.ai.useSdkMode; updateVisualState(); }
       async function refreshStatus() { const data = await request("/api/service/status"); el("serviceState").textContent = data.running ? ("Service running (pid " + data.pid + ")") : "Service stopped"; el("statusMeta").textContent = data.running ? "Background bridge process is active." : "No background bridge process is active."; }
       async function boot() { setBusy(true); try { const data = await request("/api/config"); fill(data.payload, data.meta); await refreshStatus(); setMessage("Control surface ready.", "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } setInterval(() => { refreshStatus().catch(() => {}); }, 5000); ids.forEach((id) => { const node = el(id); if (node) node.addEventListener("input", updateVisualState); if (node) node.addEventListener("change", updateVisualState); }); }
       async function validate() { setBusy(true); try { const data = await request("/api/config/validate", { method: "POST", body: JSON.stringify(payload()) }); setMessage(data.message, "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
@@ -348,7 +360,7 @@ const PAGE_HTML = String.raw`<!doctype html>
   </body>
 </html>`;
 
-export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: string }): Promise<StartedWebConfigServer> {
+export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: string; persistent?: boolean }): Promise<StartedWebConfigServer> {
   let timer: NodeJS.Timeout | null = null;
   let settled = false;
   let settle!: (value: WebFlowResult) => void;
@@ -408,7 +420,7 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
           saveFileConfig(toFileConfig(body, loadFileConfig()));
           loadConfig();
           json(response, 200, { message: "Configuration saved." });
-          if (requestUrl.searchParams.get("final") === "1") {
+          if (!options.persistent && requestUrl.searchParams.get("final") === "1") {
             setTimeout(() => finishFlow("saved"), 120);
           }
         } catch (error) {
@@ -427,7 +439,9 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
           loadConfig();
           const started = startBackgroundService(options.cwd);
           json(response, 200, { message: `Background service started with pid ${started.pid}.`, pid: started.pid });
-          setTimeout(() => finishFlow("saved"), 120);
+          if (!options.persistent) {
+            setTimeout(() => finishFlow("saved"), 120);
+          }
         } catch (error) {
           json(response, 400, { error: error instanceof Error ? error.message : String(error) });
         }
@@ -447,8 +461,16 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
       json(response, 404, { error: "Not found." });
   });
 
-  await new Promise<void>((resolve) => {
-    server.listen(0, "127.0.0.1", () => resolve());
+  const port = getWebConfigPort();
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", (error: NodeJS.ErrnoException) => {
+      if (error.code === "EADDRINUSE") {
+        reject(new Error(`Web config port ${port} is already in use. Close the existing listener or change OPEN_IM_WEB_PORT.`));
+        return;
+      }
+      reject(error);
+    });
+    server.listen(port, "127.0.0.1", () => resolve());
   });
 
   const address = server.address();
@@ -462,10 +484,12 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
     };
   }
 
-  timer = setTimeout(() => {
-    server.close();
-    settle("cancel");
-  }, 15 * 60 * 1000);
+  if (!options.persistent) {
+    timer = setTimeout(() => {
+      server.close();
+      settle("cancel");
+    }, 15 * 60 * 1000);
+  }
 
   server.on("close", () => {
     if (timer) clearTimeout(timer);
@@ -477,7 +501,7 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
       server.close();
       settle("cancel");
     },
-    url: `http://127.0.0.1:${address.port}`,
+    url: `http://127.0.0.1:${port}`,
     waitForResult,
   };
 }
