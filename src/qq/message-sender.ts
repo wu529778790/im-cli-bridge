@@ -1,5 +1,6 @@
 import { createLogger } from "../logger.js";
 import { splitLongContent } from "../shared/utils.js";
+import { buildImageFallbackMessage } from "../channels/capabilities.js";
 import { getQQBot } from "./client.js";
 
 const log = createLogger("QQSender");
@@ -156,6 +157,10 @@ export async function sendTextReply(chatId: string, text: string): Promise<void>
   } catch (error) {
     log.error("Failed to send QQ text reply:", error);
   }
+}
+
+export async function sendImageReply(chatId: string, imagePath: string): Promise<void> {
+  await sendTextReply(chatId, buildImageFallbackMessage("qq", imagePath));
 }
 
 export async function sendThinkingMessage(chatId: string, _replyToMessageId?: string, toolId = "claude"): Promise<string> {

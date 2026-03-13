@@ -11,6 +11,7 @@ import {
   updateMessage,
   sendFinalMessages,
   sendTextReply,
+  sendImageReply,
   startTypingLoop,
   sendPermissionCard,
   sendModeCard,
@@ -27,7 +28,6 @@ import { setActiveChatId } from '../shared/active-chats.js';
 import { setChatUser } from '../shared/chat-user-map.js';
 import { createLogger } from '../logger.js';
 import type { AGPEnvelope, SessionPromptPayload, WeChatIncomingMessage } from './types.js';
-import { buildImageFallbackMessage } from '../channels/capabilities.js';
 import { buildSavedMediaPrompt } from '../shared/media-analysis-prompt.js';
 import { buildMediaMetadataPrompt } from '../shared/media-prompt.js';
 import { buildMediaContext } from '../shared/media-context.js';
@@ -191,7 +191,7 @@ export function setupWeChatHandlers(
           taskKeyByChatId.set(chatId, taskKey);
         },
         sendImage: async (path) => {
-          await sendTextReply(chatId, buildImageFallbackMessage('wechat', path));
+          await sendImageReply(chatId, path);
         },
       },
     );

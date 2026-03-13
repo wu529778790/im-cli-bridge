@@ -8,6 +8,7 @@ import {
   sendFinalMessages,
   sendErrorMessage,
   sendTextReply,
+  sendImageReply,
   sendModeKeyboard,
   sendDirectorySelection,
   startTypingLoop,
@@ -22,7 +23,6 @@ import { setChatUser } from "../shared/chat-user-map.js";
 import { createLogger } from "../logger.js";
 import type { ThreadContext } from "../shared/types.js";
 import type { QQAttachment, QQMessageEvent } from "./types.js";
-import { buildImageFallbackMessage } from "../channels/capabilities.js";
 import { buildMediaMetadataPrompt } from "../shared/media-prompt.js";
 import { buildSavedMediaPrompt } from "../shared/media-analysis-prompt.js";
 import { buildMediaContext } from "../shared/media-context.js";
@@ -190,7 +190,7 @@ export function setupQQHandlers(
           runningTasks.set(taskKey, state);
         },
         sendImage: async (path) => {
-          await sendTextReply(chatId, buildImageFallbackMessage("qq", path));
+          await sendImageReply(chatId, path);
         },
       },
     );

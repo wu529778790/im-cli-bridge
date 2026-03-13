@@ -10,6 +10,7 @@ import {
   sendFinalMessages,
   sendErrorMessage,
   sendTextReply,
+  sendImageReply,
   startTypingLoop,
   sendPermissionCard,
   sendModeCard,
@@ -26,7 +27,7 @@ import { setChatUser } from '../shared/chat-user-map.js';
 import { createLogger } from '../logger.js';
 import type { ThreadContext } from '../shared/types.js';
 import type { DingTalkStreamingTarget } from './client.js';
-import { buildImageFallbackMessage, buildUnsupportedInboundMessage } from '../channels/capabilities.js';
+import { buildUnsupportedInboundMessage } from '../channels/capabilities.js';
 import { buildMediaMetadataPrompt } from '../shared/media-prompt.js';
 import { buildSavedMediaPrompt } from '../shared/media-analysis-prompt.js';
 import { buildMediaContext } from '../shared/media-context.js';
@@ -243,7 +244,7 @@ export function setupDingTalkHandlers(
           runningTasks.set(taskKey, state);
         },
         sendImage: async (path) => {
-          await sendTextReply(chatId, buildImageFallbackMessage('dingtalk', path));
+          await sendImageReply(chatId, path);
         },
       },
     );

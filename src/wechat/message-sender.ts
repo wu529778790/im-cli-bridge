@@ -5,6 +5,7 @@
 import { sendAGPMessage } from './client.js';
 import { createLogger } from '../logger.js';
 import { splitLongContent, getAIToolDisplayName } from '../shared/utils.js';
+import { buildImageFallbackMessage } from '../channels/capabilities.js';
 import type { MessageStatus } from './types.js';
 
 const log = createLogger('WeChatSender');
@@ -160,6 +161,13 @@ export async function sendTextReply(chatId: string, text: string): Promise<void>
   } catch (err) {
     log.error('Failed to send text reply:', err);
   }
+}
+
+/**
+ * Send permission card with action buttons (for permission prompts)
+ */
+export async function sendImageReply(chatId: string, imagePath: string): Promise<void> {
+  await sendTextReply(chatId, buildImageFallbackMessage('wechat', imagePath));
 }
 
 /**

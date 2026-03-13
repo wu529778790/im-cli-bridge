@@ -18,6 +18,7 @@ import { listDirectories, buildDirectoryKeyboard } from '../commands/handler.js'
 import { MAX_DINGTALK_MESSAGE_LENGTH } from '../constants.js';
 import type { ThreadContext } from '../shared/types.js';
 import type { DingTalkActiveTarget } from '../shared/active-chats.js';
+import { buildImageFallbackMessage } from '../channels/capabilities.js';
 
 const log = createLogger('DingTalkSender');
 
@@ -471,6 +472,10 @@ export async function sendTextReply(
 ): Promise<void> {
   await sendTextWithRetry(chatId, text);
   log.info(`Text reply sent to DingTalk chat ${chatId}`);
+}
+
+export async function sendImageReply(chatId: string, imagePath: string): Promise<void> {
+  await sendTextReply(chatId, buildImageFallbackMessage('dingtalk', imagePath));
 }
 
 export async function sendProactiveTextReply(
