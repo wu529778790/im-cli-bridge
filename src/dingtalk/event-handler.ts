@@ -26,6 +26,7 @@ import { setChatUser } from '../shared/chat-user-map.js';
 import { createLogger } from '../logger.js';
 import type { ThreadContext } from '../shared/types.js';
 import type { DingTalkStreamingTarget } from './client.js';
+import { buildImageFallbackMessage, buildUnsupportedInboundMessage } from '../channels/capabilities.js';
 
 const log = createLogger('DingTalkHandler');
 const DINGTALK_THROTTLE_MS = 1000;
@@ -43,6 +44,13 @@ function parseRobotMessage(data: DWClientDownStream): RobotMessage | null {
     log.error('Failed to parse DingTalk message:', err);
     return null;
   }
+}
+
+function toInboundKind(msgType: string): 'image' | 'file' | 'voice' | 'video' {
+  if (msgType === 'picture' || msgType === 'image') return 'image';
+  if (msgType === 'audio' || msgType === 'voice') return 'voice';
+  if (msgType === 'video') return 'video';
+  return 'file';
 }
 
 export function setupDingTalkHandlers(
@@ -88,7 +96,7 @@ export function setupDingTalkHandlers(
 
     const toolAdapter = getAdapter(config.aiCommand);
     if (!toolAdapter) {
-      await sendTextReply(chatId, `未配置 AI 工具: ${config.aiCommand}`);
+      await sendTextReply(chatId, `AI tool is not configured: ${config.aiCommand}`);
       return;
     }
 
@@ -126,7 +134,7 @@ export function setupDingTalkHandlers(
           runningTasks.set(taskKey, state);
         },
         sendImage: async (path) => {
-          await sendTextReply(chatId, `图片已保存: ${path}`);
+          await sendTextReply(chatId, buildImageFallbackMessage('dingtalk', path));
         },
       },
     );
@@ -148,13 +156,13 @@ export function setupDingTalkHandlers(
     log.info(`[MSG] DingTalk message: type=${robotMessage.msgtype}, user=${userId}, chat=${chatId}`);
 
     if (!accessControl.isAllowed(userId)) {
-      await sendTextReply(chatId, `抱歉，您没有访问权限。\n您的 ID: ${userId}`);
+      await sendTextReply(chatId, `Access denied. Your DingTalk user ID: ${userId}`);
       ackMessage(callbackId, { denied: true });
       return;
     }
 
     if (robotMessage.msgtype !== 'text') {
-      await sendTextReply(chatId, `暂不支持的消息类型: ${robotMessage.msgtype}`);
+      await sendTextReply(chatId, buildUnsupportedInboundMessage('dingtalk', toInboundKind(robotMessage.msgtype)));
       ackMessage(callbackId, { ignored: robotMessage.msgtype });
       return;
     }
@@ -199,9 +207,9 @@ export function setupDingTalkHandlers(
     });
 
     if (enqueueResult === 'rejected') {
-      await sendTextReply(chatId, '请求队列已满，请稍后再试。');
+      await sendTextReply(chatId, 'Request queue is full. Please try again later.');
     } else if (enqueueResult === 'queued') {
-      await sendTextReply(chatId, '您的请求已排队等待。');
+      await sendTextReply(chatId, 'Your request is queued.');
     }
 
     ackMessage(callbackId, { queued: enqueueResult });

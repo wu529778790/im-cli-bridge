@@ -22,6 +22,7 @@ import { setChatUser } from "../shared/chat-user-map.js";
 import { createLogger } from "../logger.js";
 import type { ThreadContext } from "../shared/types.js";
 import type { QQMessageEvent } from "./types.js";
+import { buildImageFallbackMessage } from "../channels/capabilities.js";
 
 const log = createLogger("QQHandler");
 const QQ_THROTTLE_MS = 1200;
@@ -110,7 +111,7 @@ export function setupQQHandlers(
           runningTasks.set(taskKey, state);
         },
         sendImage: async (path) => {
-          await sendTextReply(chatId, `Image saved: ${path}`);
+          await sendTextReply(chatId, buildImageFallbackMessage("qq", path));
         },
       },
     );
