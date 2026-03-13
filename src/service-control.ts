@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { APP_HOME, SHUTDOWN_PORT } from "./constants.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PID_FILE = join(APP_HOME, "open-im.pid");
+const PID_FILE = join(APP_HOME, "open-im-worker.pid");
 const PORT_FILE = join(APP_HOME, "open-im.port");
 
 function getServiceEntry(): { command: string; args: string[] } {

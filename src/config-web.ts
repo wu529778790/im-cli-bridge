@@ -322,8 +322,8 @@ const PAGE_HTML = String.raw`<!doctype html>
           <div class="actions">
             <button id="validateButton" class="warning">Validate</button>
             <button id="saveButton" class="secondary">Save config</button>
-            <button id="startButton">Start service</button>
-            <button id="stopButton" class="danger">Stop service</button>
+            <button id="startButton">Start bridge</button>
+            <button id="stopButton" class="danger">Stop bridge</button>
           </div>
           <div class="message" id="message"></div>
         </section>
@@ -349,7 +349,7 @@ const PAGE_HTML = String.raw`<!doctype html>
       const payload = () => ({ platforms: { telegram: { enabled: el("telegram-enabled").checked, botToken: el("telegram-botToken").value, proxy: el("telegram-proxy").value, allowedUserIds: el("telegram-allowedUserIds").value }, feishu: { enabled: el("feishu-enabled").checked, appId: el("feishu-appId").value, appSecret: el("feishu-appSecret").value, allowedUserIds: el("feishu-allowedUserIds").value }, wework: { enabled: el("wework-enabled").checked, corpId: el("wework-corpId").value, secret: el("wework-secret").value, allowedUserIds: el("wework-allowedUserIds").value }, dingtalk: { enabled: el("dingtalk-enabled").checked, clientId: el("dingtalk-clientId").value, clientSecret: el("dingtalk-clientSecret").value, cardTemplateId: el("dingtalk-cardTemplateId").value, allowedUserIds: el("dingtalk-allowedUserIds").value } }, ai: { aiCommand: el("ai-aiCommand").value, claudeCliPath: el("ai-claudeCliPath").value, claudeWorkDir: el("ai-claudeWorkDir").value, claudeSkipPermissions: el("ai-claudeSkipPermissions").checked, claudeTimeoutMs: Number(el("ai-claudeTimeoutMs").value || "0"), claudeModel: el("ai-claudeModel").value, cursorCliPath: el("ai-cursorCliPath").value, codexCliPath: el("ai-codexCliPath").value, codexProxy: el("ai-codexProxy").value, hookPort: Number(el("ai-hookPort").value || "0"), logLevel: el("ai-logLevel").value, useSdkMode: el("ai-useSdkMode").checked } });
       async function request(path, options={}) { const response = await fetch(path, { headers: { "content-type": "application/json" }, ...options }); const body = await response.json(); if (!response.ok) throw new Error(body.error || "Request failed"); return body; }
       function fill(data, meta) { el("configPath").textContent = meta.configPath; el("modeBadge").textContent = "Flow: " + meta.mode; el("telegram-enabled").checked = data.platforms.telegram.enabled; el("telegram-botToken").value = data.platforms.telegram.botToken; el("telegram-proxy").value = data.platforms.telegram.proxy; el("telegram-allowedUserIds").value = data.platforms.telegram.allowedUserIds; el("feishu-enabled").checked = data.platforms.feishu.enabled; el("feishu-appId").value = data.platforms.feishu.appId; el("feishu-appSecret").value = data.platforms.feishu.appSecret; el("feishu-allowedUserIds").value = data.platforms.feishu.allowedUserIds; el("wework-enabled").checked = data.platforms.wework.enabled; el("wework-corpId").value = data.platforms.wework.corpId; el("wework-secret").value = data.platforms.wework.secret; el("wework-allowedUserIds").value = data.platforms.wework.allowedUserIds; el("dingtalk-enabled").checked = data.platforms.dingtalk.enabled; el("dingtalk-clientId").value = data.platforms.dingtalk.clientId; el("dingtalk-clientSecret").value = data.platforms.dingtalk.clientSecret; el("dingtalk-cardTemplateId").value = data.platforms.dingtalk.cardTemplateId; el("dingtalk-allowedUserIds").value = data.platforms.dingtalk.allowedUserIds; el("ai-aiCommand").value = data.ai.aiCommand; el("ai-claudeCliPath").value = data.ai.claudeCliPath; el("ai-claudeWorkDir").value = data.ai.claudeWorkDir; el("ai-claudeSkipPermissions").checked = data.ai.claudeSkipPermissions; el("ai-claudeTimeoutMs").value = String(data.ai.claudeTimeoutMs); el("ai-claudeModel").value = data.ai.claudeModel; el("ai-cursorCliPath").value = data.ai.cursorCliPath; el("ai-codexCliPath").value = data.ai.codexCliPath; el("ai-codexProxy").value = data.ai.codexProxy; el("ai-hookPort").value = String(data.ai.hookPort); el("ai-logLevel").value = data.ai.logLevel; el("ai-useSdkMode").checked = data.ai.useSdkMode; updateVisualState(); }
-      async function refreshStatus() { const data = await request("/api/service/status"); el("serviceState").textContent = data.running ? ("Service running (pid " + data.pid + ")") : "Service stopped"; el("statusMeta").textContent = data.running ? "Background bridge process is active." : "No background bridge process is active."; }
+      async function refreshStatus() { const data = await request("/api/service/status"); el("serviceState").textContent = data.running ? ("Bridge running (pid " + data.pid + ")") : "Bridge stopped"; el("statusMeta").textContent = data.running ? "Bridge worker is active." : "Bridge worker is currently stopped."; }
       async function boot() { setBusy(true); try { const data = await request("/api/config"); fill(data.payload, data.meta); await refreshStatus(); setMessage("Control surface ready.", "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } setInterval(() => { refreshStatus().catch(() => {}); }, 5000); ids.forEach((id) => { const node = el(id); if (node) node.addEventListener("input", updateVisualState); if (node) node.addEventListener("change", updateVisualState); }); }
       async function validate() { setBusy(true); try { const data = await request("/api/config/validate", { method: "POST", body: JSON.stringify(payload()) }); setMessage(data.message, "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
       async function save() { setBusy(true); try { const data = await request("/api/config/save?final=1", { method: "POST", body: JSON.stringify(payload()) }); setMessage(data.message, "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
@@ -438,7 +438,7 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
         try {
           loadConfig();
           const started = startBackgroundService(options.cwd);
-          json(response, 200, { message: `Background service started with pid ${started.pid}.`, pid: started.pid });
+          json(response, 200, { message: `Bridge started with pid ${started.pid}.`, pid: started.pid });
           if (!options.persistent) {
             setTimeout(() => finishFlow("saved"), 120);
           }
@@ -451,7 +451,7 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
       if (request.method === "POST" && requestUrl.pathname === "/api/service/stop") {
         try {
           const result = await stopBackgroundService();
-          json(response, 200, { message: result.pid ? `Background service stopped (pid ${result.pid}).` : "No background service was running." });
+          json(response, 200, { message: result.pid ? `Bridge stopped (pid ${result.pid}).` : "Bridge was already stopped." });
         } catch (error) {
           json(response, 400, { error: error instanceof Error ? error.message : String(error) });
         }

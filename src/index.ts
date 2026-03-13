@@ -3,7 +3,7 @@ import { writeFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { loadConfig, needsSetup } from "./config.js";
 import { runInteractiveSetup, runClaudeApiSetup } from "./setup.js";
-import { openWebConfigUrl, runWebConfigFlow, startWebConfigServer, type StartedWebConfigServer } from "./config-web.js";
+import { runWebConfigFlow } from "./config-web.js";
 
 // 导出供 cli.ts 使用
 export { needsSetup, runInteractiveSetup };
@@ -39,7 +39,6 @@ const require = createRequire(import.meta.url);
 const { version: APP_VERSION } = require("../package.json") as {
   version: string;
 };
-const CONFIG_UI_ONCE_FILE = join(APP_HOME, ".config-ui-once");
 
 const log = createLogger("Main");
 
@@ -160,18 +159,6 @@ export async function main() {
   initLogger(config.logDir, config.logLevel);
   loadActiveChats();
   initPermissionModes();
-  let configWebServer: StartedWebConfigServer | null = null;
-  try {
-    configWebServer = await startWebConfigServer({ mode: "start", cwd: process.cwd(), persistent: true });
-    log.info(`Web config page available at ${configWebServer.url}`);
-    if (process.env.OPEN_IM_AUTO_OPEN_CONFIG_ONCE === "1" && !existsSync(CONFIG_UI_ONCE_FILE)) {
-      if (!existsSync(APP_HOME)) mkdirSync(APP_HOME, { recursive: true });
-      writeFileSync(CONFIG_UI_ONCE_FILE, "1", "utf-8");
-      openWebConfigUrl();
-    }
-  } catch (error) {
-    log.warn("Failed to start web config page:", error);
-  }
 
   // 当配置为跳过权限时，设置 CC_SKIP_PERMISSIONS 让权限服务器自动放行
   // 否则 Cursor/Claude 请求工具权限时会卡住等待用户 /allow
@@ -314,7 +301,6 @@ export async function main() {
     dingtalkHandle?.stop();
     stopDingTalk();
     stopPermissionServer();
-    await configWebServer?.close().catch(() => {});
     sessionManager.destroy();
     cleanupAdapters();
     flushActiveChats();
