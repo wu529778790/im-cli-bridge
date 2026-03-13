@@ -59,6 +59,17 @@ async function downloadFeishuMessageResource(
   return targetPath;
 }
 
+function buildFeishuMediaContext(
+  details: Record<string, string | number | undefined>,
+): string | undefined {
+  const lines: string[] = [];
+  for (const [label, value] of Object.entries(details)) {
+    if (value === undefined || value === '') continue;
+    lines.push(`${label}: ${value}`);
+  }
+  return lines.length > 0 ? lines.join('\n') : undefined;
+}
+
 /**
  * Send permission prompt card with interactive buttons
  */
@@ -648,6 +659,9 @@ export function setupFeishuHandlers(
             source: 'Feishu',
             kind: 'image',
             localPath: imagePath,
+            text: buildFeishuMediaContext({
+              ImageKey: imageKey,
+            }),
           });
 
           const workDir = sessionManager.getWorkDir(senderId);
@@ -671,6 +685,8 @@ export function setupFeishuHandlers(
           const { getClient } = await import('./client.js');
           const c = getClient();
           const fileName = (content.file_name as string | undefined) ?? (content.name as string | undefined);
+          const duration = content.duration as number | undefined;
+          const fileSize = content.file_size as number | undefined;
           const savedPath = await downloadFeishuMessageResource(c, messageId, fileKey, msgType, {
             basenameHint: fileName ?? fileKey.slice(-8),
             fallbackExtension: msgType === 'media' ? 'mp4' : 'bin',
@@ -680,6 +696,12 @@ export function setupFeishuHandlers(
             source: 'Feishu',
             kind: msgType,
             localPath: savedPath,
+            text: buildFeishuMediaContext({
+              FileName: fileName,
+              FileKey: fileKey,
+              Duration: duration,
+              Size: fileSize,
+            }),
           });
 
           const workDir = sessionManager.getWorkDir(senderId);
