@@ -27,9 +27,9 @@ interface GatewayPayload {
 }
 
 interface QQClient {
-  sendPrivateMessage(openid: string, content: string, replyToMessageId?: string): Promise<void>;
-  sendGroupMessage(groupOpenid: string, content: string, replyToMessageId?: string): Promise<void>;
-  sendChannelMessage(channelId: string, content: string, replyToMessageId?: string): Promise<void>;
+  sendPrivateMessage(openid: string, content: string, replyToMessageId?: string): Promise<string | undefined>;
+  sendGroupMessage(groupOpenid: string, content: string, replyToMessageId?: string): Promise<string | undefined>;
+  sendChannelMessage(channelId: string, content: string, replyToMessageId?: string): Promise<string | undefined>;
 }
 
 let client: QQClient | null = null;
@@ -117,6 +117,10 @@ async function apiRequest<T>(
     return undefined as T;
   }
   return (await response.json()) as T;
+}
+
+interface QQApiMessageResponse {
+  id?: string;
 }
 
 function buildMessageBody(content: string, replyToMessageId?: string): Record<string, unknown> {
@@ -305,16 +309,29 @@ export async function initQQ(
   currentHandler = eventHandler;
   client = {
     sendPrivateMessage: async (openid, content, replyToMessageId) => {
-      await apiRequest(config, "POST", `/v2/users/${openid}/messages`, buildMessageBody(content, replyToMessageId));
+      const res = await apiRequest<QQApiMessageResponse>(
+        config,
+        "POST",
+        `/v2/users/${openid}/messages`,
+        buildMessageBody(content, replyToMessageId),
+      );
+      return res.id;
     },
     sendGroupMessage: async (groupOpenid, content, replyToMessageId) => {
-      await apiRequest(config, "POST", `/v2/groups/${groupOpenid}/messages`, buildMessageBody(content, replyToMessageId));
+      const res = await apiRequest<QQApiMessageResponse>(
+        config,
+        "POST",
+        `/v2/groups/${groupOpenid}/messages`,
+        buildMessageBody(content, replyToMessageId),
+      );
+      return res.id;
     },
     sendChannelMessage: async (channelId, content, replyToMessageId) => {
-      await apiRequest(config, "POST", `/channels/${channelId}/messages`, {
+      const res = await apiRequest<QQApiMessageResponse>(config, "POST", `/channels/${channelId}/messages`, {
         content,
         ...(replyToMessageId ? { msg_id: replyToMessageId } : {}),
       });
+      return res.id;
     },
   };
 
