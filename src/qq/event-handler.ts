@@ -23,6 +23,7 @@ import { createLogger } from "../logger.js";
 import type { ThreadContext } from "../shared/types.js";
 import type { QQAttachment, QQMessageEvent } from "./types.js";
 import { buildImageFallbackMessage } from "../channels/capabilities.js";
+import { buildMediaMetadataPrompt } from "../shared/media-prompt.js";
 
 const log = createLogger("QQHandler");
 const QQ_THROTTLE_MS = 1200;
@@ -59,13 +60,14 @@ function buildAttachmentPrompt(event: QQMessageEvent): string | null {
     raw: attachment.raw,
   }));
 
-  return [
-    "The user sent a QQ message with attachments.",
-    event.content ? `Accompanying text:\n${event.content}` : "",
-    "Attachment metadata:",
-    JSON.stringify(attachmentSummary, null, 2),
-    "If direct attachment fetch is not available, explain the limitation and ask the user for a text summary or a resend via Telegram/Feishu/WeWork.",
-  ].filter(Boolean).join("\n\n");
+  return buildMediaMetadataPrompt({
+    source: "QQ",
+    kind: "attachment",
+    text: event.content,
+    metadata: attachmentSummary,
+    guidance:
+      "If direct attachment fetch is not available, explain the limitation and ask the user for a text summary or a resend via Telegram/Feishu/WeWork.",
+  });
 }
 
 export interface QQEventHandlerHandle {

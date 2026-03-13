@@ -30,6 +30,7 @@ import { createLogger } from '../logger.js';
 import type { ThreadContext } from '../shared/types.js';
 import type { WeWorkCallbackMessage } from './types.js';
 import { buildImageFallbackMessage, buildUnsupportedInboundMessage } from '../channels/capabilities.js';
+import { buildMediaMetadataPrompt } from '../shared/media-prompt.js';
 
 const log = createLogger('WeWorkHandler');
 
@@ -116,11 +117,6 @@ async function saveBase64Payload(base64: string, extension: string): Promise<str
   return path;
 }
 
-function formatMetadata(payload: WeWorkMediaPayload | null): string {
-  if (!payload) return 'none';
-  return JSON.stringify(payload, null, 2);
-}
-
 async function buildMediaPrompt(data: WeWorkCallbackMessage, kind: MediaKind): Promise<string | null> {
   const text = extractTextContent(data);
   const payload = extractMediaPayload(data, kind);
@@ -137,23 +133,27 @@ async function buildMediaPrompt(data: WeWorkCallbackMessage, kind: MediaKind): P
       imageReference = `Remote image URL: ${imagePayload.url}`;
     }
 
-    return [
-      'The user sent a WeWork image message.',
-      text ? `Accompanying text:\n${text}` : '',
-      imageReference || 'No direct image bytes were included; only metadata is available.',
-      'Image metadata:',
-      formatMetadata(imagePayload),
-      'Analyze the image if a local path or accessible URL is available. Otherwise explain the limitation and ask the user to resend via Telegram/Feishu or provide more context.',
-    ].filter(Boolean).join('\n\n');
+    return buildMediaMetadataPrompt({
+      source: 'WeWork',
+      kind: 'image',
+      text,
+      metadata: {
+        reference: imageReference || 'No direct image bytes were included; only metadata is available.',
+        payload: imagePayload,
+      },
+      guidance:
+        'Analyze the image if a local path or accessible URL is available. Otherwise explain the limitation and ask the user to resend via Telegram/Feishu or provide more context.',
+    });
   }
 
-  return [
-    `The user sent a WeWork ${kind} message.`,
-    text ? `Accompanying text:\n${text}` : '',
-    `${kind} metadata:`,
-    formatMetadata(payload),
-    'If the media content is not directly accessible, explain that clearly and ask the user for a text summary, transcript, or a resend via a channel with native media support.',
-  ].filter(Boolean).join('\n\n');
+  return buildMediaMetadataPrompt({
+    source: 'WeWork',
+    kind,
+    text,
+    metadata: payload ?? 'none',
+    guidance:
+      'If the media content is not directly accessible, explain that clearly and ask the user for a text summary, transcript, or a resend via a channel with native media support.',
+  });
 }
 
 export function setupWeWorkHandlers(

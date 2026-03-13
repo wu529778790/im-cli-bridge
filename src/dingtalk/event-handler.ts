@@ -27,6 +27,7 @@ import { createLogger } from '../logger.js';
 import type { ThreadContext } from '../shared/types.js';
 import type { DingTalkStreamingTarget } from './client.js';
 import { buildImageFallbackMessage, buildUnsupportedInboundMessage } from '../channels/capabilities.js';
+import { buildMediaMetadataPrompt } from '../shared/media-prompt.js';
 
 const log = createLogger('DingTalkHandler');
 const DINGTALK_THROTTLE_MS = 1000;
@@ -85,12 +86,11 @@ function buildMediaPrompt(message: DingTalkRobotPayload, kind: DingTalkInboundKi
     payload,
   };
 
-  return [
-    `The user sent a DingTalk ${kind} message.`,
-    'Available metadata:',
-    JSON.stringify(sanitized, null, 2),
-    'If the media body is not directly accessible, explain that limitation and ask the user for a text summary, transcript, or a resend via Telegram/Feishu/WeWork.',
-  ].join('\n\n');
+  return buildMediaMetadataPrompt({
+    source: 'DingTalk',
+    kind,
+    metadata: sanitized,
+  });
 }
 
 export function setupDingTalkHandlers(
