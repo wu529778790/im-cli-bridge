@@ -112,10 +112,14 @@ function showHelp(exitCode = 0): void {
 Usage: open-im <command>
 
 Commands:
-  start    Run the full app in the background
+  start    Run the full app in the background and serve the local config page
   stop     Stop the full app
   init     Run CLI setup
   dev      Run in the foreground for debugging
+
+Local config page:
+  http://127.0.0.1:39282
+  start keeps it available; dev opens it only during initial setup
 
 Options:
   -h, --help    Show this help message
