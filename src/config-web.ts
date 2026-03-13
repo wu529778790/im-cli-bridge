@@ -18,6 +18,7 @@ interface WebConfigPayload {
   platforms: {
     telegram: { enabled: boolean; botToken: string; proxy: string; allowedUserIds: string };
     feishu: { enabled: boolean; appId: string; appSecret: string; allowedUserIds: string };
+    qq: { enabled: boolean; appId: string; secret: string; sandbox: boolean; allowedUserIds: string };
     wework: { enabled: boolean; corpId: string; secret: string; allowedUserIds: string };
     dingtalk: { enabled: boolean; clientId: string; clientSecret: string; cardTemplateId: string; allowedUserIds: string };
   };
@@ -84,6 +85,13 @@ function buildInitialPayload(file: FileConfig): WebConfigPayload {
         appSecret: file.platforms?.feishu?.appSecret ?? "",
         allowedUserIds: (file.platforms?.feishu?.allowedUserIds ?? []).join(", "),
       },
+      qq: {
+        enabled: file.platforms?.qq?.enabled ?? Boolean(file.platforms?.qq?.appId && file.platforms?.qq?.secret),
+        appId: file.platforms?.qq?.appId ?? "",
+        secret: file.platforms?.qq?.secret ?? "",
+        sandbox: file.platforms?.qq?.sandbox ?? false,
+        allowedUserIds: (file.platforms?.qq?.allowedUserIds ?? []).join(", "),
+      },
       wework: {
         enabled: file.platforms?.wework?.enabled ?? Boolean(file.platforms?.wework?.corpId && file.platforms?.wework?.secret),
         corpId: file.platforms?.wework?.corpId ?? "",
@@ -124,6 +132,8 @@ function validatePayload(payload: WebConfigPayload): string[] {
   if (payload.platforms.telegram.enabled && !clean(payload.platforms.telegram.botToken)) errors.push("Telegram bot token is required.");
   if (payload.platforms.feishu.enabled && !clean(payload.platforms.feishu.appId)) errors.push("Feishu app ID is required.");
   if (payload.platforms.feishu.enabled && !clean(payload.platforms.feishu.appSecret)) errors.push("Feishu app secret is required.");
+  if (payload.platforms.qq.enabled && !clean(payload.platforms.qq.appId)) errors.push("QQ app ID is required.");
+  if (payload.platforms.qq.enabled && !clean(payload.platforms.qq.secret)) errors.push("QQ app secret is required.");
   if (payload.platforms.wework.enabled && !clean(payload.platforms.wework.corpId)) errors.push("WeWork corp ID is required.");
   if (payload.platforms.wework.enabled && !clean(payload.platforms.wework.secret)) errors.push("WeWork secret is required.");
   if (payload.platforms.dingtalk.enabled && !clean(payload.platforms.dingtalk.clientId)) errors.push("DingTalk client ID is required.");
@@ -180,6 +190,14 @@ function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConf
         appId: clean(payload.platforms.feishu.appId),
         appSecret: clean(payload.platforms.feishu.appSecret),
         allowedUserIds: splitCsv(payload.platforms.feishu.allowedUserIds),
+      },
+      qq: {
+        ...existing.platforms?.qq,
+        enabled: payload.platforms.qq.enabled,
+        appId: clean(payload.platforms.qq.appId),
+        secret: clean(payload.platforms.qq.secret),
+        sandbox: payload.platforms.qq.sandbox,
+        allowedUserIds: splitCsv(payload.platforms.qq.allowedUserIds),
       },
       wework: {
         ...existing.platforms?.wework,
@@ -284,6 +302,13 @@ const PAGE_HTML = String.raw`<!doctype html>
               <label>App Secret<input id="feishu-appSecret" /></label>
               <label>Allowed user IDs<textarea id="feishu-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
             </article>
+            <article class="panel" id="qq-panel">
+              <div class="panel-head"><h3>QQ</h3><label class="toggle"><input id="qq-enabled" type="checkbox" /> Enabled</label></div>
+              <label>App ID<input id="qq-appId" /></label>
+              <label>App Secret<input id="qq-secret" /></label>
+              <label class="toggle"><input id="qq-sandbox" type="checkbox" /> Sandbox mode (development only)</label>
+              <label>Allowed user IDs<textarea id="qq-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
+            </article>
             <article class="panel" id="wework-panel">
               <div class="panel-head"><h3>WeWork</h3><label class="toggle"><input id="wework-enabled" type="checkbox" /> Enabled</label></div>
               <label>Corp ID / Bot ID<input id="wework-corpId" /></label>
@@ -333,7 +358,7 @@ const PAGE_HTML = String.raw`<!doctype html>
       </div>
     </div>
     <script>
-      const ids = ["telegram-enabled","telegram-botToken","telegram-proxy","telegram-allowedUserIds","feishu-enabled","feishu-appId","feishu-appSecret","feishu-allowedUserIds","wework-enabled","wework-corpId","wework-secret","wework-allowedUserIds","dingtalk-enabled","dingtalk-clientId","dingtalk-clientSecret","dingtalk-cardTemplateId","dingtalk-allowedUserIds","ai-aiCommand","ai-claudeCliPath","ai-claudeWorkDir","ai-claudeSkipPermissions","ai-claudeTimeoutMs","ai-claudeModel","ai-cursorCliPath","ai-codexCliPath","ai-codexProxy","ai-hookPort","ai-logLevel","ai-useSdkMode"];
+      const ids = ["telegram-enabled","telegram-botToken","telegram-proxy","telegram-allowedUserIds","feishu-enabled","feishu-appId","feishu-appSecret","feishu-allowedUserIds","qq-enabled","qq-appId","qq-secret","qq-sandbox","qq-allowedUserIds","wework-enabled","wework-corpId","wework-secret","wework-allowedUserIds","dingtalk-enabled","dingtalk-clientId","dingtalk-clientSecret","dingtalk-cardTemplateId","dingtalk-allowedUserIds","ai-aiCommand","ai-claudeCliPath","ai-claudeWorkDir","ai-claudeSkipPermissions","ai-claudeTimeoutMs","ai-claudeModel","ai-cursorCliPath","ai-codexCliPath","ai-codexProxy","ai-hookPort","ai-logLevel","ai-useSdkMode"];
       const el = (id) => document.getElementById(id);
       const storageKey = "open-im-web-lang";
       const texts = {
@@ -352,6 +377,9 @@ const PAGE_HTML = String.raw`<!doctype html>
           allowedUserIds: "Allowed user IDs",
           appId: "App ID",
           appSecret: "App Secret",
+          qqAppId: "App ID",
+          qqAppSecret: "App Secret",
+          qqSandbox: "Sandbox mode (development only)",
           corpId: "Corp ID / Bot ID",
           secret: "Secret",
           clientId: "Client ID / AppKey",
@@ -406,6 +434,9 @@ const PAGE_HTML = String.raw`<!doctype html>
           allowedUserIds: "允许的用户 ID",
           appId: "App ID",
           appSecret: "App Secret",
+          qqAppId: "App ID",
+          qqAppSecret: "App Secret",
+          qqSandbox: "沙箱模式（仅开发环境）",
           corpId: "Corp ID / Bot ID",
           secret: "Secret",
           clientId: "Client ID / AppKey",
@@ -471,6 +502,7 @@ const PAGE_HTML = String.raw`<!doctype html>
         el("claudeNote").childNodes[0].textContent = t("claudeNote");
         el("telegram-panel").querySelector(".toggle").lastChild.textContent = " " + t("enabled");
         el("feishu-panel").querySelector(".toggle").lastChild.textContent = " " + t("enabled");
+        el("qq-panel").querySelector(".toggle").lastChild.textContent = " " + t("enabled");
         el("wework-panel").querySelector(".toggle").lastChild.textContent = " " + t("enabled");
         el("dingtalk-panel").querySelector(".toggle").lastChild.textContent = " " + t("enabled");
         const telegramLabels = el("telegram-panel").querySelectorAll(":scope > label");
@@ -481,6 +513,11 @@ const PAGE_HTML = String.raw`<!doctype html>
         feishuLabels[0].childNodes[0].textContent = t("appId");
         feishuLabels[1].childNodes[0].textContent = t("appSecret");
         feishuLabels[2].childNodes[0].textContent = t("allowedUserIds");
+        const qqLabels = el("qq-panel").querySelectorAll(":scope > label");
+        qqLabels[0].childNodes[0].textContent = t("qqAppId");
+        qqLabels[1].childNodes[0].textContent = t("qqAppSecret");
+        qqLabels[2].lastChild.textContent = " " + t("qqSandbox");
+        qqLabels[3].childNodes[0].textContent = t("allowedUserIds");
         const weworkLabels = el("wework-panel").querySelectorAll(":scope > label");
         weworkLabels[0].childNodes[0].textContent = t("corpId");
         weworkLabels[1].childNodes[0].textContent = t("secret");
@@ -492,6 +529,7 @@ const PAGE_HTML = String.raw`<!doctype html>
         dingtalkLabels[3].childNodes[0].textContent = t("allowedUserIds");
         el("telegram-allowedUserIds").placeholder = t("commaSeparatedIds");
         el("feishu-allowedUserIds").placeholder = t("commaSeparatedIds");
+        el("qq-allowedUserIds").placeholder = t("commaSeparatedIds");
         el("wework-allowedUserIds").placeholder = t("commaSeparatedIds");
         el("dingtalk-allowedUserIds").placeholder = t("commaSeparatedIds");
         el("dingtalk-cardTemplateId").placeholder = t("optional");
@@ -530,7 +568,7 @@ const PAGE_HTML = String.raw`<!doctype html>
       }
       function updateVisualState() {
         const enabled = [];
-        [["telegram","Telegram"],["feishu","Feishu"],["wework","WeWork"],["dingtalk","DingTalk"]].forEach(([key,label]) => {
+        [["telegram","Telegram"],["feishu","Feishu"],["qq","QQ"],["wework","WeWork"],["dingtalk","DingTalk"]].forEach(([key,label]) => {
           const active = el(key + "-enabled").checked;
           el(key + "-panel").classList.toggle("off", !active);
           if (active) enabled.push(label);
@@ -540,9 +578,9 @@ const PAGE_HTML = String.raw`<!doctype html>
           ? t("summaryEnabled", { platforms: enabled.join(currentLang === "zh" ? "、" : ", "), tool: aiTool })
           : t("summaryEmpty", { tool: aiTool });
       }
-      const payload = () => ({ platforms: { telegram: { enabled: el("telegram-enabled").checked, botToken: el("telegram-botToken").value, proxy: el("telegram-proxy").value, allowedUserIds: el("telegram-allowedUserIds").value }, feishu: { enabled: el("feishu-enabled").checked, appId: el("feishu-appId").value, appSecret: el("feishu-appSecret").value, allowedUserIds: el("feishu-allowedUserIds").value }, wework: { enabled: el("wework-enabled").checked, corpId: el("wework-corpId").value, secret: el("wework-secret").value, allowedUserIds: el("wework-allowedUserIds").value }, dingtalk: { enabled: el("dingtalk-enabled").checked, clientId: el("dingtalk-clientId").value, clientSecret: el("dingtalk-clientSecret").value, cardTemplateId: el("dingtalk-cardTemplateId").value, allowedUserIds: el("dingtalk-allowedUserIds").value } }, ai: { aiCommand: el("ai-aiCommand").value, claudeCliPath: el("ai-claudeCliPath").value, claudeWorkDir: el("ai-claudeWorkDir").value, claudeSkipPermissions: el("ai-claudeSkipPermissions").checked, claudeTimeoutMs: Number(el("ai-claudeTimeoutMs").value || "0"), claudeModel: el("ai-claudeModel").value, cursorCliPath: el("ai-cursorCliPath").value, codexCliPath: el("ai-codexCliPath").value, codexProxy: el("ai-codexProxy").value, hookPort: Number(el("ai-hookPort").value || "0"), logLevel: el("ai-logLevel").value, useSdkMode: el("ai-useSdkMode").checked } });
+      const payload = () => ({ platforms: { telegram: { enabled: el("telegram-enabled").checked, botToken: el("telegram-botToken").value, proxy: el("telegram-proxy").value, allowedUserIds: el("telegram-allowedUserIds").value }, feishu: { enabled: el("feishu-enabled").checked, appId: el("feishu-appId").value, appSecret: el("feishu-appSecret").value, allowedUserIds: el("feishu-allowedUserIds").value }, qq: { enabled: el("qq-enabled").checked, appId: el("qq-appId").value, secret: el("qq-secret").value, sandbox: el("qq-sandbox").checked, allowedUserIds: el("qq-allowedUserIds").value }, wework: { enabled: el("wework-enabled").checked, corpId: el("wework-corpId").value, secret: el("wework-secret").value, allowedUserIds: el("wework-allowedUserIds").value }, dingtalk: { enabled: el("dingtalk-enabled").checked, clientId: el("dingtalk-clientId").value, clientSecret: el("dingtalk-clientSecret").value, cardTemplateId: el("dingtalk-cardTemplateId").value, allowedUserIds: el("dingtalk-allowedUserIds").value } }, ai: { aiCommand: el("ai-aiCommand").value, claudeCliPath: el("ai-claudeCliPath").value, claudeWorkDir: el("ai-claudeWorkDir").value, claudeSkipPermissions: el("ai-claudeSkipPermissions").checked, claudeTimeoutMs: Number(el("ai-claudeTimeoutMs").value || "0"), claudeModel: el("ai-claudeModel").value, cursorCliPath: el("ai-cursorCliPath").value, codexCliPath: el("ai-codexCliPath").value, codexProxy: el("ai-codexProxy").value, hookPort: Number(el("ai-hookPort").value || "0"), logLevel: el("ai-logLevel").value, useSdkMode: el("ai-useSdkMode").checked } });
       async function request(path, options={}) { const response = await fetch(path, { headers: { "content-type": "application/json" }, ...options }); const body = await response.json(); if (!response.ok) throw new Error(body.error || "Request failed"); return body; }
-      function fill(data, meta) { el("configPath").textContent = meta.configPath; applyLanguage(meta); el("telegram-enabled").checked = data.platforms.telegram.enabled; el("telegram-botToken").value = data.platforms.telegram.botToken; el("telegram-proxy").value = data.platforms.telegram.proxy; el("telegram-allowedUserIds").value = data.platforms.telegram.allowedUserIds; el("feishu-enabled").checked = data.platforms.feishu.enabled; el("feishu-appId").value = data.platforms.feishu.appId; el("feishu-appSecret").value = data.platforms.feishu.appSecret; el("feishu-allowedUserIds").value = data.platforms.feishu.allowedUserIds; el("wework-enabled").checked = data.platforms.wework.enabled; el("wework-corpId").value = data.platforms.wework.corpId; el("wework-secret").value = data.platforms.wework.secret; el("wework-allowedUserIds").value = data.platforms.wework.allowedUserIds; el("dingtalk-enabled").checked = data.platforms.dingtalk.enabled; el("dingtalk-clientId").value = data.platforms.dingtalk.clientId; el("dingtalk-clientSecret").value = data.platforms.dingtalk.clientSecret; el("dingtalk-cardTemplateId").value = data.platforms.dingtalk.cardTemplateId; el("dingtalk-allowedUserIds").value = data.platforms.dingtalk.allowedUserIds; el("ai-aiCommand").value = data.ai.aiCommand; el("ai-claudeCliPath").value = data.ai.claudeCliPath; el("ai-claudeWorkDir").value = data.ai.claudeWorkDir; el("ai-claudeSkipPermissions").checked = data.ai.claudeSkipPermissions; el("ai-claudeTimeoutMs").value = String(data.ai.claudeTimeoutMs); el("ai-claudeModel").value = data.ai.claudeModel; el("ai-cursorCliPath").value = data.ai.cursorCliPath; el("ai-codexCliPath").value = data.ai.codexCliPath; el("ai-codexProxy").value = data.ai.codexProxy; el("ai-hookPort").value = String(data.ai.hookPort); el("ai-logLevel").value = data.ai.logLevel || "default"; el("ai-useSdkMode").checked = data.ai.useSdkMode; updateVisualState(); }
+      function fill(data, meta) { el("configPath").textContent = meta.configPath; applyLanguage(meta); el("telegram-enabled").checked = data.platforms.telegram.enabled; el("telegram-botToken").value = data.platforms.telegram.botToken; el("telegram-proxy").value = data.platforms.telegram.proxy; el("telegram-allowedUserIds").value = data.platforms.telegram.allowedUserIds; el("feishu-enabled").checked = data.platforms.feishu.enabled; el("feishu-appId").value = data.platforms.feishu.appId; el("feishu-appSecret").value = data.platforms.feishu.appSecret; el("feishu-allowedUserIds").value = data.platforms.feishu.allowedUserIds; el("qq-enabled").checked = data.platforms.qq.enabled; el("qq-appId").value = data.platforms.qq.appId; el("qq-secret").value = data.platforms.qq.secret; el("qq-sandbox").checked = data.platforms.qq.sandbox; el("qq-allowedUserIds").value = data.platforms.qq.allowedUserIds; el("wework-enabled").checked = data.platforms.wework.enabled; el("wework-corpId").value = data.platforms.wework.corpId; el("wework-secret").value = data.platforms.wework.secret; el("wework-allowedUserIds").value = data.platforms.wework.allowedUserIds; el("dingtalk-enabled").checked = data.platforms.dingtalk.enabled; el("dingtalk-clientId").value = data.platforms.dingtalk.clientId; el("dingtalk-clientSecret").value = data.platforms.dingtalk.clientSecret; el("dingtalk-cardTemplateId").value = data.platforms.dingtalk.cardTemplateId; el("dingtalk-allowedUserIds").value = data.platforms.dingtalk.allowedUserIds; el("ai-aiCommand").value = data.ai.aiCommand; el("ai-claudeCliPath").value = data.ai.claudeCliPath; el("ai-claudeWorkDir").value = data.ai.claudeWorkDir; el("ai-claudeSkipPermissions").checked = data.ai.claudeSkipPermissions; el("ai-claudeTimeoutMs").value = String(data.ai.claudeTimeoutMs); el("ai-claudeModel").value = data.ai.claudeModel; el("ai-cursorCliPath").value = data.ai.cursorCliPath; el("ai-codexCliPath").value = data.ai.codexCliPath; el("ai-codexProxy").value = data.ai.codexProxy; el("ai-hookPort").value = String(data.ai.hookPort); el("ai-logLevel").value = data.ai.logLevel || "default"; el("ai-useSdkMode").checked = data.ai.useSdkMode; updateVisualState(); }
       async function refreshStatus() { const data = await request("/api/service/status"); el("serviceState").textContent = data.running ? t("bridgeRunning", { pid: data.pid }) : t("bridgeStopped"); el("statusMeta").textContent = data.running ? t("bridgeActive") : t("bridgeInactive"); }
       async function boot() { setBusy(true); try { applyLanguage(); const data = await request("/api/config"); fill(data.payload, data.meta); await refreshStatus(); setMessage(t("ready"), "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } setInterval(() => { refreshStatus().catch(() => {}); }, 5000); ids.forEach((id) => { const node = el(id); if (node) node.addEventListener("input", updateVisualState); if (node) node.addEventListener("change", updateVisualState); }); }
       async function validate() { setBusy(true); try { await request("/api/config/validate", { method: "POST", body: JSON.stringify(payload()) }); setMessage(t("validationOk"), "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
