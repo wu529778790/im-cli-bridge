@@ -1,9 +1,9 @@
-﻿/**
- * WeWork (浼佷笟寰俊) Message Sender - Send messages to WeWork
- * 閫氳繃 WebSocket aibot_respond_msg 鍙戦€侊紝闇€閫忎紶 req_id
+/**
+ * WeWork (企业微信/WeCom) Message Sender
+ * 通过 WebSocket `aibot_respond_msg` 发送消息，并透传 `req_id`
  */
 
-import { sendText, sendStream, sendStreamWithItems, sendMessage, sendProactiveMessage } from './client.js';
+import { sendText, sendStream, sendStreamWithItems, sendProactiveMessage } from './client.js';
 import { createLogger } from '../logger.js';
 import { splitLongContent, getAIToolDisplayName } from '../shared/utils.js';
 import { MAX_WEWORK_MESSAGE_LENGTH } from '../constants.js';
@@ -14,7 +14,7 @@ const log = createLogger('WeWorkSender');
 const STREAM_SEND_INTERVAL_MS = 900;
 const STREAM_SAFE_TTL_MS = 5 * 60 * 1000;
 
-/** 褰撳墠鍚屾澶勭悊涓殑 req_id锛堜粎鐢ㄤ簬 commandHandler 绛夊悓姝ヨ皟鐢級 */
+/** 当前同步处理中的 req_id，仅用于 commandHandler 等同步调用。 */
 let currentReqId: string | null = null;
 
 export function setCurrentReqId(reqId: string | null): void {
@@ -33,10 +33,10 @@ function getReqId(explicitReqId?: string): string {
 type MessageStatus = 'thinking' | 'streaming' | 'done' | 'error';
 
 const STATUS_CONFIG: Record<MessageStatus, { icon: string; title: string }> = {
-  thinking: { icon: '...', title: 'Thinking' },
-  streaming: { icon: '...', title: 'Streaming' },
-  done: { icon: '[ok]', title: 'Done' },
-  error: { icon: '[error]', title: 'Error' },
+  thinking: { icon: '[thinking]', title: '思考中' },
+  streaming: { icon: '[streaming]', title: '输出中' },
+  done: { icon: '[done]', title: '完成' },
+  error: { icon: '[error]', title: '错误' },
 };
 
 function getToolTitle(toolId: string, status: MessageStatus): string {
@@ -45,23 +45,14 @@ function getToolTitle(toolId: string, status: MessageStatus): string {
   return status === 'done' ? name : `${name} - ${statusText}`;
 }
 
-/**
- * Generate unique request ID
- */
 function generateReqId(): string {
   return `${Date.now()}-${randomBytes(8).toString('hex')}`;
 }
 
-/**
- * Generate unique stream ID for WeWork streaming responses
- */
 function generateStreamId(): string {
   return `${Date.now()}-${randomBytes(8).toString('hex')}`;
 }
 
-/**
- * Format message for WeWork (markdown-like format)
- */
 function formatWeWorkMessage(
   title: string,
   content: string,
@@ -74,20 +65,16 @@ function formatWeWorkMessage(
   if (content) {
     message += `${content}\n\n`;
   } else if (status === 'thinking') {
-    message += `_姝ｅ湪鎬濊€冿紝璇风◢鍊?.._\n\n馃挱 **鍑嗗涓?*\n\n`;
+    message += `_正在思考，请稍候..._\n\n[thinking] **准备中**\n\n`;
   }
 
   if (note) {
-    message += `---\n\n馃挕 **${note}**`;
+    message += `---\n\n[note] **${note}**`;
   }
 
   return message;
 }
 
-/**
- * Local tracking for stream states
- * WeWork doesn't support message editing, so we track stream IDs locally
- */
 interface StreamState {
   chatId: string;
   content: string;
@@ -167,9 +154,9 @@ async function flushStreamUpdate(streamId: string, state: StreamState): Promise<
 }
 
 /**
- * Send thinking message to WeWork
- * Returns a stream ID that can be used for updates
- * @param reqId - 娑堟伅鍥炶皟鐨?req_id锛岀敤浜?WebSocket 鍥炲
+ * Send thinking message to WeWork.
+ * Returns a stream ID that can be used for updates.
+ * @param reqId 消息回调里的 `req_id`，用于通过 WebSocket 回复
  */
 export async function sendThinkingMessage(
   chatId: string,
@@ -184,10 +171,7 @@ export async function sendThinkingMessage(
   try {
     log.info(`Sending thinking message to user ${chatId}, streamId=${streamId}`);
 
-    // Store initial stream state
     getOrCreateStreamState(streamId, chatId);
-
-    // Send initial stream message (not finished)
     sendStream(getReqId(reqId), streamId, content, false);
 
     log.info(`Thinking message sent: ${streamId}`);
@@ -198,10 +182,6 @@ export async function sendThinkingMessage(
   }
 }
 
-/**
- * Update existing message in WeWork
- * Note: WeWork doesn't support message editing, so we send new stream messages
- */
 export async function updateMessage(
   chatId: string,
   streamId: string,
@@ -233,9 +213,6 @@ export async function updateMessage(
   }
 }
 
-/**
- * Send final messages to WeWork (handle long content)
- */
 export async function sendFinalMessages(
   chatId: string,
   streamId: string,
@@ -246,9 +223,12 @@ export async function sendFinalMessages(
 ): Promise<void> {
   const title = getToolTitle(toolId, 'done');
   const parts = splitLongContent(fullContent, MAX_WEWORK_MESSAGE_LENGTH);
-
-  // Send final stream message to finish the stream
-  const finalMessage = formatWeWorkMessage(title, parts[0], 'done', parts.length > 1 ? `鍐呭杈冮暱锛屽凡鍒嗘鍙戦€?(1/${parts.length})` : note);
+  const finalMessage = formatWeWorkMessage(
+    title,
+    parts[0],
+    'done',
+    parts.length > 1 ? `内容较长，已分段发送 (1/${parts.length})` : note
+  );
 
   try {
     const state = streamStates.get(streamId);
@@ -276,11 +256,15 @@ export async function sendFinalMessages(
 
     streamStates.delete(streamId);
 
-    // Send remaining parts as separate messages
     for (let i = 1; i < parts.length; i++) {
       try {
-        const partContent = `${parts[i]}\n\n_*(缁?${i + 1}/${parts.length})*_`;
-        const partMessage = formatWeWorkMessage(title, partContent, 'done', i === parts.length - 1 ? note : undefined);
+        const partContent = `${parts[i]}\n\n_*(续 ${i + 1}/${parts.length})*_`;
+        const partMessage = formatWeWorkMessage(
+          title,
+          partContent,
+          'done',
+          i === parts.length - 1 ? note : undefined
+        );
 
         sendText(getReqId(reqId), partMessage);
         log.info(`Final message part ${i + 1}/${parts.length} sent`);
@@ -294,10 +278,10 @@ export async function sendFinalMessages(
 }
 
 /**
- * 涓诲姩鎺ㄩ€佹枃鏈紙鐢ㄤ簬鍚姩/鍏抽棴閫氱煡绛夛紝鏃犻渶 req_id锛?
+ * 主动推送文本，用于启动/关闭通知等场景，无需 req_id。
  */
 export async function sendProactiveTextReply(chatId: string, text: string): Promise<void> {
-  const message = formatWeWorkMessage('馃摙 open-im', text, 'done');
+  const message = formatWeWorkMessage('[open-im]', text, 'done');
   try {
     sendProactiveMessage(chatId, message);
     log.info(`Proactive text sent to user ${chatId}`);
@@ -307,18 +291,16 @@ export async function sendProactiveTextReply(chatId: string, text: string): Prom
 }
 
 /**
- * Send simple text reply to WeWork
- * @param threadCtxOrReqId - 鍏煎 MessageSender 鐨?threadCtx锛涜嫢涓?string 鍒欎綔涓?reqId 浣跨敤
+ * Send simple text reply to WeWork.
+ * @param threadCtxOrReqId 兼容 MessageSender 的 threadCtx；若为 string 则作为 reqId 使用
  */
 export async function sendTextReply(
   chatId: string,
   text: string,
   threadCtxOrReqId?: import('../shared/types.js').ThreadContext | string
 ): Promise<void> {
-  const message = formatWeWorkMessage('馃摙 open-im', text, 'done');
-  // 鏄惧紡浼犻€掔殑 reqId锛堢敤浜庡吋瀹?MessageSender 鎺ュ彛锛?
+  const message = formatWeWorkMessage('[open-im]', text, 'done');
   const explicitReqId = typeof threadCtxOrReqId === 'string' ? threadCtxOrReqId : undefined;
-  // 鍥為€€鍒板綋鍓嶈姹傜殑 reqId锛堝湪 handleEvent 涓€氳繃 setCurrentReqId 璁剧疆锛?
   const effectiveReqId = explicitReqId ?? currentReqId;
 
   try {
@@ -329,10 +311,6 @@ export async function sendTextReply(
   }
 }
 
-/**
- * Send permission card with action buttons (for permission prompts)
- * Note: WeWork doesn't support interactive cards, so we send text with instructions
- */
 export async function sendPermissionCard(
   chatId: string,
   requestId: string,
@@ -363,9 +341,7 @@ export async function sendPermissionCard(
     log.error('Failed to send permission card:', err);
   }
 }
-/**
- * Send mode switch card
- */
+
 export async function sendModeCard(
   chatId: string,
   _userId: string,
@@ -393,14 +369,12 @@ export async function sendModeCard(
     log.error('Failed to send mode card:', err);
   }
 }
-/**
- * Send image reply
- */
+
 export async function sendImageReply(chatId: string, imagePath: string): Promise<void> {
   try {
     const reqId = getReqId();
     if (!reqId) {
-      await sendTextReply(chatId, "Generated image saved at: " + imagePath);
+      await sendTextReply(chatId, `Generated image saved at: ${imagePath}`);
       return;
     }
 
@@ -415,13 +389,10 @@ export async function sendImageReply(chatId: string, imagePath: string): Promise
     ]);
   } catch (err) {
     log.warn('Failed to send native WeWork image reply, falling back to text path:', err);
-    await sendTextReply(chatId, "Generated image saved at: " + imagePath);
+    await sendTextReply(chatId, `Generated image saved at: ${imagePath}`);
   }
 }
 
-/**
- * Send directory selection (not supported in WeWork, use text instead)
- */
 export async function sendDirectorySelection(
   chatId: string,
   currentDir: string,
@@ -429,20 +400,13 @@ export async function sendDirectorySelection(
 ): Promise<void> {
   await sendTextReply(chatId, `Current directory: ${currentDir}\n\nUse \`/cd <directory>\` to switch.`);
 }
-/**
- * Start typing indicator (WeWork doesn't support this)
- */
+
 export function startTypingLoop(_chatId: string): () => void {
-  // WeWork doesn't have a typing indicator like Telegram
-  // Return a no-op function
   return () => {};
 }
 
-/**
- * Send error message
- */
 export async function sendErrorMessage(chatId: string, error: string, reqId?: string): Promise<void> {
-  const message = formatWeWorkMessage('鉂?閿欒', error, 'error');
+  const message = formatWeWorkMessage('错误', error, 'error');
 
   try {
     sendText(getReqId(reqId), message);
@@ -451,5 +415,3 @@ export async function sendErrorMessage(chatId: string, error: string, reqId?: st
     log.error('Failed to send error message:', err);
   }
 }
-
-
