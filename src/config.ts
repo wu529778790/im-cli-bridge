@@ -38,7 +38,6 @@ export interface Config {
   dingtalkCardTemplateId?: string;
   qqAppId?: string;
   qqSecret?: string;
-  qqSandbox: boolean;
 
   // 全局白名单（旧版兼容）
   allowedUserIds: string[];
@@ -79,7 +78,6 @@ export interface Config {
     };
     qq?: {
       enabled: boolean;
-      sandbox?: boolean;
       allowedUserIds: string[];
     };
     wechat?: {
@@ -122,7 +120,6 @@ interface FilePlatformQQ {
   enabled?: boolean;
   appId?: string;
   secret?: string;
-  sandbox?: boolean;
   allowedUserIds?: string[];
 }
 
@@ -448,10 +445,6 @@ export function loadConfig(): Config {
   const qqSecret =
     process.env.QQ_BOT_SECRET ??
     fileQQ?.secret;
-  const qqSandbox =
-    process.env.QQ_BOT_SANDBOX !== undefined
-      ? process.env.QQ_BOT_SANDBOX === '1' || process.env.QQ_BOT_SANDBOX === 'true'
-      : fileQQ?.sandbox ?? false;
 
   // 微信支持两种协议：
   // 1. AGP 协议：token + guid + userId（推荐）
@@ -826,12 +819,10 @@ export function loadConfig(): Config {
     qq: qqEnabled
       ? {
           enabled: true,
-          sandbox: qqSandbox,
           allowedUserIds: qqAllowedUserIds,
         }
       : {
           enabled: false,
-          sandbox: qqSandbox,
           allowedUserIds: qqAllowedUserIds,
         },
     wechat: wechatEnabled
@@ -884,7 +875,6 @@ export function loadConfig(): Config {
     feishuAppSecret: feishuAppSecret ?? '',
     qqAppId: qqAppId ?? '',
     qqSecret: qqSecret ?? '',
-    qqSandbox,
     wechatAppId: wechatAppId ?? '',
     wechatAppSecret: wechatAppSecret ?? '',
     wechatToken: wechatToken,

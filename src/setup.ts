@@ -17,7 +17,7 @@ interface ExistingConfig {
   platforms?: {
     telegram?: { enabled?: boolean; botToken?: string; allowedUserIds?: string[]; proxy?: string };
     feishu?: { enabled?: boolean; appId?: string; appSecret?: string; allowedUserIds?: string[] };
-    qq?: { enabled?: boolean; appId?: string; secret?: string; sandbox?: boolean; allowedUserIds?: string[] };
+    qq?: { enabled?: boolean; appId?: string; secret?: string; allowedUserIds?: string[] };
     wechat?: {
       enabled?: boolean;
       appId?: string;
@@ -468,26 +468,18 @@ export async function runInteractiveSetup(): Promise<boolean> {
           validate: (v: string) => (v.trim() ? true : "Secret 涓嶈兘涓虹┖"),
         },
         {
-          type: "toggle",
-          name: "sandbox",
-          message: "鍚敤 QQ 娌欑鐜",
-          initial: existing?.platforms?.qq?.sandbox ?? false,
-          active: "鏄?",
-          inactive: "鍚?",
-        },
       ],
       { onCancel },
     );
 
     const qqAppId = qqResp.appId?.trim() || existing?.platforms?.qq?.appId;
     const qqSecret = qqResp.secret?.trim() || existing?.platforms?.qq?.secret;
-    const qqSandbox = qqResp.sandbox ?? existing?.platforms?.qq?.sandbox ?? false;
     if (qqAppId && qqSecret) {
       (config.platforms as Record<string, unknown>).qq = {
         enabled: true,
         appId: qqAppId,
         secret: qqSecret,
-        sandbox: qqSandbox,
+        
       };
     } else if (platform === "qq") {
       return false;
@@ -970,7 +962,6 @@ export async function runInteractiveSetup(): Promise<boolean> {
       enabled: true,
       appId: (config.platforms as any).qq?.appId,
       secret: (config.platforms as any).qq?.secret,
-      sandbox: (config.platforms as any).qq?.sandbox ?? base?.platforms?.qq?.sandbox ?? false,
       allowedUserIds: qqIdsFinal,
     };
   } else if (base?.platforms?.qq) {
@@ -979,7 +970,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
       allowedUserIds: qqIdsFinal.length > 0 ? qqIdsFinal : (base.platforms.qq as any).allowedUserIds,
     };
   } else {
-    (out.platforms as any).qq = { enabled: false, sandbox: false, allowedUserIds: qqIdsFinal };
+    (out.platforms as any).qq = { enabled: false, allowedUserIds: qqIdsFinal };
   }
 
   if (selectedPlatforms.includes("wechat")) {
