@@ -21,7 +21,7 @@ import { setActiveChatId } from "../shared/active-chats.js";
 import { setChatUser } from "../shared/chat-user-map.js";
 import { createLogger } from "../logger.js";
 import type { ThreadContext } from "../shared/types.js";
-import type { QQMessageEvent } from "./types.js";
+import type { QQAttachment, QQMessageEvent } from "./types.js";
 import { buildImageFallbackMessage } from "../channels/capabilities.js";
 
 const log = createLogger("QQHandler");
@@ -36,6 +36,36 @@ function toChatId(event: QQMessageEvent): string {
     return `channel:${event.channelId}`;
   }
   return `private:${event.userOpenid}`;
+}
+
+function classifyAttachment(attachment: QQAttachment): "image" | "file" {
+  if (attachment.contentType?.startsWith("image/")) return "image";
+  const filename = attachment.filename?.toLowerCase() ?? "";
+  if (/\.(png|jpe?g|gif|webp|bmp)$/.test(filename)) return "image";
+  return "file";
+}
+
+function buildAttachmentPrompt(event: QQMessageEvent): string | null {
+  if (!event.attachments || event.attachments.length === 0) return null;
+
+  const attachmentSummary = event.attachments.map((attachment) => ({
+    kind: classifyAttachment(attachment),
+    url: attachment.url,
+    filename: attachment.filename,
+    contentType: attachment.contentType,
+    size: attachment.size,
+    width: attachment.width,
+    height: attachment.height,
+    raw: attachment.raw,
+  }));
+
+  return [
+    "The user sent a QQ message with attachments.",
+    event.content ? `Accompanying text:\n${event.content}` : "",
+    "Attachment metadata:",
+    JSON.stringify(attachmentSummary, null, 2),
+    "If direct attachment fetch is not available, explain the limitation and ask the user for a text summary or a resend via Telegram/Feishu/WeWork.",
+  ].filter(Boolean).join("\n\n");
 }
 
 export interface QQEventHandlerHandle {
@@ -62,6 +92,19 @@ export function setupQQHandlers(
   });
 
   registerPermissionSender("qq", { sendTextReply });
+
+  async function enqueuePrompt(
+    userId: string,
+    chatId: string,
+    prompt: string,
+    replyToMessageId?: string,
+  ): Promise<"running" | "queued" | "rejected"> {
+    const workDir = sessionManager.getWorkDir(userId);
+    const convId = sessionManager.getConvId(userId);
+    return requestQueue.enqueue(userId, convId, prompt, async (nextPrompt) => {
+      await handleAIRequest(userId, chatId, nextPrompt, workDir, convId, undefined, replyToMessageId);
+    });
+  }
 
   async function handleAIRequest(
     userId: string,
@@ -121,25 +164,29 @@ export function setupQQHandlers(
     const userId = event.userOpenid;
     const chatId = toChatId(event);
     const text = event.content?.trim() ?? "";
+    const attachmentPrompt = buildAttachmentPrompt(event);
 
     if (!accessControl.isAllowed(userId)) {
       await sendTextReply(chatId, `Access denied. Your QQ user ID: ${userId}`);
       return;
     }
 
-    if (!text) return;
-
     setActiveChatId("qq", chatId);
     setChatUser(chatId, userId, "qq");
 
-    const handled = await commandHandler.dispatch(text, chatId, userId, "qq", handleAIRequest);
-    if (handled) return;
+    if (text) {
+      const handled = await commandHandler.dispatch(text, chatId, userId, "qq", handleAIRequest);
+      if (handled) return;
+    } else if (!attachmentPrompt) {
+      return;
+    }
 
-    const workDir = sessionManager.getWorkDir(userId);
-    const convId = sessionManager.getConvId(userId);
-    const enqueueResult = requestQueue.enqueue(userId, convId, text, async (prompt) => {
-      await handleAIRequest(userId, chatId, prompt, workDir, convId, undefined, event.id);
-    });
+    const enqueueResult = await enqueuePrompt(
+      userId,
+      chatId,
+      attachmentPrompt ?? text,
+      event.id,
+    );
 
     if (enqueueResult === "rejected") {
       await sendTextReply(chatId, "Request queue is full. Please try again later.");
@@ -147,7 +194,7 @@ export function setupQQHandlers(
       await sendTextReply(chatId, "Your request is queued.");
     }
 
-    log.info(`QQ message handled: user=${userId}, chat=${chatId}, status=${enqueueResult}`);
+    log.info(`QQ message handled: user=${userId}, chat=${chatId}, status=${enqueueResult}, attachments=${event.attachments?.length ?? 0}`);
   }
 
   return {
