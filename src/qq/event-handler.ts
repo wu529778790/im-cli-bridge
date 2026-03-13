@@ -24,6 +24,7 @@ import type { ThreadContext } from "../shared/types.js";
 import type { QQAttachment, QQMessageEvent } from "./types.js";
 import { buildImageFallbackMessage } from "../channels/capabilities.js";
 import { buildMediaMetadataPrompt } from "../shared/media-prompt.js";
+import { downloadMediaFromUrl } from "../shared/media-storage.js";
 
 const log = createLogger("QQHandler");
 const QQ_THROTTLE_MS = 1200;
@@ -46,18 +47,34 @@ function classifyAttachment(attachment: QQAttachment): "image" | "file" {
   return "file";
 }
 
-function buildAttachmentPrompt(event: QQMessageEvent): string | null {
+async function buildAttachmentPrompt(event: QQMessageEvent): Promise<string | null> {
   if (!event.attachments || event.attachments.length === 0) return null;
 
-  const attachmentSummary = event.attachments.map((attachment) => ({
-    kind: classifyAttachment(attachment),
-    url: attachment.url,
-    filename: attachment.filename,
-    contentType: attachment.contentType,
-    size: attachment.size,
-    width: attachment.width,
-    height: attachment.height,
-    raw: attachment.raw,
+  const attachmentSummary = await Promise.all(event.attachments.map(async (attachment) => {
+    const kind = classifyAttachment(attachment);
+    let localPath: string | undefined;
+    if (attachment.url) {
+      try {
+        localPath = await downloadMediaFromUrl(attachment.url, {
+          basenameHint: attachment.filename,
+          fallbackExtension: kind === "image" ? "jpg" : "bin",
+        });
+      } catch {
+        localPath = undefined;
+      }
+    }
+
+    return {
+      kind,
+      url: attachment.url,
+      localPath,
+      filename: attachment.filename,
+      contentType: attachment.contentType,
+      size: attachment.size,
+      width: attachment.width,
+      height: attachment.height,
+      raw: attachment.raw,
+    };
   }));
 
   return buildMediaMetadataPrompt({
@@ -166,7 +183,7 @@ export function setupQQHandlers(
     const userId = event.userOpenid;
     const chatId = toChatId(event);
     const text = event.content?.trim() ?? "";
-    const attachmentPrompt = buildAttachmentPrompt(event);
+    const attachmentPrompt = await buildAttachmentPrompt(event);
 
     if (!accessControl.isAllowed(userId)) {
       await sendTextReply(chatId, `Access denied. Your QQ user ID: ${userId}`);

@@ -2,8 +2,6 @@
  * WeWork Event Handler - Handle WeWork message events
  */
 
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import type { Config } from '../config.js';
 import { AccessControl } from '../access/access-control.js';
 import type { SessionManager } from '../session/session-manager.js';
@@ -23,7 +21,7 @@ import { CommandHandler } from '../commands/handler.js';
 import { getAdapter } from '../adapters/registry.js';
 import { runAITask, type TaskRunState } from '../shared/ai-task.js';
 import { startTaskCleanup } from '../shared/task-cleanup.js';
-import { IMAGE_DIR, WEWORK_THROTTLE_MS } from '../constants.js';
+import { WEWORK_THROTTLE_MS } from '../constants.js';
 import { setActiveChatId } from '../shared/active-chats.js';
 import { setChatUser } from '../shared/chat-user-map.js';
 import { createLogger } from '../logger.js';
@@ -31,6 +29,7 @@ import type { ThreadContext } from '../shared/types.js';
 import type { WeWorkCallbackMessage } from './types.js';
 import { buildImageFallbackMessage, buildUnsupportedInboundMessage } from '../channels/capabilities.js';
 import { buildMediaMetadataPrompt } from '../shared/media-prompt.js';
+import { saveBase64Media } from '../shared/media-storage.js';
 
 const log = createLogger('WeWorkHandler');
 
@@ -109,14 +108,6 @@ function extractMediaPayload(data: WeWorkCallbackMessage, kind: MediaKind): WeWo
   return null;
 }
 
-async function saveBase64Payload(base64: string, extension: string): Promise<string> {
-  await mkdir(IMAGE_DIR, { recursive: true });
-  const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extension}`;
-  const path = join(IMAGE_DIR, filename);
-  await writeFile(path, Buffer.from(base64, 'base64'));
-  return path;
-}
-
 async function buildMediaPrompt(data: WeWorkCallbackMessage, kind: MediaKind): Promise<string | null> {
   const text = extractTextContent(data);
   const payload = extractMediaPayload(data, kind);
@@ -127,7 +118,7 @@ async function buildMediaPrompt(data: WeWorkCallbackMessage, kind: MediaKind): P
 
     let imageReference = '';
     if (typeof imagePayload.base64 === 'string' && imagePayload.base64.length > 0) {
-      const savedPath = await saveBase64Payload(imagePayload.base64, 'jpg');
+      const savedPath = await saveBase64Media(imagePayload.base64, 'jpg');
       imageReference = `Saved local image path: ${savedPath}`;
     } else if (typeof imagePayload.url === 'string' && imagePayload.url.length > 0) {
       imageReference = `Remote image URL: ${imagePayload.url}`;
