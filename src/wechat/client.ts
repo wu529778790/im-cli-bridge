@@ -32,6 +32,34 @@ let tokenStoragePath: string | null = null;
 let messageHandler: ((data: unknown) => Promise<void>) | null = null;
 let stateChangeHandler: ((state: WeChatChannelState) => void) | null = null;
 
+export async function dispatchIncomingAGPEnvelope(
+  envelope: AGPEnvelope,
+  handler: ((data: unknown) => Promise<void>) | null,
+): Promise<void> {
+  switch (envelope.method) {
+    case 'ping':
+      // Respond to ping with pong
+      sendAGPMessage('ping', { timestamp: Date.now() }, envelope.msg_id);
+      break;
+
+    case 'session.prompt':
+    case 'session.update':
+    case 'session.cancel':
+      if (handler) {
+        await handler(envelope);
+      }
+      break;
+
+    case 'session.promptResponse':
+      // Handle response to our prompt
+      log.debug('Received prompt response:', envelope.payload);
+      break;
+
+    default:
+      log.warn('Unknown AGP method:', envelope.method);
+  }
+}
+
 /**
  * Get current channel state
  */
@@ -150,40 +178,15 @@ async function connectWebSocket(config: WeChatWebSocketConfig): Promise<void> {
  * Handle incoming AGP messages
  */
 async function handleAGPMessage(envelope: AGPEnvelope): Promise<void> {
-  switch (envelope.method) {
-    case 'ping':
-      // Respond to ping with pong
-      sendAGPMessage('ping', { timestamp: Date.now() }, envelope.msg_id);
-      break;
+  try {
+    await dispatchIncomingAGPEnvelope(envelope, messageHandler);
+  } catch (err) {
+    if (envelope.method === 'session.prompt' || envelope.method === 'session.update' || envelope.method === 'session.cancel') {
+      log.error('Error in message handler:', err);
+      return;
+    }
 
-    case 'session.prompt':
-      // Handle incoming prompt (message from user)
-      if (messageHandler) {
-        try {
-          await messageHandler(envelope.payload);
-        } catch (err) {
-          log.error('Error in message handler:', err);
-        }
-      }
-      break;
-
-    case 'session.promptResponse':
-      // Handle response to our prompt
-      log.debug('Received prompt response:', envelope.payload);
-      break;
-
-    case 'session.update':
-      // Handle session update
-      log.debug('Received session update:', envelope.payload);
-      break;
-
-    case 'session.cancel':
-      // Handle session cancellation
-      log.debug('Received session cancel:', envelope.payload);
-      break;
-
-    default:
-      log.warn('Unknown AGP method:', envelope.method);
+    throw err;
   }
 }
 
