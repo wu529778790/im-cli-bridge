@@ -31,6 +31,7 @@ import { downloadMediaFromUrl } from "../shared/media-storage.js";
 const log = createLogger("QQHandler");
 const QQ_THROTTLE_MS = 1200;
 const QQ_MIN_STREAM_DELTA_CHARS = 80;
+type QQAttachmentKind = "image" | "file" | "voice" | "video";
 
 function toChatId(event: QQMessageEvent): string {
   if (event.type === "group") {
@@ -42,10 +43,14 @@ function toChatId(event: QQMessageEvent): string {
   return `private:${event.userOpenid}`;
 }
 
-function classifyAttachment(attachment: QQAttachment): "image" | "file" {
+function classifyAttachment(attachment: QQAttachment): QQAttachmentKind {
   if (attachment.contentType?.startsWith("image/")) return "image";
+  if (attachment.contentType?.startsWith("audio/")) return "voice";
+  if (attachment.contentType?.startsWith("video/")) return "video";
   const filename = attachment.filename?.toLowerCase() ?? "";
   if (/\.(png|jpe?g|gif|webp|bmp)$/.test(filename)) return "image";
+  if (/\.(mp3|wav|ogg|m4a|aac|flac)$/.test(filename)) return "voice";
+  if (/\.(mp4|mov|avi|mkv|webm|m4v)$/.test(filename)) return "video";
   return "file";
 }
 
@@ -59,7 +64,14 @@ async function buildAttachmentPrompt(event: QQMessageEvent): Promise<string | nu
       try {
         localPath = await downloadMediaFromUrl(attachment.url, {
           basenameHint: attachment.filename,
-          fallbackExtension: kind === "image" ? "jpg" : "bin",
+          fallbackExtension:
+            kind === "image"
+              ? "jpg"
+              : kind === "voice"
+                ? "ogg"
+                : kind === "video"
+                  ? "mp4"
+                  : "bin",
         });
       } catch {
         localPath = undefined;

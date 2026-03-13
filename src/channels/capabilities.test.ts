@@ -11,6 +11,8 @@ describe("channel capabilities", () => {
     expect(CHANNEL_CAPABILITIES.telegram.inbound.file).toBe("native");
     expect(CHANNEL_CAPABILITIES.feishu.outbound.card).toBe("native");
     expect(CHANNEL_CAPABILITIES.qq.inbound.image).toBe("fallback");
+    expect(CHANNEL_CAPABILITIES.qq.inbound.voice).toBe("fallback");
+    expect(CHANNEL_CAPABILITIES.qq.inbound.video).toBe("fallback");
     expect(CHANNEL_CAPABILITIES.wechat.inbound.image).toBe("fallback");
     expect(CHANNEL_CAPABILITIES.wework.inbound.video).toBe("fallback");
     expect(CHANNEL_CAPABILITIES.wework.outbound.image).toBe("native");
