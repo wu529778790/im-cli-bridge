@@ -28,6 +28,7 @@ import type { ThreadContext } from '../shared/types.js';
 import type { DingTalkStreamingTarget } from './client.js';
 import { buildImageFallbackMessage, buildUnsupportedInboundMessage } from '../channels/capabilities.js';
 import { buildMediaMetadataPrompt } from '../shared/media-prompt.js';
+import { buildSavedMediaPrompt } from '../shared/media-analysis-prompt.js';
 import { downloadMediaFromUrl } from '../shared/media-storage.js';
 
 const log = createLogger('DingTalkHandler');
@@ -79,6 +80,7 @@ function extractMediaPayload(message: DingTalkRobotPayload, kind: DingTalkInboun
 async function buildMediaPrompt(message: DingTalkRobotPayload, kind: DingTalkInboundKind): Promise<string | null> {
   const payload = extractMediaPayload(message, kind);
   if (!payload) return null;
+  const text = typeof message.text?.content === 'string' ? message.text.content.trim() : undefined;
 
   const remoteUrl = [
     payload.url,
@@ -98,17 +100,26 @@ async function buildMediaPrompt(message: DingTalkRobotPayload, kind: DingTalkInb
     }
   }
 
+  if (localPath) {
+    return buildSavedMediaPrompt({
+      source: 'DingTalk',
+      kind,
+      localPath,
+      text,
+    });
+  }
+
   const sanitized = {
     msgtype: message.msgtype,
     conversationType: message.conversationType,
     senderNick: message.senderNick,
-    localPath,
     payload,
   };
 
   return buildMediaMetadataPrompt({
     source: 'DingTalk',
     kind,
+    text,
     metadata: sanitized,
   });
 }

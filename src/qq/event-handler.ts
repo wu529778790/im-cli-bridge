@@ -24,6 +24,7 @@ import type { ThreadContext } from "../shared/types.js";
 import type { QQAttachment, QQMessageEvent } from "./types.js";
 import { buildImageFallbackMessage } from "../channels/capabilities.js";
 import { buildMediaMetadataPrompt } from "../shared/media-prompt.js";
+import { buildSavedMediaPrompt } from "../shared/media-analysis-prompt.js";
 import { downloadMediaFromUrl } from "../shared/media-storage.js";
 
 const log = createLogger("QQHandler");
@@ -76,6 +77,15 @@ async function buildAttachmentPrompt(event: QQMessageEvent): Promise<string | nu
       raw: attachment.raw,
     };
   }));
+
+  if (attachmentSummary.length === 1 && attachmentSummary[0].localPath) {
+    return buildSavedMediaPrompt({
+      source: "QQ",
+      kind: attachmentSummary[0].kind,
+      localPath: attachmentSummary[0].localPath,
+      text: event.content,
+    });
+  }
 
   return buildMediaMetadataPrompt({
     source: "QQ",
