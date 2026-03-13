@@ -43,6 +43,7 @@ async function cmdStart(): Promise<void> {
   if (status.running && status.pid) {
     console.log("\n🟢 open-im 已在后台运行");
     console.log(`   pid: ${status.pid}`);
+    console.log(`   配置页: ${getWebConfigUrl()}`);
     return;
   }
   removePid();
