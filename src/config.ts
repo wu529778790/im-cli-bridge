@@ -11,7 +11,7 @@ import { homedir } from 'node:os';
 import type { LogLevel } from './logger.js';
 import { APP_HOME } from './constants.js';
 
-export type Platform = 'dingtalk' | 'feishu' | 'telegram' | 'wechat' | 'wework';
+export type Platform = 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework';
 
 export type AiCommand = 'claude' | 'codex' | 'cursor';
 
@@ -36,12 +36,16 @@ export interface Config {
   dingtalkClientId?: string;
   dingtalkClientSecret?: string;
   dingtalkCardTemplateId?: string;
+  qqAppId?: string;
+  qqSecret?: string;
+  qqSandbox: boolean;
 
   // 全局白名单（旧版兼容）
   allowedUserIds: string[];
   // 分平台白名单（新配置推荐）
   telegramAllowedUserIds: string[];
   feishuAllowedUserIds: string[];
+  qqAllowedUserIds: string[];
   wechatAllowedUserIds: string[];
   weworkAllowedUserIds: string[];
   dingtalkAllowedUserIds: string[];
@@ -71,6 +75,11 @@ export interface Config {
     };
     feishu?: {
       enabled: boolean;
+      allowedUserIds: string[];
+    };
+    qq?: {
+      enabled: boolean;
+      sandbox?: boolean;
       allowedUserIds: string[];
     };
     wechat?: {
@@ -109,7 +118,15 @@ export interface FilePlatformFeishu {
   allowedUserIds?: string[];
 }
 
-export interface FilePlatformWechat {
+interface FilePlatformQQ {
+  enabled?: boolean;
+  appId?: string;
+  secret?: string;
+  sandbox?: boolean;
+  allowedUserIds?: string[];
+}
+
+interface FilePlatformWechat {
   enabled?: boolean;
   appId?: string;
   appSecret?: string;
@@ -170,6 +187,7 @@ export interface FileConfig {
   platforms?: {
     telegram?: FilePlatformTelegram;
     feishu?: FilePlatformFeishu;
+    qq?: FilePlatformQQ;
     wechat?: FilePlatformWechat;
     wework?: FilePlatformWework;
     dingtalk?: FilePlatformDingtalk;
@@ -355,6 +373,7 @@ export function needsSetup(): boolean {
   // 环境变量已提供任一平台的凭证，则认为已配置
   if (process.env.TELEGRAM_BOT_TOKEN) return false;
   if (process.env.FEISHU_APP_ID && process.env.FEISHU_APP_SECRET) return false;
+  if (process.env.QQ_BOT_APPID && process.env.QQ_BOT_SECRET) return false;
   if (process.env.WECHAT_APP_ID && process.env.WECHAT_APP_SECRET) return false;
   if (process.env.WECHAT_TOKEN && process.env.WECHAT_GUID && process.env.WECHAT_USER_ID) return false;
   if (process.env.WEWORK_CORP_ID && process.env.WEWORK_SECRET) return false;
@@ -363,19 +382,21 @@ export function needsSetup(): boolean {
   const file = loadFileConfig();
   const tg = file.platforms?.telegram;
   const fs = file.platforms?.feishu;
+  const qq = file.platforms?.qq;
   const wc = file.platforms?.wechat;
   const ww = file.platforms?.wework;
   const dt = file.platforms?.dingtalk;
 
   const hasTelegram = !!tg?.botToken;
   const hasFeishu = !!(fs?.appId && fs?.appSecret);
+  const hasQQ = !!(qq?.appId && qq?.secret);
   // 微信支持 AGP 协议（token + guid + userId）或标准协议（appId + appSecret）
   const hasWechat = !!(wc?.token && wc?.guid && wc?.userId) || !!(wc?.appId && wc?.appSecret);
   // 企业微信只需要 corpId 和 secret
   const hasWework = !!(ww?.corpId && ww?.secret);
   const hasDingtalk = !!(dt?.clientId && dt?.clientSecret);
 
-  return !hasTelegram && !hasFeishu && !hasWechat && !hasWework && !hasDingtalk;
+  return !hasTelegram && !hasFeishu && !hasQQ && !hasWechat && !hasWework && !hasDingtalk;
 }
 
 function parseCommaSeparated(value: string): string[] {
@@ -401,6 +422,7 @@ export function loadConfig(): Config {
 
   const fileTelegram = file.platforms?.telegram;
   const fileFeishu = file.platforms?.feishu;
+  const fileQQ = file.platforms?.qq;
   const fileWechat = file.platforms?.wechat;
   const fileWework = file.platforms?.wework;
   const fileDingtalk = file.platforms?.dingtalk;
@@ -419,6 +441,17 @@ export function loadConfig(): Config {
     process.env.FEISHU_APP_SECRET ??
     fileFeishu?.appSecret ??
     file.feishuAppSecret;
+
+  const qqAppId =
+    process.env.QQ_BOT_APPID ??
+    fileQQ?.appId;
+  const qqSecret =
+    process.env.QQ_BOT_SECRET ??
+    fileQQ?.secret;
+  const qqSandbox =
+    process.env.QQ_BOT_SANDBOX !== undefined
+      ? process.env.QQ_BOT_SANDBOX === '1' || process.env.QQ_BOT_SANDBOX === 'true'
+      : fileQQ?.sandbox ?? false;
 
   // 微信支持两种协议：
   // 1. AGP 协议：token + guid + userId（推荐）
@@ -470,6 +503,7 @@ export function loadConfig(): Config {
 
   const telegramEnabledFlag = fileTelegram?.enabled;
   const feishuEnabledFlag = fileFeishu?.enabled;
+  const qqEnabledFlag = fileQQ?.enabled;
   const wechatEnabledFlag = fileWechat?.enabled;
   const weworkEnabledFlag = fileWework?.enabled;
   const dingtalkEnabledFlag = fileDingtalk?.enabled;
@@ -478,6 +512,8 @@ export function loadConfig(): Config {
     !!telegramBotToken && (telegramEnabledFlag !== false);
   const feishuEnabled =
     !!(feishuAppId && feishuAppSecret) && (feishuEnabledFlag !== false);
+  const qqEnabled =
+    !!(qqAppId && qqSecret) && (qqEnabledFlag !== false);
   // 微信启用条件：AGP 协议凭证 或 标准协议凭证
   const hasWechatAGPCreds = !!(wechatToken && wechatGuid && wechatUserId);
   const hasWechatStandardCreds = !!(wechatAppId && wechatAppSecret);
@@ -491,6 +527,7 @@ export function loadConfig(): Config {
 
   if (telegramEnabled) enabledPlatforms.push('telegram');
   if (feishuEnabled) enabledPlatforms.push('feishu');
+  if (qqEnabled) enabledPlatforms.push('qq');
   if (wechatEnabled) enabledPlatforms.push('wechat');
   if (weworkEnabled) enabledPlatforms.push('wework');
   if (dingtalkEnabled) enabledPlatforms.push('dingtalk');
@@ -515,6 +552,11 @@ export function loadConfig(): Config {
     process.env.FEISHU_ALLOWED_USER_IDS !== undefined
       ? parseCommaSeparated(process.env.FEISHU_ALLOWED_USER_IDS)
       : fileFeishu?.allowedUserIds ?? allowedUserIds;
+
+  const qqAllowedUserIds =
+    process.env.QQ_ALLOWED_USER_IDS !== undefined
+      ? parseCommaSeparated(process.env.QQ_ALLOWED_USER_IDS)
+      : fileQQ?.allowedUserIds ?? allowedUserIds;
 
   const wechatAllowedUserIds =
     process.env.WECHAT_ALLOWED_USER_IDS !== undefined
@@ -781,6 +823,17 @@ export function loadConfig(): Config {
           enabled: false,
           allowedUserIds: feishuAllowedUserIds,
         },
+    qq: qqEnabled
+      ? {
+          enabled: true,
+          sandbox: qqSandbox,
+          allowedUserIds: qqAllowedUserIds,
+        }
+      : {
+          enabled: false,
+          sandbox: qqSandbox,
+          allowedUserIds: qqAllowedUserIds,
+        },
     wechat: wechatEnabled
       ? {
           enabled: true,
@@ -829,6 +882,9 @@ export function loadConfig(): Config {
     telegramBotToken: telegramBotToken ?? '',
     feishuAppId: feishuAppId ?? '',
     feishuAppSecret: feishuAppSecret ?? '',
+    qqAppId: qqAppId ?? '',
+    qqSecret: qqSecret ?? '',
+    qqSandbox,
     wechatAppId: wechatAppId ?? '',
     wechatAppSecret: wechatAppSecret ?? '',
     wechatToken: wechatToken,
@@ -846,6 +902,7 @@ export function loadConfig(): Config {
     allowedUserIds,
     telegramAllowedUserIds,
     feishuAllowedUserIds,
+    qqAllowedUserIds,
     wechatAllowedUserIds,
     weworkAllowedUserIds,
     dingtalkAllowedUserIds,
@@ -872,6 +929,7 @@ export function getPlatformsWithCredentials(config: Config): Platform[] {
   const r: Platform[] = [];
   if (config.telegramBotToken) r.push('telegram');
   if (config.feishuAppId && config.feishuAppSecret) r.push('feishu');
+  if (config.qqAppId && config.qqSecret) r.push('qq');
   if (config.weworkCorpId && config.weworkSecret) r.push('wework');
   if (config.dingtalkClientId && config.dingtalkClientSecret) r.push('dingtalk');
   const hasWechat =

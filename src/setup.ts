@@ -17,6 +17,7 @@ interface ExistingConfig {
   platforms?: {
     telegram?: { enabled?: boolean; botToken?: string; allowedUserIds?: string[]; proxy?: string };
     feishu?: { enabled?: boolean; appId?: string; appSecret?: string; allowedUserIds?: string[] };
+    qq?: { enabled?: boolean; appId?: string; secret?: string; sandbox?: boolean; allowedUserIds?: string[] };
     wechat?: {
       enabled?: boolean;
       appId?: string;
@@ -55,6 +56,7 @@ function getConfiguredPlatforms(existing: ExistingConfig | null): string[] {
   if (!existing?.platforms) return [];
   const names: { k: string; label: string }[] = [
     { k: "telegram", label: "Telegram" },
+    { k: "qq", label: "QQ" },
     { k: "feishu", label: "飞书" },
     { k: "wework", label: "企业微信" },
     { k: "dingtalk", label: "钉钉" },
@@ -66,6 +68,7 @@ function getConfiguredPlatforms(existing: ExistingConfig | null): string[] {
       if (!p) return false;
       if (k === "telegram") return !!p.botToken;
       if (k === "feishu") return !!(p.appId && p.appSecret);
+      if (k === "qq") return !!(p.appId && p.secret);
       // 微信支持 AGP 协议（token + guid + userId）或标准协议（appId + appSecret）
       if (k === "wechat") return !!(p.token && p.guid && p.userId) || !!(p.appId && p.appSecret);
       if (k === "wework") return !!(p.corpId && p.secret);
@@ -310,6 +313,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
 
   const hasTg = !!existing?.platforms?.telegram?.botToken;
   const hasFs = !!(existing?.platforms?.feishu?.appId && existing?.platforms?.feishu?.appSecret);
+  const hasQq = !!(existing?.platforms?.qq?.appId && existing?.platforms?.qq?.secret);
   const wc = existing?.platforms?.wechat;
   const hasWc = !!(wc?.token && wc?.guid && wc?.userId) || !!(wc?.appId && wc?.appSecret);
   const hasWw = !!(existing?.platforms?.wework?.corpId && existing?.platforms?.wework?.secret);
@@ -333,6 +337,10 @@ export async function runInteractiveSetup(): Promise<boolean> {
             "飞书 (Feishu/Lark) - 需要 App ID 和 App Secret" +
             (hasFs ? " ✓已配置" : ""),
           value: "feishu",
+        },
+        {
+          title: "QQ Bot - App ID + Secret" + (hasQq ? " configured" : ""),
+          value: "qq",
         },
         {
           title:
@@ -438,6 +446,50 @@ export async function runInteractiveSetup(): Promise<boolean> {
         appSecret: fsAppSecret,
       };
     } else if (platform === "feishu") {
+      return false;
+    }
+  }
+
+  if (selectedPlatforms.includes("qq")) {
+    const qqResp = await prompts(
+      [
+        {
+          type: "text",
+          name: "appId",
+          message: "QQ Bot App ID",
+          initial: existing?.platforms?.qq?.appId ?? "",
+          validate: (v: string) => (v.trim() ? true : "App ID 涓嶈兘涓虹┖"),
+        },
+        {
+          type: "text",
+          name: "secret",
+          message: "QQ Bot Secret",
+          initial: existing?.platforms?.qq?.secret ?? "",
+          validate: (v: string) => (v.trim() ? true : "Secret 涓嶈兘涓虹┖"),
+        },
+        {
+          type: "toggle",
+          name: "sandbox",
+          message: "鍚敤 QQ 娌欑鐜",
+          initial: existing?.platforms?.qq?.sandbox ?? false,
+          active: "鏄?",
+          inactive: "鍚?",
+        },
+      ],
+      { onCancel },
+    );
+
+    const qqAppId = qqResp.appId?.trim() || existing?.platforms?.qq?.appId;
+    const qqSecret = qqResp.secret?.trim() || existing?.platforms?.qq?.secret;
+    const qqSandbox = qqResp.sandbox ?? existing?.platforms?.qq?.sandbox ?? false;
+    if (qqAppId && qqSecret) {
+      (config.platforms as Record<string, unknown>).qq = {
+        enabled: true,
+        appId: qqAppId,
+        secret: qqSecret,
+        sandbox: qqSandbox,
+      };
+    } else if (platform === "qq") {
       return false;
     }
   }
@@ -590,12 +642,21 @@ export async function runInteractiveSetup(): Promise<boolean> {
   // 通用配置：只询问所选平台的白名单，未选平台沿用已有配置
   const tgIds = existing?.platforms?.telegram?.allowedUserIds?.join(", ") ?? "";
   const fsIds = existing?.platforms?.feishu?.allowedUserIds?.join(", ") ?? "";
+  const qqIds = existing?.platforms?.qq?.allowedUserIds?.join(", ") ?? "";
   const wcIds = existing?.platforms?.wechat?.allowedUserIds?.join(", ") ?? "";
   const wwIds = existing?.platforms?.wework?.allowedUserIds?.join(", ") ?? "";
   const dtIds = existing?.platforms?.dingtalk?.allowedUserIds?.join(", ") ?? "";
   const aiIdx = ["claude", "codex", "cursor"].indexOf(existing?.aiCommand ?? "claude");
 
   const commonPrompts: prompts.PromptObject[] = [];
+  if (selectedPlatforms.includes("qq")) {
+    commonPrompts.push({
+      type: "text",
+      name: "qqAllowedUserIds",
+      message: "QQ allowed user IDs (optional, comma-separated, empty means allow all)",
+      initial: qqIds,
+    });
+  }
   if (selectedPlatforms.includes("telegram")) {
     commonPrompts.push({
       type: "text",
@@ -769,6 +830,9 @@ export async function runInteractiveSetup(): Promise<boolean> {
   const feishuIds = selectedPlatforms.includes("feishu")
     ? parseIds(commonResp.feishuAllowedUserIds)
     : parseIds(existing?.platforms?.feishu?.allowedUserIds?.join(", "));
+  const qqIdsFinal = selectedPlatforms.includes("qq")
+    ? parseIds(commonResp.qqAllowedUserIds)
+    : parseIds(existing?.platforms?.qq?.allowedUserIds?.join(", "));
   const wechatIds = selectedPlatforms.includes("wechat")
     ? parseIds(commonResp.wechatAllowedUserIds)
     : parseIds(existing?.platforms?.wechat?.allowedUserIds?.join(", "));
@@ -900,6 +964,24 @@ export async function runInteractiveSetup(): Promise<boolean> {
     (out.platforms as any).feishu = { enabled: false, allowedUserIds: feishuIds };
   }
 
+  if (selectedPlatforms.includes("qq")) {
+    (out.platforms as any).qq = {
+      ...(base?.platforms?.qq as object),
+      enabled: true,
+      appId: (config.platforms as any).qq?.appId,
+      secret: (config.platforms as any).qq?.secret,
+      sandbox: (config.platforms as any).qq?.sandbox ?? base?.platforms?.qq?.sandbox ?? false,
+      allowedUserIds: qqIdsFinal,
+    };
+  } else if (base?.platforms?.qq) {
+    (out.platforms as any).qq = {
+      ...base.platforms.qq,
+      allowedUserIds: qqIdsFinal.length > 0 ? qqIdsFinal : (base.platforms.qq as any).allowedUserIds,
+    };
+  } else {
+    (out.platforms as any).qq = { enabled: false, sandbox: false, allowedUserIds: qqIdsFinal };
+  }
+
   if (selectedPlatforms.includes("wechat")) {
     const wcConfig = (config.platforms as Record<string, unknown>)?.wechat as Record<string, unknown> | undefined;
     (out.platforms as Record<string, unknown>).wechat = {
@@ -972,13 +1054,14 @@ export async function runInteractiveSetup(): Promise<boolean> {
 
 const PLATFORM_LABELS: Record<Platform, string> = {
   telegram: "Telegram",
+  qq: "QQ",
   feishu: "飞书",
   wework: "企业微信",
   dingtalk: "钉钉",
   wechat: "微信（测试中）",
 };
 
-const ALL_PLATFORMS: Platform[] = ["telegram", "feishu", "wework", "dingtalk", "wechat"];
+const ALL_PLATFORMS: Platform[] = ["telegram", "feishu", "qq", "wework", "dingtalk", "wechat"];
 
 /**
  * 启动时让用户选择要启用的平台（无论单通道还是多通道）
