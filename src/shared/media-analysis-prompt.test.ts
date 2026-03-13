@@ -15,4 +15,15 @@ describe("buildSavedMediaPrompt", () => {
     expect(prompt).toContain("look at this");
     expect(prompt).toContain("Read tool");
   });
+
+  it("uses transcription guidance for audio-like media", () => {
+    const prompt = buildSavedMediaPrompt({
+      source: "Telegram",
+      kind: "voice",
+      localPath: "/tmp/example.ogg",
+    });
+
+    expect(prompt).toContain("transcribe");
+    expect(prompt).toContain("/tmp/example.ogg");
+  });
 });
