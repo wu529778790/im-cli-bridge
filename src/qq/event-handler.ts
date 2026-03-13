@@ -48,6 +48,38 @@ function classifyAttachment(attachment: QQAttachment): "image" | "file" {
   return "file";
 }
 
+function buildQQAttachmentContext(
+  text: string,
+  attachment: {
+    filename?: string;
+    contentType?: string;
+    size?: number;
+    width?: number;
+    height?: number;
+  },
+): string | undefined {
+  const lines: string[] = [];
+  if (text) {
+    lines.push(text);
+  }
+  if (attachment.filename) {
+    lines.push(`Filename: ${attachment.filename}`);
+  }
+  if (attachment.contentType) {
+    lines.push(`MimeType: ${attachment.contentType}`);
+  }
+  if (attachment.size !== undefined) {
+    lines.push(`Size: ${attachment.size}`);
+  }
+  if (attachment.width !== undefined) {
+    lines.push(`Width: ${attachment.width}`);
+  }
+  if (attachment.height !== undefined) {
+    lines.push(`Height: ${attachment.height}`);
+  }
+  return lines.length > 0 ? lines.join("\n") : undefined;
+}
+
 async function buildAttachmentPrompt(event: QQMessageEvent): Promise<string | null> {
   if (!event.attachments || event.attachments.length === 0) return null;
 
@@ -83,7 +115,7 @@ async function buildAttachmentPrompt(event: QQMessageEvent): Promise<string | nu
       source: "QQ",
       kind: attachmentSummary[0].kind,
       localPath: attachmentSummary[0].localPath,
-      text: event.content,
+      text: buildQQAttachmentContext(event.content, attachmentSummary[0]),
     });
   }
 
