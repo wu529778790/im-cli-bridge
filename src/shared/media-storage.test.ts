@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createMediaTargetPath } from "./media-storage.js";
+import { createMediaTargetPath, inferExtensionFromContentType } from "./media-storage.js";
 
 describe("createMediaTargetPath", () => {
   it("does not append a fallback extension when basename already has one", () => {
@@ -13,5 +13,14 @@ describe("createMediaTargetPath", () => {
     const path = createMediaTargetPath("jpg", "image-upload");
 
     expect(path).toMatch(/image-upload\.jpg$/);
+  });
+});
+
+describe("inferExtensionFromContentType", () => {
+  it("maps common media content types to file extensions", () => {
+    expect(inferExtensionFromContentType("audio/ogg")).toBe(".ogg");
+    expect(inferExtensionFromContentType("video/mp4")).toBe(".mp4");
+    expect(inferExtensionFromContentType("image/jpeg")).toBe(".jpg");
+    expect(inferExtensionFromContentType("application/pdf")).toBe(".pdf");
   });
 });

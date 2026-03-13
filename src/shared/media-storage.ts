@@ -6,6 +6,25 @@ function sanitizeName(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
+export function inferExtensionFromContentType(contentType: string): string {
+  const normalized = contentType.split(";")[0]?.trim().toLowerCase() ?? "";
+  if (!normalized.includes("/")) return "";
+
+  const [, subtypeRaw] = normalized.split("/", 2);
+  const subtype = subtypeRaw.replace("jpeg", "jpg");
+  const simpleSubtype = subtype.split("+")[0];
+
+  if (normalized.startsWith("image/") || normalized.startsWith("audio/") || normalized.startsWith("video/")) {
+    return `.${simpleSubtype}`;
+  }
+
+  if (normalized === "application/pdf") return ".pdf";
+  if (normalized === "text/plain") return ".txt";
+  if (normalized === "application/json") return ".json";
+
+  return "";
+}
+
 export function createMediaTargetPath(extension: string, basenameHint?: string): string {
   const safeExtension = extension.startsWith(".") ? extension : `.${extension}`;
   const safeBasename = basenameHint ? sanitizeName(basenameHint) : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -43,7 +62,7 @@ export async function downloadMediaFromUrl(
   const extension =
     extensionFromUrl ||
     extname(filenameFromHeader ?? "") ||
-    (contentType.startsWith("image/") ? `.${contentType.slice("image/".length).replace("jpeg", "jpg")}` : "") ||
+    inferExtensionFromContentType(contentType) ||
     `.${options?.fallbackExtension ?? "bin"}`;
 
   const basenameHint = options?.basenameHint ?? filenameFromHeader ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
