@@ -9,7 +9,9 @@ function sanitizeName(value: string): string {
 export function createMediaTargetPath(extension: string, basenameHint?: string): string {
   const safeExtension = extension.startsWith(".") ? extension : `.${extension}`;
   const safeBasename = basenameHint ? sanitizeName(basenameHint) : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  return join(IMAGE_DIR, safeBasename.endsWith(safeExtension) ? safeBasename : `${safeBasename}${safeExtension}`);
+  const existingExtension = extname(safeBasename);
+  const filename = existingExtension ? safeBasename : `${safeBasename}${safeExtension}`;
+  return join(IMAGE_DIR, filename);
 }
 
 export async function saveBase64Media(
