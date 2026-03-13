@@ -1,5 +1,7 @@
 # open-im
 
+多平台 IM 桥接工具，把 Telegram、飞书、企业微信、钉钉、QQ、微信接到 AI CLI 工具（Claude Code、Codex、Cursor），方便在手机或聊天窗口里远程使用 AI 编程助手。
+
 ## 功能特性
 
 - 多平台：支持 Telegram、飞书、企业微信、钉钉、QQ、微信（测试中），可同时启用
@@ -45,8 +47,6 @@ open-im start
 - `open-im start` 会同时提供本地配置页面
 - `open-im dev` 仅在未完成配置时自动打开页面
 - 已有配置但想手动打开时，使用 `open-im start`
-
-多平台 IM 桥接工具，把 Telegram、飞书、企业微信、钉钉、QQ、微信接到 AI CLI 工具（Claude Code、Codex、Cursor），方便在手机或聊天窗口里远程使用 AI 编程助手。
 
 ## 会话说明
 
