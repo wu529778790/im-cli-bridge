@@ -290,12 +290,14 @@ const PAGE_HTML = String.raw`<!doctype html>
           <div class="grid">
             <article class="panel" id="telegram-panel">
               <div class="panel-head"><h3>Telegram</h3><label class="toggle"><input id="telegram-enabled" type="checkbox" /> Enabled</label></div>
+              <div class="summary" id="telegram-help" style="margin-bottom:12px;color:var(--muted);font-size:0.9em;">获取凭证：访问 <a href="https://t.me/BotFather" target="_blank" style="color:var(--green);text-decoration:underline;">@BotFather</a> 发送 /newbot 创建机器人，获取 Bot Token</div>
               <label>Bot token<input id="telegram-botToken" placeholder="123456:ABC..." /></label>
               <label>Proxy<input id="telegram-proxy" placeholder="http://127.0.0.1:7890" /></label>
               <label>Allowed user IDs<textarea id="telegram-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
             </article>
             <article class="panel" id="feishu-panel">
               <div class="panel-head"><h3>Feishu</h3><label class="toggle"><input id="feishu-enabled" type="checkbox" /> Enabled</label></div>
+              <div class="summary" id="feishu-help" style="margin-bottom:12px;color:var(--muted);font-size:0.9em;">获取凭证：访问 <a href="https://open.feishu.cn/" target="_blank" style="color:var(--green);text-decoration:underline;">飞书开放平台</a> 创建应用，启用机器人，获取 App ID 和 App Secret</div>
               <label>App ID<input id="feishu-appId" /></label>
               <label>App Secret<input id="feishu-appSecret" /></label>
               <label>Allowed user IDs<textarea id="feishu-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
@@ -309,12 +311,14 @@ const PAGE_HTML = String.raw`<!doctype html>
             </article>
             <article class="panel" id="wework-panel">
               <div class="panel-head"><h3>WeWork</h3><label class="toggle"><input id="wework-enabled" type="checkbox" /> Enabled</label></div>
+              <div class="summary" id="wework-help" style="margin-bottom:12px;color:var(--muted);font-size:0.9em;">获取凭证：访问 <a href="https://work.weixin.qq.com/" target="_blank" style="color:var(--green);text-decoration:underline;">企业微信管理后台</a> 创建应用，获取 Bot ID (Corp ID) 和 Secret</div>
               <label>Corp ID / Bot ID<input id="wework-corpId" /></label>
               <label>Secret<input id="wework-secret" /></label>
               <label>Allowed user IDs<textarea id="wework-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
             </article>
             <article class="panel" id="dingtalk-panel">
               <div class="panel-head"><h3>DingTalk</h3><label class="toggle"><input id="dingtalk-enabled" type="checkbox" /> Enabled</label></div>
+              <div class="summary" id="dingtalk-help" style="margin-bottom:12px;color:var(--muted);font-size:0.9em;">获取凭证：访问钉钉开放平台创建企业内部应用，启用机器人 Stream Mode，获取 Client ID 和 Client Secret</div>
               <label>Client ID / AppKey<input id="dingtalk-clientId" /></label>
               <label>Client Secret / AppSecret<input id="dingtalk-clientSecret" /></label>
               <label>Card template ID<input id="dingtalk-cardTemplateId" placeholder="Optional" /></label>
@@ -373,12 +377,18 @@ const PAGE_HTML = String.raw`<!doctype html>
           botToken: "Bot token",
           proxy: "Proxy",
           allowedUserIds: "Allowed user IDs",
+          telegramHelp: 'Get credentials: Visit <a href="https://t.me/BotFather" target="_blank">@BotFather</a> and send /newbot to create a bot and get Bot Token',
           appId: "App ID",
           appSecret: "App Secret",
+          feishuHelp: 'Get credentials: Visit <a href="https://open.feishu.cn/" target="_blank">Feishu Open Platform</a> to create an app, enable bot, and get App ID / App Secret',
           qqAppId: "App ID",
           qqAppSecret: "App Secret",
           qqHelp: 'Get credentials: Visit <a href="https://bot.q.qq.com" target="_blank">QQ Open Platform</a> to create a bot and get App ID / App Secret',
           corpId: "Corp ID / Bot ID",
+          weworkHelp: 'Get credentials: Visit <a href="https://work.weixin.qq.com/" target="_blank">WeWork Admin Console</a> to create an app and get Bot ID (Corp ID) / Secret',
+          clientId: "Client ID / AppKey",
+          clientSecret: "Client Secret / AppSecret",
+          dingtalkHelp: 'Get credentials: Create an enterprise internal app on DingTalk Open Platform, enable Stream Mode, and get Client ID / Client Secret',
           secret: "Secret",
           clientId: "Client ID / AppKey",
           clientSecret: "Client Secret / AppSecret",
@@ -430,12 +440,18 @@ const PAGE_HTML = String.raw`<!doctype html>
           botToken: "Bot Token",
           proxy: "代理",
           allowedUserIds: "允许的用户 ID",
+          telegramHelp: '获取凭证：访问 <a href="https://t.me/BotFather" target="_blank">@BotFather</a> 发送 /newbot 创建机器人，获取 Bot Token',
           appId: "App ID",
           appSecret: "App Secret",
+          feishuHelp: '获取凭证：访问 <a href="https://open.feishu.cn/" target="_blank">飞书开放平台</a> 创建应用，启用机器人，获取 App ID 和 App Secret',
           qqAppId: "App ID",
           qqAppSecret: "App Secret",
           qqHelp: '获取凭证：访问 <a href="https://bot.q.qq.com" target="_blank">QQ 开放平台</a> 创建机器人，获取 App ID 和 App Secret',
           corpId: "Corp ID / Bot ID",
+          weworkHelp: '获取凭证：访问 <a href="https://work.weixin.qq.com/" target="_blank">企业微信管理后台</a> 创建应用，获取 Bot ID (Corp ID) 和 Secret',
+          clientId: "Client ID / AppKey",
+          clientSecret: "Client Secret / AppSecret",
+          dingtalkHelp: '获取凭证：访问钉钉开放平台创建企业内部应用，启用机器人 Stream Mode，获取 Client ID 和 Client Secret',
           secret: "Secret",
           clientId: "Client ID / AppKey",
           clientSecret: "Client Secret / AppSecret",
@@ -507,16 +523,28 @@ const PAGE_HTML = String.raw`<!doctype html>
         telegramLabels[0].childNodes[0].textContent = t("botToken");
         telegramLabels[1].childNodes[0].textContent = t("proxy");
         telegramLabels[2].childNodes[0].textContent = t("allowedUserIds");
+        el("telegram-help").innerHTML = t("telegramHelp");
         const feishuLabels = el("feishu-panel").querySelectorAll(":scope > label");
         feishuLabels[0].childNodes[0].textContent = t("appId");
         feishuLabels[1].childNodes[0].textContent = t("appSecret");
         feishuLabels[2].childNodes[0].textContent = t("allowedUserIds");
+        el("feishu-help").innerHTML = t("feishuHelp");
         const qqLabels = el("qq-panel").querySelectorAll(":scope > label");
         qqLabels[0].childNodes[0].textContent = t("qqAppId");
         qqLabels[1].childNodes[0].textContent = t("qqAppSecret");
         qqLabels[2].childNodes[0].textContent = t("allowedUserIds");
         el("qq-help").innerHTML = t("qqHelp");
         const weworkLabels = el("wework-panel").querySelectorAll(":scope > label");
+        weworkLabels[0].childNodes[0].textContent = t("corpId");
+        weworkLabels[1].childNodes[0].textContent = t("secret");
+        weworkLabels[2].childNodes[0].textContent = t("allowedUserIds");
+        el("wework-help").innerHTML = t("weworkHelp");
+        const dingtalkLabels = el("dingtalk-panel").querySelectorAll(":scope > label");
+        dingtalkLabels[0].childNodes[0].textContent = t("clientId");
+        dingtalkLabels[1].childNodes[0].textContent = t("clientSecret");
+        dingtalkLabels[2].childNodes[0].textContent = t("cardTemplateId");
+        dingtalkLabels[3].childNodes[0].textContent = t("allowedUserIds");
+        el("dingtalk-help").innerHTML = t("dingtalkHelp");
         weworkLabels[0].childNodes[0].textContent = t("corpId");
         weworkLabels[1].childNodes[0].textContent = t("secret");
         weworkLabels[2].childNodes[0].textContent = t("allowedUserIds");
