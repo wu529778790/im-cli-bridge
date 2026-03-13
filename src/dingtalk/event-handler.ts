@@ -30,6 +30,8 @@ import { buildImageFallbackMessage, buildUnsupportedInboundMessage } from '../ch
 
 const log = createLogger('DingTalkHandler');
 const DINGTALK_THROTTLE_MS = 1000;
+type DingTalkInboundKind = 'image' | 'file' | 'voice' | 'video';
+type DingTalkRobotPayload = RobotMessage & Record<string, unknown>;
 
 export interface DingTalkEventHandlerHandle {
   stop: () => void;
@@ -51,6 +53,44 @@ function toInboundKind(msgType: string): 'image' | 'file' | 'voice' | 'video' {
   if (msgType === 'audio' || msgType === 'voice') return 'voice';
   if (msgType === 'video') return 'video';
   return 'file';
+}
+
+function extractMediaPayload(message: DingTalkRobotPayload, kind: DingTalkInboundKind): Record<string, unknown> | null {
+  const candidates = [
+    message[kind],
+    kind === 'image' ? message.picture : undefined,
+    kind === 'voice' ? message.audio : undefined,
+    kind === 'file' ? message.file : undefined,
+    kind === 'video' ? message.video : undefined,
+    message.content,
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === 'object') {
+      return candidate as Record<string, unknown>;
+    }
+  }
+
+  return null;
+}
+
+function buildMediaPrompt(message: DingTalkRobotPayload, kind: DingTalkInboundKind): string | null {
+  const payload = extractMediaPayload(message, kind);
+  if (!payload) return null;
+
+  const sanitized = {
+    msgtype: message.msgtype,
+    conversationType: message.conversationType,
+    senderNick: message.senderNick,
+    payload,
+  };
+
+  return [
+    `The user sent a DingTalk ${kind} message.`,
+    'Available metadata:',
+    JSON.stringify(sanitized, null, 2),
+    'If the media body is not directly accessible, explain that limitation and ask the user for a text summary, transcript, or a resend via Telegram/Feishu/WeWork.',
+  ].join('\n\n');
 }
 
 export function setupDingTalkHandlers(
@@ -81,6 +121,19 @@ export function setupDingTalkHandlers(
   });
 
   registerPermissionSender('dingtalk', { sendTextReply, sendPermissionCard });
+
+  async function enqueuePrompt(
+    userId: string,
+    chatId: string,
+    prompt: string,
+    dingtalkTarget?: DingTalkStreamingTarget,
+  ): Promise<'running' | 'queued' | 'rejected'> {
+    const workDir = sessionManager.getWorkDir(userId);
+    const convId = sessionManager.getConvId(userId);
+    return requestQueue.enqueue(userId, convId, prompt, async (nextPrompt) => {
+      await handleAIRequest(userId, chatId, nextPrompt, workDir, convId, undefined, undefined, dingtalkTarget);
+    });
+  }
 
   async function handleAIRequest(
     userId: string,
@@ -149,11 +202,12 @@ export function setupDingTalkHandlers(
       return;
     }
 
-    const chatId = robotMessage.conversationId;
-    const userId = robotMessage.senderStaffId || robotMessage.senderId;
-    const text = robotMessage.msgtype === 'text' ? robotMessage.text?.content?.trim() ?? '' : '';
+    const message = robotMessage as DingTalkRobotPayload;
+    const chatId = message.conversationId;
+    const userId = message.senderStaffId || message.senderId;
+    const text = message.msgtype === 'text' ? message.text?.content?.trim() ?? '' : '';
 
-    log.info(`[MSG] DingTalk message: type=${robotMessage.msgtype}, user=${userId}, chat=${chatId}`);
+    log.info(`[MSG] DingTalk message: type=${message.msgtype}, user=${userId}, chat=${chatId}`);
 
     if (!accessControl.isAllowed(userId)) {
       await sendTextReply(chatId, `Access denied. Your DingTalk user ID: ${userId}`);
@@ -161,9 +215,40 @@ export function setupDingTalkHandlers(
       return;
     }
 
-    if (robotMessage.msgtype !== 'text') {
-      await sendTextReply(chatId, buildUnsupportedInboundMessage('dingtalk', toInboundKind(robotMessage.msgtype)));
-      ackMessage(callbackId, { ignored: robotMessage.msgtype });
+    registerSessionWebhook(chatId, message.sessionWebhook);
+    setActiveChatId('dingtalk', chatId);
+    setDingTalkActiveTarget({
+      chatId,
+      userId,
+      conversationType: message.conversationType,
+      robotCode: message.robotCode || config.dingtalkClientId,
+    });
+    setChatUser(chatId, userId, 'dingtalk');
+
+    const dingtalkTarget: DingTalkStreamingTarget = {
+      chatId,
+      conversationType: message.conversationType,
+      senderStaffId: message.senderStaffId,
+      senderId: message.senderId,
+      robotCode: message.robotCode || config.dingtalkClientId,
+    };
+
+    if (message.msgtype !== 'text') {
+      const kind = toInboundKind(message.msgtype);
+      const prompt = buildMediaPrompt(message, kind);
+      if (!prompt) {
+        await sendTextReply(chatId, buildUnsupportedInboundMessage('dingtalk', kind));
+        ackMessage(callbackId, { ignored: message.msgtype });
+        return;
+      }
+
+      const enqueueResult = await enqueuePrompt(userId, chatId, prompt, dingtalkTarget);
+      if (enqueueResult === 'rejected') {
+        await sendTextReply(chatId, 'Request queue is full. Please try again later.');
+      } else if (enqueueResult === 'queued') {
+        await sendTextReply(chatId, 'Your request is queued.');
+      }
+      ackMessage(callbackId, { queued: enqueueResult, kind });
       return;
     }
 
@@ -171,16 +256,6 @@ export function setupDingTalkHandlers(
       ackMessage(callbackId, { ignored: 'empty text' });
       return;
     }
-
-    registerSessionWebhook(chatId, robotMessage.sessionWebhook);
-    setActiveChatId('dingtalk', chatId);
-    setDingTalkActiveTarget({
-      chatId,
-      userId,
-      conversationType: robotMessage.conversationType,
-      robotCode: robotMessage.robotCode || config.dingtalkClientId,
-    });
-    setChatUser(chatId, userId, 'dingtalk');
 
     try {
       const handled = await commandHandler.dispatch(text, chatId, userId, 'dingtalk', handleAIRequest);
@@ -192,19 +267,7 @@ export function setupDingTalkHandlers(
       log.error('Error in commandHandler.dispatch:', err);
     }
 
-    const workDir = sessionManager.getWorkDir(userId);
-    const convId = sessionManager.getConvId(userId);
-    const dingtalkTarget: DingTalkStreamingTarget = {
-      chatId,
-      conversationType: robotMessage.conversationType,
-      senderStaffId: robotMessage.senderStaffId,
-      senderId: robotMessage.senderId,
-      robotCode: robotMessage.robotCode || config.dingtalkClientId,
-    };
-
-    const enqueueResult = requestQueue.enqueue(userId, convId, text, async (prompt) => {
-      await handleAIRequest(userId, chatId, prompt, workDir, convId, undefined, undefined, dingtalkTarget);
-    });
+    const enqueueResult = await enqueuePrompt(userId, chatId, text, dingtalkTarget);
 
     if (enqueueResult === 'rejected') {
       await sendTextReply(chatId, 'Request queue is full. Please try again later.');
