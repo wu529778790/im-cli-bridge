@@ -2,7 +2,8 @@ import { createServer } from "node:http";
 import { writeFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { loadConfig, needsSetup } from "./config.js";
-import { runInteractiveSetup, runPlatformSelectionPrompt, runClaudeApiSetup } from "./setup.js";
+import { runInteractiveSetup, runClaudeApiSetup } from "./setup.js";
+import { runWebConfigFlow } from "./config-web.js";
 
 // 导出供 cli.ts 使用
 export { needsSetup, runInteractiveSetup };
@@ -130,7 +131,9 @@ function buildStartupMessage(
 
 export async function main() {
   if (needsSetup()) {
-    const saved = await runInteractiveSetup();
+    const saved = process.stdin.isTTY
+      ? (await runWebConfigFlow({ mode: "dev", cwd: process.cwd() })) === "saved"
+      : await runInteractiveSetup();
     if (!saved) process.exit(1);
   }
 
@@ -153,12 +156,6 @@ export async function main() {
     }
   }
 
-  // 有 TTY 时让用户选择要启用的平台（无论单通道还是多通道）
-  if (process.stdin.isTTY) {
-    const updated = await runPlatformSelectionPrompt(config);
-    if (!updated) process.exit(0);
-    config = updated;
-  }
   initLogger(config.logDir, config.logLevel);
   loadActiveChats();
   initPermissionModes();
