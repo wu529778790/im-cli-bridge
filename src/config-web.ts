@@ -302,6 +302,7 @@ const PAGE_HTML = String.raw`<!doctype html>
             </article>
             <article class="panel" id="qq-panel">
               <div class="panel-head"><h3>QQ</h3><label class="toggle"><input id="qq-enabled" type="checkbox" /> Enabled</label></div>
+              <div class="summary" id="qq-help" style="margin-bottom:12px;color:var(--muted);font-size:0.9em;">获取凭证：访问 <a href="https://bot.q.qq.com" target="_blank" style="color:var(--green);text-decoration:underline;">QQ 开放平台</a> 创建机器人，获取 App ID 和 App Secret</div>
               <label>App ID<input id="qq-appId" /></label>
               <label>App Secret<input id="qq-secret" /></label>
               <label>Allowed user IDs<textarea id="qq-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
@@ -376,6 +377,7 @@ const PAGE_HTML = String.raw`<!doctype html>
           appSecret: "App Secret",
           qqAppId: "App ID",
           qqAppSecret: "App Secret",
+          qqHelp: 'Get credentials: Visit <a href="https://bot.q.qq.com" target="_blank">QQ Open Platform</a> to create a bot and get App ID / App Secret',
           corpId: "Corp ID / Bot ID",
           secret: "Secret",
           clientId: "Client ID / AppKey",
@@ -432,6 +434,7 @@ const PAGE_HTML = String.raw`<!doctype html>
           appSecret: "App Secret",
           qqAppId: "App ID",
           qqAppSecret: "App Secret",
+          qqHelp: '获取凭证：访问 <a href="https://bot.q.qq.com" target="_blank">QQ 开放平台</a> 创建机器人，获取 App ID 和 App Secret',
           corpId: "Corp ID / Bot ID",
           secret: "Secret",
           clientId: "Client ID / AppKey",
@@ -512,6 +515,7 @@ const PAGE_HTML = String.raw`<!doctype html>
         qqLabels[0].childNodes[0].textContent = t("qqAppId");
         qqLabels[1].childNodes[0].textContent = t("qqAppSecret");
         qqLabels[2].childNodes[0].textContent = t("allowedUserIds");
+        el("qq-help").innerHTML = t("qqHelp");
         const weworkLabels = el("wework-panel").querySelectorAll(":scope > label");
         weworkLabels[0].childNodes[0].textContent = t("corpId");
         weworkLabels[1].childNodes[0].textContent = t("secret");
