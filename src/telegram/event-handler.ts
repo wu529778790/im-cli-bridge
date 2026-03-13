@@ -29,6 +29,7 @@ import { setPermissionMode } from "../permission-mode/session-mode.js";
 import { MODE_LABELS } from "../permission-mode/types.js";
 import { createLogger } from "../logger.js";
 import { downloadMediaFromUrl } from "../shared/media-storage.js";
+import { buildSavedMediaPrompt } from "../shared/media-analysis-prompt.js";
 
 const log = createLogger("TgHandler");
 
@@ -452,9 +453,12 @@ export function setupTelegramHandlers(
       return;
     }
 
-    const prompt = caption
-      ? `用户发送了一张图片（附言：${caption}），已保存到 ${imagePath}。请用 Read 工具查看并分析。`
-      : `用户发送了一张图片，已保存到 ${imagePath}。请用 Read 工具查看并分析。`;
+    const prompt = buildSavedMediaPrompt({
+      source: "Telegram",
+      kind: "image",
+      localPath: imagePath,
+      text: caption || undefined,
+    });
 
     const workDir = sessionManager.getWorkDir(userId);
     const convId = sessionManager.getConvId(userId);

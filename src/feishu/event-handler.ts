@@ -34,6 +34,7 @@ import { setActiveChatId } from '../shared/active-chats.js';
 import { setChatUser } from '../shared/chat-user-map.js';
 import { createLogger } from '../logger.js';
 import { downloadMediaFromUrl } from '../shared/media-storage.js';
+import { buildSavedMediaPrompt } from '../shared/media-analysis-prompt.js';
 
 const log = createLogger('FeishuHandler');
 
@@ -664,7 +665,11 @@ export function setupFeishuHandlers(
             return;
           }
 
-          const prompt = `用户发送了一张图片，已保存到 ${imagePath}。请用 Read 工具查看并分析。`;
+          const prompt = buildSavedMediaPrompt({
+            source: 'Feishu',
+            kind: 'image',
+            localPath: imagePath,
+          });
 
           const workDir = sessionManager.getWorkDir(senderId);
           const convId = sessionManager.getConvId(senderId);

@@ -30,6 +30,7 @@ import type { WeWorkCallbackMessage } from './types.js';
 import { buildImageFallbackMessage, buildUnsupportedInboundMessage } from '../channels/capabilities.js';
 import { buildMediaMetadataPrompt } from '../shared/media-prompt.js';
 import { saveBase64Media } from '../shared/media-storage.js';
+import { buildSavedMediaPrompt } from '../shared/media-analysis-prompt.js';
 
 const log = createLogger('WeWorkHandler');
 
@@ -119,7 +120,12 @@ async function buildMediaPrompt(data: WeWorkCallbackMessage, kind: MediaKind): P
     let imageReference = '';
     if (typeof imagePayload.base64 === 'string' && imagePayload.base64.length > 0) {
       const savedPath = await saveBase64Media(imagePayload.base64, 'jpg');
-      imageReference = `Saved local image path: ${savedPath}`;
+      return buildSavedMediaPrompt({
+        source: 'WeWork',
+        kind: 'image',
+        localPath: savedPath,
+        text,
+      });
     } else if (typeof imagePayload.url === 'string' && imagePayload.url.length > 0) {
       imageReference = `Remote image URL: ${imagePayload.url}`;
     }
