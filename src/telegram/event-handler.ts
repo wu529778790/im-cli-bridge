@@ -80,11 +80,20 @@ async function downloadTelegramPhoto(
   bot: Telegraf,
   fileId: string,
 ): Promise<string> {
+  return downloadTelegramFile(bot, fileId, fileId, "jpg");
+}
+
+async function downloadTelegramFile(
+  bot: Telegraf,
+  fileId: string,
+  basenameHint: string,
+  fallbackExtension: string,
+): Promise<string> {
   const fileLink = await bot.telegram.getFileLink(fileId);
-  const safeId = fileId.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const safeId = basenameHint.replace(/[^a-zA-Z0-9._-]/g, "_");
   return downloadMediaFromUrl(fileLink.href, {
-    basenameHint: safeId.slice(-8),
-    fallbackExtension: "jpg",
+    basenameHint: safeId,
+    fallbackExtension,
   });
 }
 
@@ -112,6 +121,26 @@ export function setupTelegramHandlers(
   });
 
   registerPermissionSender("telegram", { sendTextReply });
+
+  async function enqueueSavedMedia(
+    userId: string,
+    chatId: string,
+    kind: string,
+    localPath: string,
+    text?: string,
+  ): Promise<void> {
+    const prompt = buildSavedMediaPrompt({
+      source: "Telegram",
+      kind,
+      localPath,
+      text,
+    });
+    const workDir = sessionManager.getWorkDir(userId);
+    const convId = sessionManager.getConvId(userId);
+    requestQueue.enqueue(userId, convId, prompt, async (nextPrompt) => {
+      await handleAIRequest(userId, chatId, nextPrompt, workDir, convId);
+    });
+  }
 
   async function handleAIRequest(
     userId: string,
@@ -453,18 +482,106 @@ export function setupTelegramHandlers(
       return;
     }
 
-    const prompt = buildSavedMediaPrompt({
-      source: "Telegram",
-      kind: "image",
-      localPath: imagePath,
-      text: caption || undefined,
-    });
+    await enqueueSavedMedia(userId, chatId, "image", imagePath, caption || undefined);
+  });
 
-    const workDir = sessionManager.getWorkDir(userId);
-    const convId = sessionManager.getConvId(userId);
-    requestQueue.enqueue(userId, convId, prompt, async (p) => {
-      await handleAIRequest(userId, chatId, p, workDir, convId);
-    });
+  bot.on(message("document"), async (ctx) => {
+    const chatId = String(ctx.chat.id);
+    const userId = String(ctx.from!.id);
+    const caption = ctx.message.caption?.trim() || "";
+
+    if (!accessControl.isAllowed(userId)) return;
+
+    setActiveChatId("telegram", chatId);
+    setChatUser(chatId, userId, "telegram");
+
+    try {
+      const document = ctx.message.document;
+      const path = await downloadTelegramFile(
+        bot,
+        document.file_id,
+        document.file_name ?? document.file_id,
+        "bin",
+      );
+      await enqueueSavedMedia(userId, chatId, "document", path, caption || undefined);
+    } catch (err) {
+      log.error("Failed to download document:", err);
+      await sendTextReply(chatId, "Document download failed.");
+    }
+  });
+
+  bot.on(message("audio"), async (ctx) => {
+    const chatId = String(ctx.chat.id);
+    const userId = String(ctx.from!.id);
+    const caption = ctx.message.caption?.trim() || "";
+
+    if (!accessControl.isAllowed(userId)) return;
+
+    setActiveChatId("telegram", chatId);
+    setChatUser(chatId, userId, "telegram");
+
+    try {
+      const audio = ctx.message.audio;
+      const path = await downloadTelegramFile(
+        bot,
+        audio.file_id,
+        audio.file_name ?? audio.file_id,
+        "mp3",
+      );
+      await enqueueSavedMedia(userId, chatId, "audio", path, caption || undefined);
+    } catch (err) {
+      log.error("Failed to download audio:", err);
+      await sendTextReply(chatId, "Audio download failed.");
+    }
+  });
+
+  bot.on(message("voice"), async (ctx) => {
+    const chatId = String(ctx.chat.id);
+    const userId = String(ctx.from!.id);
+
+    if (!accessControl.isAllowed(userId)) return;
+
+    setActiveChatId("telegram", chatId);
+    setChatUser(chatId, userId, "telegram");
+
+    try {
+      const voice = ctx.message.voice;
+      const path = await downloadTelegramFile(
+        bot,
+        voice.file_id,
+        voice.file_unique_id ?? voice.file_id,
+        "ogg",
+      );
+      await enqueueSavedMedia(userId, chatId, "voice", path);
+    } catch (err) {
+      log.error("Failed to download voice message:", err);
+      await sendTextReply(chatId, "Voice download failed.");
+    }
+  });
+
+  bot.on(message("video"), async (ctx) => {
+    const chatId = String(ctx.chat.id);
+    const userId = String(ctx.from!.id);
+    const caption = ctx.message.caption?.trim() || "";
+
+    if (!accessControl.isAllowed(userId)) return;
+
+    setActiveChatId("telegram", chatId);
+    setChatUser(chatId, userId, "telegram");
+
+    try {
+      const video = ctx.message.video;
+      const path = await downloadTelegramFile(
+        bot,
+        video.file_id,
+        video.file_name ?? video.file_unique_id ?? video.file_id,
+        "mp4",
+      );
+      await enqueueSavedMedia(userId, chatId, "video", path, caption || undefined);
+    } catch (err) {
+      log.error("Failed to download video:", err);
+      await sendTextReply(chatId, "Video download failed.");
+    }
   });
 
   return {
