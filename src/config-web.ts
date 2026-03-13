@@ -340,8 +340,8 @@ const PAGE_HTML = String.raw`<!doctype html>
         en: {
           pageTitle: "open-im local control",
           heroBadge: "open-im local control",
-          heroTitle: "Configure fast. Start clean.",
-          heroBody: "Local-only configuration for Telegram, Feishu, WeWork, and DingTalk. No accounts. No remote state. No database.",
+          heroTitle: "Local bridge control.",
+          heroBody: "",
           langButton: "中文",
           mode: "Flow",
           platformsTitle: "Platforms",
@@ -360,7 +360,7 @@ const PAGE_HTML = String.raw`<!doctype html>
           optional: "Optional",
           commaSeparatedIds: "Comma-separated IDs",
           aiTitle: "AI Tooling",
-          aiHint: "WeChat is intentionally excluded from this first version.",
+          aiHint: "",
           claudeNote: "Claude credentials are still read from environment variables or ~/.claude/settings.json. This page manages local bridge config, not Claude account auth.",
           aiTool: "Default AI tool",
           workDir: "Default work directory",
@@ -394,8 +394,8 @@ const PAGE_HTML = String.raw`<!doctype html>
         zh: {
           pageTitle: "open-im 本地控制台",
           heroBadge: "open-im 本地控制台",
-          heroTitle: "先配清楚，再稳启动。",
-          heroBody: "本地页面配置 Telegram、飞书、企业微信和钉钉。不做账号体系，不存远端状态，不接数据库。",
+          heroTitle: "本地桥接控制台",
+          heroBody: "",
           langButton: "EN",
           mode: "流程",
           platformsTitle: "平台配置",
@@ -414,7 +414,7 @@ const PAGE_HTML = String.raw`<!doctype html>
           optional: "可选",
           commaSeparatedIds: "用逗号分隔多个 ID",
           aiTitle: "AI 工具配置",
-          aiHint: "第一版暂时不包含 WeChat。",
+          aiHint: "",
           claudeNote: "Claude 凭证仍然从环境变量或 ~/.claude/settings.json 读取。这个页面只管理本地桥接配置，不负责 Claude 账号登录。",
           aiTool: "默认 AI 工具",
           workDir: "默认工作目录",
@@ -461,11 +461,13 @@ const PAGE_HTML = String.raw`<!doctype html>
         el("heroBadge").textContent = t("heroBadge");
         el("heroTitle").textContent = t("heroTitle");
         el("heroBody").textContent = t("heroBody");
+        el("heroBody").style.display = t("heroBody") ? "block" : "none";
         el("langButton").textContent = t("langButton");
         el("platformsTitle").textContent = t("platformsTitle");
         el("platformsHint").textContent = t("platformsHint");
         el("aiTitle").textContent = t("aiTitle");
         el("aiHint").textContent = t("aiHint");
+        el("aiHint").style.display = t("aiHint") ? "block" : "none";
         el("claudeNote").childNodes[0].textContent = t("claudeNote");
         el("telegram-panel").querySelector(".toggle").lastChild.textContent = " " + t("enabled");
         el("feishu-panel").querySelector(".toggle").lastChild.textContent = " " + t("enabled");
