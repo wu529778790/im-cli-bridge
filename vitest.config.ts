@@ -1,14 +1,12 @@
-import { defineConfig } from 'vitest/config';
+import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    globals: {
-      // 可以在这里添加全局变量
-    },
+    include: ["src/**/*.test.ts"],
+    exclude: ["dist/**", "node_modules/**"],
+    globals: {},
   },
   resolve: {
-    alias: {
-      // 可以在这里添加路径别名
-    },
+    alias: {},
   },
 });
