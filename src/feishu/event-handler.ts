@@ -33,54 +33,30 @@ import { CARDKIT_THROTTLE_MS } from '../constants.js';
 import { setActiveChatId } from '../shared/active-chats.js';
 import { setChatUser } from '../shared/chat-user-map.js';
 import { createLogger } from '../logger.js';
-import { downloadMediaFromUrl } from '../shared/media-storage.js';
+import { createMediaTargetPath } from '../shared/media-storage.js';
 import { buildSavedMediaPrompt } from '../shared/media-analysis-prompt.js';
 
 const log = createLogger('FeishuHandler');
 
-async function downloadFeishuImage(client: Client, imageKey: string): Promise<string> {
-  // Get tenant access token
-  const tokenResp = await client.auth.tenantAccessToken.internal({
-    data: {
-      app_id: client.appId,
-      app_secret: client.appSecret,
+type FeishuResourceType = 'image' | 'file' | 'media';
+
+async function downloadFeishuMessageResource(
+  client: Client,
+  messageId: string,
+  fileKey: string,
+  type: FeishuResourceType,
+  options?: { basenameHint?: string; fallbackExtension?: string },
+): Promise<string> {
+  const targetPath = createMediaTargetPath(options?.fallbackExtension ?? 'bin', options?.basenameHint ?? fileKey);
+  const response = await client.im.messageResource.get({
+    params: { type },
+    path: {
+      message_id: messageId,
+      file_key: fileKey,
     },
   });
-  if (tokenResp.code !== 0 || !tokenResp.data) {
-    throw new Error(`Failed to get tenant access token: ${tokenResp.msg}`);
-  }
-  const token = (tokenResp.data as { tenant_access_token: string }).tenant_access_token;
-
-  // Get the image download URL using the correct API endpoint
-  const resourceResp = await fetch(
-    `https://open.feishu.cn/open-apis/im/v1/images/${imageKey}`,
-    {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
-  );
-
-  if (!resourceResp.ok) {
-    throw new Error(`Failed to get image resource: ${resourceResp.statusText}`);
-  }
-
-  const resourceData = await resourceResp.json();
-  if (resourceData.code !== 0) {
-    throw new Error(`Failed to get image resource: ${resourceData.msg}`);
-  }
-
-  // Download the image
-  const imageUrl = resourceData.data?.file_download_url || resourceData.data?.url;
-  if (!imageUrl) {
-    throw new Error('No image URL found in response');
-  }
-  const safeId = imageKey.replace(/[^a-zA-Z0-9_-]/g, '_');
-  return downloadMediaFromUrl(imageUrl, {
-    basenameHint: safeId.slice(-8),
-    fallbackExtension: 'jpg',
-  });
+  await response.writeFile(targetPath);
+  return targetPath;
 }
 
 /**
@@ -656,7 +632,10 @@ export function setupFeishuHandlers(
 
           let imagePath: string;
           try {
-            imagePath = await downloadFeishuImage(c, imageKey);
+            imagePath = await downloadFeishuMessageResource(c, messageId, imageKey, 'image', {
+              basenameHint: imageKey.slice(-8),
+              fallbackExtension: 'jpg',
+            });
           } catch (err) {
             log.error('Failed to download image:', err);
             sendTextReply(chatId, '图片下载失败。').catch((err) => {
@@ -678,6 +657,41 @@ export function setupFeishuHandlers(
           });
         } catch (err) {
           log.error('Error processing image message:', err);
+        }
+      } else if (msgType === 'file' || msgType === 'media') {
+        const fileKey = content.file_key as string | undefined;
+        if (!fileKey) {
+          log.warn(`[MSG] Feishu ${msgType} message missing file_key`);
+          return;
+        }
+
+        log.info(`Processing ${msgType} message from ${senderId}, file_key: ${fileKey}`);
+
+        try {
+          const { getClient } = await import('./client.js');
+          const c = getClient();
+          const fileName = (content.file_name as string | undefined) ?? (content.name as string | undefined);
+          const savedPath = await downloadFeishuMessageResource(c, messageId, fileKey, msgType, {
+            basenameHint: fileName ?? fileKey.slice(-8),
+            fallbackExtension: msgType === 'media' ? 'mp4' : 'bin',
+          });
+
+          const prompt = buildSavedMediaPrompt({
+            source: 'Feishu',
+            kind: msgType,
+            localPath: savedPath,
+          });
+
+          const workDir = sessionManager.getWorkDir(senderId);
+          const convId = sessionManager.getConvId(senderId);
+          requestQueue.enqueue(senderId, convId, prompt, async (p) => {
+            await handleAIRequest(senderId, chatId, p, workDir, convId, undefined, messageId);
+          });
+        } catch (err) {
+          log.error(`Error processing ${msgType} message:`, err);
+          sendTextReply(chatId, `${msgType} 资源下载失败。`).catch((sendErr) => {
+            log.warn(`[feishu] Failed to send ${msgType} download failed message:`, sendErr);
+          });
         }
       } else {
         log.warn(`[MSG] Unsupported message type: ${msgType}, senderId=${senderId}`);

@@ -6,7 +6,7 @@ function sanitizeName(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
-function buildTargetPath(extension: string, basenameHint?: string): string {
+export function createMediaTargetPath(extension: string, basenameHint?: string): string {
   const safeExtension = extension.startsWith(".") ? extension : `.${extension}`;
   const safeBasename = basenameHint ? sanitizeName(basenameHint) : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   return join(IMAGE_DIR, safeBasename.endsWith(safeExtension) ? safeBasename : `${safeBasename}${safeExtension}`);
@@ -18,7 +18,7 @@ export async function saveBase64Media(
   basenameHint?: string,
 ): Promise<string> {
   await mkdir(IMAGE_DIR, { recursive: true });
-  const path = buildTargetPath(extension, basenameHint);
+  const path = createMediaTargetPath(extension, basenameHint);
   await writeFile(path, Buffer.from(base64, "base64"));
   return path;
 }
@@ -45,7 +45,7 @@ export async function downloadMediaFromUrl(
     `.${options?.fallbackExtension ?? "bin"}`;
 
   const basenameHint = options?.basenameHint ?? filenameFromHeader ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const path = buildTargetPath(extension, basenameHint);
+  const path = createMediaTargetPath(extension, basenameHint);
   const buffer = Buffer.from(await response.arrayBuffer());
   await writeFile(path, buffer);
   return path;
