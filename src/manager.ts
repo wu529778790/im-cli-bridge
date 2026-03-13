@@ -1,22 +1,11 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { APP_HOME } from "./constants.js";
-import { openWebConfigUrl, startWebConfigServer } from "./config-web.js";
+import { startWebConfigServer } from "./config-web.js";
 import { removeManagerPid, removeManagerReady, writeManagerReady } from "./manager-control.js";
 import { startBackgroundService, stopBackgroundService } from "./service-control.js";
-
-const CONFIG_UI_ONCE_FILE = join(APP_HOME, ".config-ui-once");
 
 async function main(): Promise<void> {
   const web = await startWebConfigServer({ mode: "start", cwd: process.cwd(), persistent: true });
   startBackgroundService(process.cwd());
   writeManagerReady();
-
-  if (process.env.OPEN_IM_AUTO_OPEN_CONFIG_ONCE === "1" && !existsSync(CONFIG_UI_ONCE_FILE)) {
-    if (!existsSync(APP_HOME)) mkdirSync(APP_HOME, { recursive: true });
-    writeFileSync(CONFIG_UI_ONCE_FILE, "1", "utf-8");
-    openWebConfigUrl();
-  }
 
   const shutdown = async () => {
     await web.close().catch(() => {});

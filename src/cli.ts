@@ -3,24 +3,36 @@
 import { main, needsSetup, runInteractiveSetup } from "./index.js";
 import { loadConfig } from "./config.js";
 import { checkAndUpdate } from "./check-update.js";
-import { getWebConfigUrl, openWebConfigUrl, runWebConfigFlow } from "./config-web.js";
+import { getWebConfigUrl, runWebConfigFlow } from "./config-web.js";
 import { getManagerStatus, startManagerProcess, stopManagerProcess } from "./manager-control.js";
 import { stopBackgroundService } from "./service-control.js";
 
 async function ensureConfigured(mode: "init" | "start" | "dev"): Promise<boolean> {
-  const forceWeb = process.env.OPEN_IM_FORCE_WEB === "1";
+  if (mode === "init") {
+    if (!process.stdin.isTTY) {
+      console.error("CLI setup requires an interactive terminal.");
+      return false;
+    }
 
-  if (mode !== "init" && !needsSetup()) {
+    const saved = await runInteractiveSetup();
+    if (!saved) return false;
+
+    try {
+      loadConfig();
+      return true;
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      return false;
+    }
+  }
+
+  if (!needsSetup()) {
     try {
       loadConfig();
       return true;
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
     }
-  }
-
-  if (!process.stdin.isTTY && !forceWeb) {
-    return runInteractiveSetup();
   }
 
   const result = await runWebConfigFlow({ mode, cwd: process.cwd() });
@@ -53,15 +65,10 @@ async function cmdStart(): Promise<void> {
     process.exit(0);
   }
 
-  process.env.OPEN_IM_AUTO_OPEN_CONFIG_ONCE = "1";
-  try {
-    const child = await startManagerProcess(process.cwd());
-    console.log("\nopen-im started in the background.");
-    console.log(`  pid: ${child.pid}`);
-    console.log(`  config page: ${getWebConfigUrl()}`);
-  } finally {
-    delete process.env.OPEN_IM_AUTO_OPEN_CONFIG_ONCE;
-  }
+  const child = await startManagerProcess(process.cwd());
+  console.log("\nopen-im started in the background.");
+  console.log(`  pid: ${child.pid}`);
+  console.log(`  config page: ${getWebConfigUrl()}`);
 }
 
 async function cmdStop(): Promise<void> {
@@ -78,14 +85,7 @@ async function cmdStop(): Promise<void> {
 }
 
 async function cmdInit(): Promise<void> {
-  console.log("\nopen-im local control\n");
-
-  const status = getManagerStatus();
-  if (status.running && status.pid) {
-    openWebConfigUrl();
-    console.log(`Config page is already running: ${getWebConfigUrl()}`);
-    return;
-  }
+  console.log("\nopen-im CLI setup\n");
 
   const saved = await ensureConfigured("init");
   if (!saved) {
@@ -114,7 +114,7 @@ Usage: open-im <command>
 Commands:
   start    Run the full app in the background
   stop     Stop the full app
-  init     Open the local web configuration page
+  init     Run CLI setup
   dev      Run in the foreground for debugging
 
 Options:
