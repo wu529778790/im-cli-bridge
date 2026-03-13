@@ -7,11 +7,13 @@ const log = createLogger('DingTalk');
 const DINGTALK_OPENAPI_BASE = 'https://api.dingtalk.com';
 const DINGTALK_OAPI_BASE = 'https://oapi.dingtalk.com';
 const TEXT_MSG_KEY = 'sampleText';
+const DINGTALK_STREAM_HOST = 'wss-open-connection.dingtalk.com';
 
 let client: DWClient | null = null;
 let messageHandler: ((data: DWClientDownStream) => Promise<void>) | null = null;
 const sessionWebhookByChat = new Map<string, string>();
 const unionIdByUserId = new Map<string, string>();
+let dingtalkWarnFilterInstalled = false;
 
 export interface DingTalkStreamingTarget {
   chatId: string;
@@ -19,6 +21,42 @@ export interface DingTalkStreamingTarget {
   senderStaffId?: string;
   senderId?: string;
   robotCode?: string;
+}
+
+type NodeLikeError = Error & {
+  code?: string;
+  host?: string;
+  port?: number;
+};
+
+export function shouldSuppressDingTalkSocketWarn(args: unknown[]): boolean {
+  if (args.length < 2 || args[0] !== 'ERROR') return false;
+  const err = args[1];
+  if (!(err instanceof Error)) return false;
+
+  const socketError = err as NodeLikeError;
+  return (
+    socketError.code === 'ECONNRESET' &&
+    socketError.host === DINGTALK_STREAM_HOST &&
+    socketError.port === 443
+  );
+}
+
+function installDingTalkSocketWarnFilter(): void {
+  if (dingtalkWarnFilterInstalled) return;
+
+  const originalWarn = console.warn.bind(console);
+  console.warn = (...args: unknown[]) => {
+    if (shouldSuppressDingTalkSocketWarn(args)) {
+      const err = args[1] as NodeLikeError;
+      log.warn(
+        `DingTalk stream socket reset before TLS handshake; waiting for SDK auto-reconnect (${err.code ?? 'UNKNOWN'} ${err.host ?? 'unknown-host'}:${err.port ?? 0})`,
+      );
+      return;
+    }
+    originalWarn(...args);
+  };
+  dingtalkWarnFilterInstalled = true;
 }
 
 function getClient(): DWClient {
@@ -307,6 +345,7 @@ export async function initDingTalk(
   }
 
   messageHandler = eventHandler;
+  installDingTalkSocketWarnFilter();
   client = new DWClient({
     clientId: cfg.dingtalkClientId,
     clientSecret: cfg.dingtalkClientSecret,

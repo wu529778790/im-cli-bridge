@@ -301,40 +301,126 @@ export function openWebConfigUrl(): void {
   openBrowser(getWebConfigUrl());
 }
 
-const PAGE_HTML = String.raw`<!doctype html>
+const LEGACY_PAGE_HTML = String.raw`<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>open-im local control</title>
     <style>
-      :root{--bg:#f2ead8;--panel:rgba(255,251,242,.9);--ink:#13231a;--muted:#56675f;--line:rgba(19,35,26,.12);--green:#1a6a44;--orange:#cf6f31;--red:#9d4236}
-      *{box-sizing:border-box}body{margin:0;font-family:Georgia,"Times New Roman",serif;color:var(--ink);background:linear-gradient(135deg,#ebe1ce,#f8f3e9)}
-      .shell{padding:24px 16px 40px}.frame{max-width:1180px;margin:0 auto;background:var(--panel);border:1px solid var(--line);box-shadow:0 28px 70px rgba(19,35,26,.14)}
-      .hero,.toolbar,.section,.footer{padding:20px 22px;border-bottom:1px solid var(--line)}.hero{background:linear-gradient(120deg,rgba(19,35,26,.96),rgba(26,106,68,.92));color:#f7f0df}
-      .hero h1,.hero p{margin:0}.hero h1{font-size:clamp(2rem,4vw,3.4rem);line-height:.95}.hero p{margin-top:12px;max-width:720px}
-      .pill{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.62);font-size:.9rem}
+      :root{--bg:#e6dfd0;--panel:rgba(255,251,242,.94);--panel-strong:#fffdf7;--ink:#13231a;--muted:#56675f;--line:rgba(19,35,26,.12);--line-strong:rgba(19,35,26,.2);--green:#1a6a44;--green-deep:#10291d;--orange:#cf6f31;--red:#9d4236;--shadow:0 28px 70px rgba(19,35,26,.14);--shadow-soft:0 14px 30px rgba(19,35,26,.08)}
+      *{box-sizing:border-box}body{margin:0;font-family:Georgia,"Times New Roman",serif;color:var(--ink);background:radial-gradient(circle at top,#f4eddf 0,#e5ddce 42%,#ddd4c3 100%)}
+      .shell{padding:0}.frame{max-width:none;margin:0;background:var(--panel);border:0;box-shadow:none;display:grid;grid-template-columns:300px minmax(0,1fr);position:relative;overflow:visible;align-items:start;min-height:100vh}
+      .sidebar{grid-column:1;position:sticky;top:0;align-self:start;display:flex;flex-direction:column;background:linear-gradient(180deg,rgba(16,41,29,.995),rgba(19,35,26,.96));border-right:1px solid rgba(255,255,255,.08);height:100vh}
+      .main-column{grid-column:2;min-width:0}
+      .hero,.toolbar,.section,.footer,.nav-row{padding:24px;border-bottom:1px solid var(--line)}.hero{padding:30px 24px 28px;background:
+        radial-gradient(circle at top left,rgba(242,224,178,.16),transparent 38%),
+        linear-gradient(160deg,rgba(16,41,29,.99),rgba(26,106,68,.92));
+        color:#f7f0df;border-bottom:1px solid rgba(255,255,255,.08);min-height:0;position:relative}
+      .hero:after{content:"";position:absolute;inset:auto 22px 18px 22px;height:1px;background:linear-gradient(90deg,rgba(247,240,223,.35),transparent)}
+      .hero h1,.hero p{margin:0}.hero h1{font-size:clamp(2.4rem,4vw,3.5rem);line-height:.92;letter-spacing:-.05em;margin-top:10px}.hero p{margin-top:16px;max-width:720px;color:rgba(247,240,223,.78);line-height:1.65}
+      .pill{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.72);font-size:.9rem}#heroBadge{background:rgba(247,240,223,.08);border-color:rgba(247,240,223,.16);color:#f7f0df}
       .toolbar,.grid,.two-col,.footer,.actions{display:grid;gap:14px}.status-row{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between}.status-group{display:flex;flex-wrap:wrap;gap:10px}.grid{grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
-      .panel{padding:16px;border:1px solid var(--line);background:rgba(255,255,255,.46);transition:opacity .18s ease,transform .18s ease}.panel.off{opacity:.58}.panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
-      h2,h3{margin:0}label{display:grid;gap:6px;color:var(--muted);font-size:.92rem}input,select,textarea{width:100%;padding:11px 12px;border:1px solid rgba(19,35,26,.14);background:rgba(255,255,255,.84);font:inherit;color:var(--ink)}
+      .panel{padding:18px;border:1px solid var(--line);background:rgba(255,255,255,.56);box-shadow:var(--shadow-soft);transition:opacity .18s ease,transform .18s ease,border-color .18s ease}.panel:hover{transform:translateY(-1px);border-color:var(--line-strong)}.panel.off{opacity:.58}.panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}.panel-head h3{color:#304338}
+      h2,h3{margin:0}h2{font-size:1.55rem;letter-spacing:-.03em}h3{font-size:1.1rem}label{display:grid;gap:6px;color:var(--muted);font-size:.92rem}input,select,textarea{width:100%;padding:11px 12px;border:1px solid rgba(19,35,26,.14);background:rgba(255,255,255,.9);font:inherit;color:var(--ink)}
+      .section > .panel-head:first-child h2,.footer > .panel-head:first-child h2{position:relative;padding-left:14px}
+      .section > .panel-head:first-child h2:before,.footer > .panel-head:first-child h2:before{content:"";position:absolute;left:0;top:4px;bottom:4px;width:4px;border-radius:999px;background:var(--green)}
       textarea{min-height:74px;resize:vertical}.two-col{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}.toggle{display:inline-flex;align-items:center;gap:10px;color:var(--ink)}.toggle input{width:18px;height:18px}
-      .actions{display:flex;flex-wrap:wrap;gap:10px}button{border:0;padding:12px 16px;font:inherit;cursor:pointer;color:#fff7eb;background:var(--ink)}button.secondary{background:var(--green)}button.warning{background:var(--orange)}button.danger{background:var(--red)}button.ghost{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.28)}button:disabled{opacity:.5;cursor:wait}
-      .message{min-height:24px;color:var(--muted)}.message.success{color:var(--green)}.message.error{color:var(--red)}.mono{font-family:Consolas,monospace}.summary{color:var(--muted)}.note{border-left:4px solid var(--orange)}
+      .actions{display:flex;flex-wrap:wrap;gap:10px}button{border:0;padding:12px 16px;font:inherit;cursor:pointer;color:#fff7eb;background:var(--ink);transition:transform .16s ease,opacity .16s ease,box-shadow .16s ease}button:hover{transform:translateY(-1px);box-shadow:0 10px 18px rgba(19,35,26,.14)}button.secondary{background:var(--green)}button.warning{background:var(--orange)}button.danger{background:var(--red)}button.ghost{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.28);box-shadow:none}.overview-banner button{min-width:148px}.overview-banner button.secondary{box-shadow:0 12px 22px rgba(26,106,68,.2)}.overview-banner button:not(.secondary):not(.warning){background:rgba(19,35,26,.86)}.overview-banner button.warning{color:#fff7eb}button.nav-btn{width:100%;justify-content:flex-start;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);padding:13px 14px;color:rgba(247,240,223,.78);box-shadow:none;position:relative}button.nav-btn:before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:999px;background:transparent;transition:background .16s ease}button.nav-btn.active{background:rgba(247,240,223,.95);color:var(--ink);border-color:rgba(247,240,223,.95)}button.nav-btn.active:before{background:var(--green)}button:disabled{opacity:.5;cursor:wait;transform:none;box-shadow:none}
+      .message{min-height:24px;color:var(--muted)}.message.success{color:var(--green)}.message.error{color:var(--red)}.mono{font-family:Consolas,monospace}.summary{color:var(--muted)}.note{border-left:4px solid var(--orange)}.nav-row{background:transparent;border-bottom:0;padding-top:12px;position:relative;display:flex;flex-direction:column;flex:1;min-height:0}
+      .nav-row .actions{display:grid;gap:8px}
+      .nav-group-label{font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:rgba(247,240,223,.42);margin:0 0 12px 2px}
+      .sidebar-note{margin-top:18px;padding:14px;border:1px solid rgba(255,255,255,.08);background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.03));border-radius:14px;color:rgba(247,240,223,.86)}.sidebar-note strong{display:block;margin-bottom:8px;font-size:.96rem}.sidebar-note .summary{color:rgba(247,240,223,.66);line-height:1.58;font-size:.92rem}
+      .brand-kicker{font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:rgba(247,240,223,.52);margin-top:20px}
+      .brand-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:0}
+      .sidebar-spacer{flex:1}
+      .sidebar-footer{padding:0 24px 24px}
+      .link-chip{display:flex;align-items:center;justify-content:space-between;width:100%;padding:14px 16px;border:1px solid rgba(255,255,255,.1);border-radius:16px;color:#f7f0df;text-decoration:none;background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.02));transition:transform .16s ease,background .16s ease,border-color .16s ease}
+      .link-chip:hover{transform:translateY(-1px);background:linear-gradient(180deg,rgba(255,255,255,.1),rgba(255,255,255,.04));border-color:rgba(255,255,255,.18)}
+      .link-chip:after{content:">";font-size:1rem;color:rgba(247,240,223,.72)}
+      .overview-banner{padding:20px 22px;border:1px solid rgba(26,106,68,.16);background:linear-gradient(135deg,rgba(26,106,68,.14),rgba(255,255,255,.58));margin-bottom:18px;position:relative;overflow:hidden}.overview-banner:after{content:"";position:absolute;top:-40px;right:-10px;width:160px;height:160px;border-radius:50%;background:radial-gradient(circle,rgba(242,224,178,.28),transparent 65%)}.overview-banner h3{margin-bottom:8px;position:relative}.overview-banner .summary,.overview-banner .actions{position:relative}.overview-banner .actions{margin-top:14px}
+      .stats-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:16px}
+      .stat-card{padding:18px;border:1px solid var(--line);background:var(--panel-strong);box-shadow:var(--shadow-soft)}
+      .stat-label{font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+      .stat-value{margin-top:10px;font-size:2rem;line-height:1;font-weight:700;letter-spacing:-.05em}
+      .stat-meta{margin-top:8px;color:var(--muted);font-size:.92rem}
+      #healthGrid .panel{background:rgba(255,255,255,.68)}
+      #healthGrid .panel.off{background:rgba(255,255,255,.38);border-style:dashed}
+      #healthGrid .pill{font-size:.82rem;font-weight:700}
+      #configSection .panel,#aiSection .panel,#serviceSection{background:rgba(255,253,247,.82)}
+      #configSection .panel-head,#aiSection .panel-head,#serviceSection .panel-head{margin-bottom:14px}
+      #configSection .panel .summary,#aiSection .panel .summary{line-height:1.58}
+      #serviceSection .actions{grid-template-columns:repeat(auto-fit,minmax(170px,1fr));align-items:stretch}
+      #startButton{background:var(--green);box-shadow:0 12px 22px rgba(26,106,68,.18)}
+      #saveButton{background:rgba(19,35,26,.88)}
+      #validateButton{background:rgba(207,111,49,.92)}
+      #stopButton{background:rgba(157,66,54,.92)}
+      #quickActionsSection,#configToolbar,#configSection,#aiSection,#serviceSection{border-top:1px solid var(--line)}
+      @media (max-width:980px){.frame{grid-template-columns:1fr}.sidebar,.main-column{grid-column:1;grid-row:auto}.sidebar{position:static;height:auto;border-right:0}.hero,.nav-row{border-right:0}.nav-row{padding-top:16px}.sidebar-footer{padding:0 24px 24px}.stats-grid{grid-template-columns:1fr}}
     </style>
   </head>
   <body>
     <div class="shell">
       <div class="frame">
+        <aside class="sidebar">
         <section class="hero">
           <div class="status-row">
-            <div class="pill" id="heroBadge">open-im local control</div>
+            <div class="pill" id="heroBadge">open-im</div>
             <button id="langButton" class="ghost" type="button">中文</button>
           </div>
-          <h1 id="heroTitle">Configure fast. Start clean.</h1>
-          <p id="heroBody">Local-only configuration for Telegram, Feishu, WeWork, and DingTalk. No accounts. No remote state. No database.</p>
+          <div class="brand-kicker" id="heroKicker">Local AI bridge</div>
+          <h1 id="heroTitle">open-im</h1>
+          <p id="heroBody">Run one local bridge for Telegram, Feishu, QQ, WeWork, and DingTalk.</p>
         </section>
+        <section class="nav-row">
+          <div class="nav-group-label">Control center</div>
+          <div class="actions">
+            <button id="navOverviewBtn" class="nav-btn" type="button">Overview</button>
+            <button id="navPlatformsBtn" class="nav-btn" type="button">Platforms</button>
+            <button id="navAiBtn" class="nav-btn" type="button">AI Tools</button>
+            <button id="navServiceBtn" class="nav-btn" type="button">Service</button>
+          </div>
+          <article class="sidebar-note">
+            <strong id="sidebarNoteTitle">Local workflow</strong>
+            <div class="summary" id="sidebarNoteBody">Configure one platform, save the config, then start the bridge.</div>
+          </article>
+        </section>
+        <div class="sidebar-spacer"></div>
+        <div class="sidebar-footer">
+          <div class="brand-actions">
+            <a id="heroRepo" class="link-chip" href="https://github.com/wu529778790/open-im" target="_blank" rel="noreferrer">GitHub</a>
+          </div>
+        </div>
+        </aside>
+        <main class="main-column">
         <section class="section" id="dashboardSection">
           <div class="panel-head"><h2 id="dashboardTitle">Dashboard</h2><div id="dashboardSubtitle">Platform health status</div></div>
+          <article class="panel overview-banner">
+            <h3 id="overviewTitle">Start here</h3>
+            <div class="summary" id="overviewBody">Configure at least one platform, save the configuration, then start the bridge from the service section.</div>
+            <div class="actions">
+              <button id="dashboardToPlatforms" class="secondary" type="button">Open Platforms</button>
+              <button id="dashboardToService" class="ghost" type="button">Open Service</button>
+              <button id="refreshHealth" class="warning" type="button">Refresh Health Status</button>
+            </div>
+          </article>
+          <div class="stats-grid">
+            <article class="stat-card">
+              <div class="stat-label" id="statConfiguredLabel">Configured</div>
+              <div class="stat-value" id="statConfiguredValue">0/5</div>
+              <div class="stat-meta" id="statConfiguredMeta">Platforms with saved credentials</div>
+            </article>
+            <article class="stat-card">
+              <div class="stat-label" id="statEnabledLabel">Enabled</div>
+              <div class="stat-value" id="statEnabledValue">0</div>
+              <div class="stat-meta" id="statEnabledMeta">Platforms selected for startup</div>
+            </article>
+            <article class="stat-card">
+              <div class="stat-label" id="statServiceLabel">Service</div>
+              <div class="stat-value" id="statServiceValue">Idle</div>
+              <div class="stat-meta" id="statServiceMeta">Bridge has not been started yet</div>
+            </article>
+          </div>
           <div class="grid" id="healthGrid" style="margin-top:16px;">
             <article class="panel" id="health-telegram">
               <div class="panel-head"><h3>Telegram</h3><div class="pill" id="health-telegram-status">Checking...</div></div>
@@ -358,16 +444,10 @@ const PAGE_HTML = String.raw`<!doctype html>
             </article>
           </div>
         </section>
-        <section class="section" id="quickActionsSection" style="margin-top:16px;">
+        <section class="section" id="quickActionsSection" style="display:none;">
           <div class="panel-head"><h2 id="quickActionsTitle">Quick Actions</h2></div>
-          <div class="actions" style="margin-top:16px;">
-            <button id="refreshHealth" class="secondary">Refresh Health Status</button>
-            <button id="viewConfig" class="secondary">View Configuration</button>
-            <button id="startFromDashboard">Start Service</button>
-            <button id="stopFromDashboard" class="danger">Stop Service</button>
-          </div>
         </section>
-        <section class="toolbar" style="display:none;" id="configToolbar">
+        <section class="toolbar" id="configToolbar">
           <div class="status-group">
             <div class="pill mono" id="configPath"></div>
             <div class="pill" id="serviceState"></div>
@@ -376,7 +456,7 @@ const PAGE_HTML = String.raw`<!doctype html>
           <div id="statusMeta"></div>
           <div class="summary" id="liveSummary"></div>
         </section>
-        <section class="section" id="configSection" style="display:none;">
+        <section class="section" id="configSection">
           <div class="panel-head"><h2 id="platformsTitle">Platforms</h2><div id="platformsHint">Disabled platforms keep their saved values.</div></div>
           <div class="grid">
             <article class="panel" id="telegram-panel">
@@ -422,7 +502,7 @@ const PAGE_HTML = String.raw`<!doctype html>
             </article>
           </div>
         </section>
-        <section class="section">
+        <section class="section" id="aiSection">
           <div class="panel-head"><h2 id="aiTitle">AI Tooling</h2><div id="aiHint">WeChat is intentionally excluded from this first version.</div></div>
           <article class="panel note" id="claudeNote">Claude credentials are still read from environment variables or ~/.claude/settings.json. This page manages local bridge config, not Claude account auth.</article>
           <article class="panel">
@@ -444,7 +524,8 @@ const PAGE_HTML = String.raw`<!doctype html>
             </div>
           </article>
         </section>
-        <section class="footer">
+        <section class="footer" id="serviceSection">
+          <div class="panel-head"><h2 id="serviceTitle">Service Control</h2><div id="serviceHint">Validate, save, start, and stop the local bridge from one place.</div></div>
           <div class="actions">
             <button id="validateButton" class="warning">Validate</button>
             <button id="saveButton" class="secondary">Save config</button>
@@ -453,6 +534,7 @@ const PAGE_HTML = String.raw`<!doctype html>
           </div>
           <div class="message" id="message"></div>
         </section>
+        </main>
       </div>
     </div>
     <script>
@@ -470,6 +552,8 @@ const PAGE_HTML = String.raw`<!doctype html>
           dashboardTitle: "Dashboard",
           dashboardSubtitle: "Platform health status",
           quickActionsTitle: "Quick Actions",
+          serviceTitle: "Service Control",
+          serviceHint: "Validate, save, start, and stop the local bridge from one place.",
           refreshHealth: "Refresh Health Status",
           viewConfig: "View Configuration",
           healthChecking: "Checking...",
@@ -539,7 +623,7 @@ const PAGE_HTML = String.raw`<!doctype html>
         },
         zh: {
           pageTitle: "open-im 本地控制台",
-          heroBadge: "open-im 本地控制台",
+          heroBadge: "open-im",
           heroTitle: "本地桥接控制台",
           heroBody: "",
           langButton: "EN",
@@ -616,19 +700,35 @@ const PAGE_HTML = String.raw`<!doctype html>
       let currentLang = (localStorage.getItem(storageKey) || "").startsWith("zh") ? "zh" : ((navigator.language || "").startsWith("zh") ? "zh" : "en");
       const t = (key, params={}) => {
         const source = texts[currentLang] || texts.en;
-        return Object.keys(params).reduce((result, name) => result.replaceAll("{" + name + "}", String(params[name])), source[key] || key);
+        const template = source[key] || texts.en[key] || key;
+        return Object.keys(params).reduce((result, name) => result.replaceAll("{" + name + "}", String(params[name])), template);
       };
       const setMessage = (text, type="") => { const node = el("message"); node.textContent = text; node.className = ("message " + type).trim(); };
       const setBusy = (busy) => ["validateButton","saveButton","startButton","stopButton","langButton"].forEach((id) => { el(id).disabled = busy; });
       function applyLanguage(meta) {
         if (meta) currentMeta = meta;
-        document.documentElement.lang = currentLang === "zh" ? "zh-CN" : "en";
+        const isZh = currentLang === "zh";
+        document.documentElement.lang = isZh ? "zh-CN" : "en";
         document.title = t("pageTitle");
-        el("heroBadge").textContent = t("heroBadge");
-        el("heroTitle").textContent = t("heroTitle");
-        el("heroBody").textContent = t("heroBody");
-        el("heroBody").style.display = t("heroBody") ? "block" : "none";
+        el("heroBadge").textContent = "open-im";
+        el("heroTitle").textContent = currentLang === "zh" ? "本地桥接控制台" : "Local bridge control";
+        el("heroBody").textContent = currentLang === "zh"
+          ? "先完成平台配置，再保存并启动本地桥接服务。"
+          : "Configure platforms first, then save and start the local bridge service.";
+        el("heroBody").style.display = "block";
+        el("heroKicker").textContent = isZh ? "本地 AI 桥接" : "Local AI bridge";
+        el("heroTitle").textContent = "open-im";
+        el("heroBody").textContent = isZh
+          ? "一个本地桥接入口，统一连接 Telegram、Feishu、QQ、WeWork 和 DingTalk。"
+          : "One local bridge for Telegram, Feishu, QQ, WeWork, and DingTalk.";
+        el("heroBody").style.display = "block";
+        el("heroRepo").textContent = "GitHub";
         el("langButton").textContent = t("langButton");
+        document.querySelector(".nav-group-label").textContent = currentLang === "zh" ? "控制中心" : "Control center";
+        el("sidebarNoteTitle").textContent = currentLang === "zh" ? "本地工作流" : "Local workflow";
+        el("sidebarNoteBody").textContent = currentLang === "zh"
+          ? "至少配置一个平台，保存配置，然后到服务控制区启动桥接。"
+          : "Configure at least one platform, save the config, then start the bridge from Service.";
         el("platformsTitle").textContent = t("platformsTitle");
         el("platformsHint").textContent = t("platformsHint");
         el("aiTitle").textContent = t("aiTitle");
@@ -710,13 +810,27 @@ const PAGE_HTML = String.raw`<!doctype html>
         if (currentMeta) {
           el("modeBadge").textContent = t("mode") + ": " + currentMeta.mode;
         }
-        el("dashboardTitle").textContent = t("dashboardTitle");
-        el("dashboardSubtitle").textContent = t("dashboardSubtitle");
+        el("dashboardTitle").textContent = currentLang === "zh" ? "总览" : "Overview";
+        el("dashboardSubtitle").textContent = currentLang === "zh" ? "平台状态与接入进度" : "Platform status and setup progress";
         el("quickActionsTitle").textContent = t("quickActionsTitle");
+        el("serviceTitle").textContent = t("serviceTitle");
+        el("serviceHint").textContent = t("serviceHint");
+        el("overviewTitle").textContent = currentLang === "zh" ? "先完成基础配置" : "Start here";
+        el("overviewBody").textContent = currentLang === "zh"
+          ? "先配置至少一个平台，保存本地配置，然后到服务控制区启动桥接。"
+          : "Configure at least one platform, save the configuration, then start the bridge from the service section.";
+        el("dashboardToPlatforms").textContent = currentLang === "zh" ? "打开平台配置" : "Open Platforms";
+        el("dashboardToService").textContent = currentLang === "zh" ? "打开服务控制" : "Open Service";
         el("refreshHealth").textContent = t("refreshHealth");
-        el("viewConfig").textContent = t("viewConfig");
-        el("startFromDashboard").textContent = t("start");
-        el("stopFromDashboard").textContent = t("stop");
+        el("statConfiguredLabel").textContent = currentLang === "zh" ? "已配置" : "Configured";
+        el("statConfiguredMeta").textContent = currentLang === "zh" ? "已填写凭据的平台数量" : "Platforms with saved credentials";
+        el("statEnabledLabel").textContent = currentLang === "zh" ? "已启用" : "Enabled";
+        el("statEnabledMeta").textContent = currentLang === "zh" ? "将随服务启动的平台数量" : "Platforms selected for startup";
+        el("statServiceLabel").textContent = currentLang === "zh" ? "服务" : "Service";
+        el("navOverviewBtn").textContent = t("dashboardTitle");
+        el("navPlatformsBtn").textContent = t("platformsTitle");
+        el("navAiBtn").textContent = t("aiTitle");
+        el("navServiceBtn").textContent = t("serviceTitle");
       }
       function updateVisualState() {
         const enabled = [];
@@ -735,8 +849,11 @@ const PAGE_HTML = String.raw`<!doctype html>
           const data = await request("/api/health");
           const platforms = data.platforms || {};
           const serviceStatus = data.serviceStatus || {};
+          const platformKeys = ["telegram","feishu","qq","wework","dingtalk"];
+          let configuredCount = 0;
+          let enabledCount = 0;
 
-          ["telegram","feishu","qq","wework","dingtalk"].forEach((platform) => {
+          platformKeys.forEach((platform) => {
             const statusDiv = el("health-" + platform + "-status");
             const messageDiv = el("health-" + platform + "-message");
             const panelDiv = el("health-" + platform);
@@ -744,6 +861,8 @@ const PAGE_HTML = String.raw`<!doctype html>
             if (!statusDiv || !messageDiv || !panelDiv) return;
 
             const platformData = platforms[platform] || {};
+            if (platformData.configured) configuredCount += 1;
+            if (platformData.enabled) enabledCount += 1;
             let statusText = "";
             let statusClass = "";
             let messageText = platformData.message || "";
@@ -780,23 +899,33 @@ const PAGE_HTML = String.raw`<!doctype html>
           });
 
           // 更新服务状态
-          if (serviceStatus.running) {
-            el("serviceState")?.remove();
-          }
+          el("statConfiguredValue").textContent = configuredCount + "/" + platformKeys.length;
+          el("statEnabledValue").textContent = String(enabledCount);
+          el("statServiceValue").textContent = serviceStatus.running
+            ? (currentLang === "zh" ? "运行中" : "Running")
+            : (currentLang === "zh" ? "未启动" : "Idle");
+          el("statServiceMeta").textContent = serviceStatus.running
+            ? (currentLang === "zh" ? "本地桥接进程正在运行" : "Local bridge process is active")
+            : (currentLang === "zh" ? "桥接服务尚未启动" : "Bridge has not been started yet");
         } catch (error) {
           console.error("Failed to update dashboard:", error);
         }
       }
+      function setActiveNav(target) {
+        ["navOverviewBtn","navPlatformsBtn","navAiBtn","navServiceBtn"].forEach((id) => {
+          el(id)?.classList.toggle("active", id === target);
+        });
+      }
+      function scrollToSection(id, navId) {
+        document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        setActiveNav(navId);
+      }
       function showDashboard() {
-        el("configSection").style.display = "none";
-        el("configToolbar").style.display = "none";
-        el("dashboardSection").style.display = "block";
+        scrollToSection("dashboardSection", "navOverviewBtn");
         updateDashboard();
       }
       function showConfig() {
-        el("dashboardSection").style.display = "none";
-        el("configSection").style.display = "block";
-        el("configToolbar").style.display = "block";
+        scrollToSection("configSection", "navPlatformsBtn");
       }
       const payload = () => ({ platforms: { telegram: { enabled: el("telegram-enabled").checked, botToken: el("telegram-botToken").value, proxy: el("telegram-proxy").value, allowedUserIds: el("telegram-allowedUserIds").value }, feishu: { enabled: el("feishu-enabled").checked, appId: el("feishu-appId").value, appSecret: el("feishu-appSecret").value, allowedUserIds: el("feishu-allowedUserIds").value }, qq: { enabled: el("qq-enabled").checked, appId: el("qq-appId").value, secret: el("qq-secret").value, allowedUserIds: el("qq-allowedUserIds").value }, wework: { enabled: el("wework-enabled").checked, corpId: el("wework-corpId").value, secret: el("wework-secret").value, allowedUserIds: el("wework-allowedUserIds").value }, dingtalk: { enabled: el("dingtalk-enabled").checked, clientId: el("dingtalk-clientId").value, clientSecret: el("dingtalk-clientSecret").value, cardTemplateId: el("dingtalk-cardTemplateId").value, allowedUserIds: el("dingtalk-allowedUserIds").value } }, ai: { aiCommand: el("ai-aiCommand").value, claudeCliPath: el("ai-claudeCliPath").value, claudeWorkDir: el("ai-claudeWorkDir").value, claudeSkipPermissions: el("ai-claudeSkipPermissions").checked, claudeTimeoutMs: Number(el("ai-claudeTimeoutMs").value || "0"), claudeModel: el("ai-claudeModel").value, cursorCliPath: el("ai-cursorCliPath").value, codexCliPath: el("ai-codexCliPath").value, codexProxy: el("ai-codexProxy").value, hookPort: Number(el("ai-hookPort").value || "0"), logLevel: el("ai-logLevel").value, useSdkMode: el("ai-useSdkMode").checked } });
       async function request(path, options={}) { const response = await fetch(path, { headers: { "content-type": "application/json" }, ...options }); const body = await response.json(); if (!response.ok) throw new Error(body.error || "Request failed"); return body; }
@@ -809,7 +938,7 @@ const PAGE_HTML = String.raw`<!doctype html>
           const data = await request("/api/config");
           fill(data.payload, data.meta);
           await refreshStatus();
-          showDashboard();
+          setActiveNav("navOverviewBtn");
           await updateDashboard();
           setMessage(t("ready"), "success");
         } catch (error) {
@@ -910,13 +1039,18 @@ const PAGE_HTML = String.raw`<!doctype html>
         }
       });
       el("refreshHealth").onclick = () => { updateDashboard(); };
-      el("viewConfig").onclick = () => { showConfig(); };
-      el("startFromDashboard").onclick = startService;
-      el("stopFromDashboard").onclick = stopService;
+      el("dashboardToPlatforms").onclick = () => { showConfig(); };
+      el("dashboardToService").onclick = () => { scrollToSection("serviceSection", "navServiceBtn"); };
+      el("navOverviewBtn").onclick = () => showDashboard();
+      el("navPlatformsBtn").onclick = () => showConfig();
+      el("navAiBtn").onclick = () => scrollToSection("aiSection", "navAiBtn");
+      el("navServiceBtn").onclick = () => scrollToSection("serviceSection", "navServiceBtn");
       boot();
     </script>
   </body>
 </html>`;
+
+const PAGE_HTML = LEGACY_PAGE_HTML;
 
 export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: string; persistent?: boolean }): Promise<StartedWebConfigServer> {
   let timer: NodeJS.Timeout | null = null;
@@ -993,47 +1127,61 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
       }
 
       if (request.method === "GET" && requestUrl.pathname === "/api/health") {
-        const config = loadConfig();
+        const file = loadFileConfig();
+        const fileTelegram = file.platforms?.telegram;
+        const fileFeishu = file.platforms?.feishu;
+        const fileQQ = file.platforms?.qq;
+        const fileWework = file.platforms?.wework;
+        const fileDingtalk = file.platforms?.dingtalk;
+        const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN ?? fileTelegram?.botToken ?? file.telegramBotToken;
+        const feishuAppId = process.env.FEISHU_APP_ID ?? fileFeishu?.appId ?? file.feishuAppId;
+        const feishuAppSecret = process.env.FEISHU_APP_SECRET ?? fileFeishu?.appSecret ?? file.feishuAppSecret;
+        const qqAppId = process.env.QQ_APP_ID ?? fileQQ?.appId;
+        const qqSecret = process.env.QQ_SECRET ?? fileQQ?.secret;
+        const weworkCorpId = process.env.WEWORK_CORP_ID ?? fileWework?.corpId;
+        const weworkSecret = process.env.WEWORK_SECRET ?? fileWework?.secret;
+        const dingtalkClientId = process.env.DINGTALK_CLIENT_ID ?? fileDingtalk?.clientId;
+        const dingtalkClientSecret = process.env.DINGTALK_CLIENT_SECRET ?? fileDingtalk?.clientSecret;
         const platforms: Record<string, { configured: boolean; enabled: boolean; healthy: boolean; message?: string }> = {};
 
         // 检查 Telegram
         platforms.telegram = {
-          configured: !!config.telegramBotToken,
-          enabled: config.enabledPlatforms.includes("telegram"),
-          healthy: !!config.telegramBotToken,
-          message: config.telegramBotToken ? "Token configured" : "Token not configured"
+          configured: !!telegramBotToken,
+          enabled: !!telegramBotToken && fileTelegram?.enabled !== false,
+          healthy: !!telegramBotToken,
+          message: telegramBotToken ? "Token configured" : "Token not configured"
         };
 
         // 检查 Feishu
         platforms.feishu = {
-          configured: !!(config.feishuAppId && config.feishuAppSecret),
-          enabled: config.enabledPlatforms.includes("feishu"),
-          healthy: !!(config.feishuAppId && config.feishuAppSecret),
-          message: (config.feishuAppId && config.feishuAppSecret) ? "App ID and Secret configured" : "Missing credentials"
+          configured: !!(feishuAppId && feishuAppSecret),
+          enabled: !!(feishuAppId && feishuAppSecret) && fileFeishu?.enabled !== false,
+          healthy: !!(feishuAppId && feishuAppSecret),
+          message: (feishuAppId && feishuAppSecret) ? "App ID and Secret configured" : "Missing credentials"
         };
 
         // 检查 QQ
         platforms.qq = {
-          configured: !!(config.qqAppId && config.qqSecret),
-          enabled: config.enabledPlatforms.includes("qq"),
-          healthy: !!(config.qqAppId && config.qqSecret),
-          message: (config.qqAppId && config.qqSecret) ? "App ID and Secret configured" : "Missing credentials"
+          configured: !!(qqAppId && qqSecret),
+          enabled: !!(qqAppId && qqSecret) && fileQQ?.enabled !== false,
+          healthy: !!(qqAppId && qqSecret),
+          message: (qqAppId && qqSecret) ? "App ID and Secret configured" : "Missing credentials"
         };
 
         // 检查 WeWork
         platforms.wework = {
-          configured: !!(config.weworkCorpId && config.weworkSecret),
-          enabled: config.enabledPlatforms.includes("wework"),
-          healthy: !!(config.weworkCorpId && config.weworkSecret),
-          message: (config.weworkCorpId && config.weworkSecret) ? "Corp ID and Secret configured" : "Missing credentials"
+          configured: !!(weworkCorpId && weworkSecret),
+          enabled: !!(weworkCorpId && weworkSecret) && fileWework?.enabled !== false,
+          healthy: !!(weworkCorpId && weworkSecret),
+          message: (weworkCorpId && weworkSecret) ? "Corp ID and Secret configured" : "Missing credentials"
         };
 
         // 检查 DingTalk
         platforms.dingtalk = {
-          configured: !!(config.dingtalkClientId && config.dingtalkClientSecret),
-          enabled: config.enabledPlatforms.includes("dingtalk"),
-          healthy: !!(config.dingtalkClientId && config.dingtalkClientSecret),
-          message: (config.dingtalkClientId && config.dingtalkClientSecret) ? "Client ID and Secret configured" : "Missing credentials"
+          configured: !!(dingtalkClientId && dingtalkClientSecret),
+          enabled: !!(dingtalkClientId && dingtalkClientSecret) && fileDingtalk?.enabled !== false,
+          healthy: !!(dingtalkClientId && dingtalkClientSecret),
+          message: (dingtalkClientId && dingtalkClientSecret) ? "Client ID and Secret configured" : "Missing credentials"
         };
 
         json(response, 200, { platforms, serviceStatus: getServiceStatus() });
