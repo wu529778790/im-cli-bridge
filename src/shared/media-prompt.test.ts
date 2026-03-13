@@ -16,4 +16,15 @@ describe("buildMediaMetadataPrompt", () => {
     expect(prompt).toContain("Available metadata:");
     expect(prompt).toContain("https://example.com/a.png");
   });
+
+  it("uses audio-specific fallback guidance", () => {
+    const prompt = buildMediaMetadataPrompt({
+      source: "DingTalk",
+      kind: "voice",
+      metadata: { duration: 10 },
+    });
+
+    expect(prompt).toContain("transcript");
+    expect(prompt).toContain("Telegram/Feishu/WeWork");
+  });
 });
