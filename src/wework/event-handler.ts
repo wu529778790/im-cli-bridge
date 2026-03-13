@@ -30,7 +30,14 @@ import type { ThreadContext } from '../shared/types.js';
 import type { WeWorkCallbackMessage } from './types.js';
 import { buildUnsupportedInboundMessage } from '../channels/capabilities.js';
 import { buildMediaMetadataPrompt } from '../shared/media-prompt.js';
-import { downloadMediaFromUrl, saveBase64Media } from '../shared/media-storage.js';
+import {
+  decryptAes256CbcMedia,
+  downloadMediaFromUrl,
+  inferExtensionFromBuffer,
+  inferExtensionFromContentType,
+  saveBase64Media,
+  saveBufferMedia,
+} from '../shared/media-storage.js';
 import { buildSavedMediaPrompt } from '../shared/media-analysis-prompt.js';
 import { buildMediaContext } from '../shared/media-context.js';
 
@@ -135,10 +142,27 @@ async function buildMediaPrompt(data: WeWorkCallbackMessage, kind: MediaKind): P
       });
     } else if (typeof imagePayload.url === 'string' && imagePayload.url.length > 0) {
       try {
-        const savedPath = await downloadMediaFromUrl(imagePayload.url, {
-          basenameHint: imagePayload.md5,
-          fallbackExtension: 'jpg',
-        });
+        let savedPath = '';
+        if (typeof imagePayload.aeskey === 'string' && imagePayload.aeskey.trim().length > 0) {
+          const response = await fetch(imagePayload.url, { signal: AbortSignal.timeout(30000) });
+          if (!response.ok) {
+            throw new Error(`Failed to download media: HTTP ${response.status}`);
+          }
+
+          const encryptedBuffer = Buffer.from(await response.arrayBuffer());
+          const decryptedBuffer = decryptAes256CbcMedia(encryptedBuffer, imagePayload.aeskey);
+          const extension =
+            inferExtensionFromBuffer(decryptedBuffer) ||
+            inferExtensionFromContentType(response.headers.get('content-type') ?? '') ||
+            '.jpg';
+          savedPath = await saveBufferMedia(decryptedBuffer, extension, imagePayload.md5);
+          log.info(`Downloaded and decrypted WeWork image: ${savedPath}`);
+        } else {
+          savedPath = await downloadMediaFromUrl(imagePayload.url, {
+            basenameHint: imagePayload.md5,
+            fallbackExtension: 'jpg',
+          });
+        }
         return buildSavedMediaPrompt({
           source: 'WeWork',
           kind: 'image',
