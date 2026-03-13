@@ -36,6 +36,22 @@ import { downloadMediaFromUrl } from '../shared/media-storage.js';
 const log = createLogger('WeChatHandler');
 type WeChatInboundMediaKind = 'image' | 'file' | 'voice' | 'video';
 
+function getWeChatFilename(message: WeChatIncomingMessage): string | undefined {
+  return message.filename || message.file_name;
+}
+
+function getWeChatMimeType(message: WeChatIncomingMessage): string | undefined {
+  return message.mime_type || message.mimeType;
+}
+
+function getWeChatFileSize(message: WeChatIncomingMessage): number | undefined {
+  return typeof message.file_size === 'number'
+    ? message.file_size
+    : typeof message.size === 'number'
+      ? message.size
+      : undefined;
+}
+
 export interface WeChatEventHandlerHandle {
   stop: () => void;
   getRunningTaskCount: () => number;
@@ -84,12 +100,16 @@ export function setupWeChatHandlers(
     const contextText = buildMediaContext({
       FromUser: message.from_user_name || message.from_user_id,
       MessageType: message.msg_type,
+      Filename: getWeChatFilename(message),
+      MimeType: getWeChatMimeType(message),
+      FileSize: getWeChatFileSize(message),
+      Duration: message.duration,
     }, message.content || undefined);
 
     if (typeof mediaUrl === 'string' && mediaUrl.length > 0) {
       try {
         const savedPath = await downloadMediaFromUrl(mediaUrl, {
-          basenameHint: message.msg_id,
+          basenameHint: getWeChatFilename(message) || message.msg_id,
           fallbackExtension:
             kind === 'image'
               ? 'jpg'
@@ -117,6 +137,10 @@ export function setupWeChatHandlers(
       metadata: {
         msg_id: message.msg_id,
         from_user_id: message.from_user_id,
+        filename: getWeChatFilename(message),
+        mime_type: getWeChatMimeType(message),
+        file_size: getWeChatFileSize(message),
+        duration: message.duration,
         image_url: message.image_url,
         file_url: message.file_url,
       },

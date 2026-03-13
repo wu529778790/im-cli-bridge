@@ -76,6 +76,13 @@ export interface WeChatIncomingMessage {
   create_time: number;
   image_url?: string;
   file_url?: string;
+  filename?: string;
+  file_name?: string;
+  mime_type?: string;
+  mimeType?: string;
+  file_size?: number;
+  size?: number;
+  duration?: number;
   location?: { latitude: number; longitude: number; label: string };
 }
 
