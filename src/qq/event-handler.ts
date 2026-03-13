@@ -25,6 +25,7 @@ import type { QQMessageEvent } from "./types.js";
 
 const log = createLogger("QQHandler");
 const QQ_THROTTLE_MS = 1200;
+const QQ_MIN_STREAM_DELTA_CHARS = 80;
 
 function toChatId(event: QQMessageEvent): string {
   if (event.type === "group") {
@@ -91,6 +92,7 @@ export function setupQQHandlers(
       toolAdapter,
       {
         throttleMs: QQ_THROTTLE_MS,
+        minContentDeltaChars: QQ_MIN_STREAM_DELTA_CHARS,
         streamUpdate: async (content, toolNote) => {
           await updateMessage(chatId, msgId, content, "streaming", toolNote, toolId);
         },

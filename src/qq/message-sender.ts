@@ -109,8 +109,7 @@ export async function sendTextReply(chatId: string, text: string): Promise<void>
 }
 
 export async function sendThinkingMessage(chatId: string, _replyToMessageId?: string, toolId = "claude"): Promise<string> {
-  const sentMessageId = await sendRaw(chatId, `[${toolId}] thinking...`, _replyToMessageId);
-  const messageId = sentMessageId ?? `${Date.now()}`;
+  const messageId = `${Date.now()}`;
   getOrCreateStreamState(messageId, chatId, _replyToMessageId);
   return messageId;
 }
