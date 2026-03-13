@@ -1254,7 +1254,7 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
     };
   }
 
-  if (!options.persistent) {
+  if (!options.persistent && options.mode !== "dev") {
     timer = setTimeout(() => {
       server.close();
       settle("cancel");
