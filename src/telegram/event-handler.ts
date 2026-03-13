@@ -97,6 +97,23 @@ async function downloadTelegramFile(
   });
 }
 
+function buildTelegramMediaContext(
+  caption: string | undefined,
+  details: Record<string, string | number | undefined>,
+): string | undefined {
+  const lines: string[] = [];
+  if (caption) {
+    lines.push(`Caption: ${caption}`);
+  }
+
+  for (const [label, value] of Object.entries(details)) {
+    if (value === undefined || value === "") continue;
+    lines.push(`${label}: ${value}`);
+  }
+
+  return lines.length > 0 ? lines.join("\n") : undefined;
+}
+
 export interface TelegramEventHandlerHandle {
   stop: () => void;
   getRunningTaskCount: () => number;
@@ -473,6 +490,10 @@ export function setupTelegramHandlers(
 
     const photos = ctx.message.photo;
     const largest = photos[photos.length - 1];
+    const contextText = buildTelegramMediaContext(caption || undefined, {
+      Width: largest.width,
+      Height: largest.height,
+    });
     let imagePath: string;
     try {
       imagePath = await downloadTelegramPhoto(bot, largest.file_id);
@@ -482,7 +503,7 @@ export function setupTelegramHandlers(
       return;
     }
 
-    await enqueueSavedMedia(userId, chatId, "image", imagePath, caption || undefined);
+    await enqueueSavedMedia(userId, chatId, "image", imagePath, contextText);
   });
 
   bot.on(message("document"), async (ctx) => {
@@ -497,13 +518,18 @@ export function setupTelegramHandlers(
 
     try {
       const document = ctx.message.document;
+      const contextText = buildTelegramMediaContext(caption || undefined, {
+        Filename: document.file_name,
+        MimeType: document.mime_type,
+        Size: document.file_size,
+      });
       const path = await downloadTelegramFile(
         bot,
         document.file_id,
         document.file_name ?? document.file_id,
         "bin",
       );
-      await enqueueSavedMedia(userId, chatId, "document", path, caption || undefined);
+      await enqueueSavedMedia(userId, chatId, "document", path, contextText);
     } catch (err) {
       log.error("Failed to download document:", err);
       await sendTextReply(chatId, "Document download failed.");
@@ -522,13 +548,20 @@ export function setupTelegramHandlers(
 
     try {
       const audio = ctx.message.audio;
+      const contextText = buildTelegramMediaContext(caption || undefined, {
+        Filename: audio.file_name,
+        Title: audio.title,
+        Performer: audio.performer,
+        DurationSeconds: audio.duration,
+        MimeType: audio.mime_type,
+      });
       const path = await downloadTelegramFile(
         bot,
         audio.file_id,
         audio.file_name ?? audio.file_id,
         "mp3",
       );
-      await enqueueSavedMedia(userId, chatId, "audio", path, caption || undefined);
+      await enqueueSavedMedia(userId, chatId, "audio", path, contextText);
     } catch (err) {
       log.error("Failed to download audio:", err);
       await sendTextReply(chatId, "Audio download failed.");
@@ -546,13 +579,17 @@ export function setupTelegramHandlers(
 
     try {
       const voice = ctx.message.voice;
+      const contextText = buildTelegramMediaContext(undefined, {
+        DurationSeconds: voice.duration,
+        MimeType: voice.mime_type,
+      });
       const path = await downloadTelegramFile(
         bot,
         voice.file_id,
         voice.file_unique_id ?? voice.file_id,
         "ogg",
       );
-      await enqueueSavedMedia(userId, chatId, "voice", path);
+      await enqueueSavedMedia(userId, chatId, "voice", path, contextText);
     } catch (err) {
       log.error("Failed to download voice message:", err);
       await sendTextReply(chatId, "Voice download failed.");
@@ -571,13 +608,20 @@ export function setupTelegramHandlers(
 
     try {
       const video = ctx.message.video;
+      const contextText = buildTelegramMediaContext(caption || undefined, {
+        Filename: video.file_name,
+        DurationSeconds: video.duration,
+        Width: video.width,
+        Height: video.height,
+        MimeType: video.mime_type,
+      });
       const path = await downloadTelegramFile(
         bot,
         video.file_id,
         video.file_name ?? video.file_unique_id ?? video.file_id,
         "mp4",
       );
-      await enqueueSavedMedia(userId, chatId, "video", path, caption || undefined);
+      await enqueueSavedMedia(userId, chatId, "video", path, contextText);
     } catch (err) {
       log.error("Failed to download video:", err);
       await sendTextReply(chatId, "Video download failed.");
