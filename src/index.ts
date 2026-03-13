@@ -12,6 +12,9 @@ import { sendTextReply as sendTelegramTextReply } from "./telegram/message-sende
 import { initFeishu, stopFeishu } from "./feishu/client.js";
 import { setupFeishuHandlers } from "./feishu/event-handler.js";
 import { sendTextReply as sendFeishuTextReply } from "./feishu/message-sender.js";
+import { initQQ, stopQQ } from "./qq/client.js";
+import { setupQQHandlers } from "./qq/event-handler.js";
+import { sendTextReply as sendQQTextReply } from "./qq/message-sender.js";
 import { initWeChat, stopWeChat } from "./wechat/client.js";
 import { setupWeChatHandlers } from "./wechat/event-handler.js";
 import { sendTextReply as sendWeChatTextReply } from "./wechat/message-sender.js";
@@ -44,6 +47,7 @@ const log = createLogger("Main");
 async function sendLifecycleNotification(platform: string, message: string) {
   const telegramChatId = getActiveChatId("telegram");
   const feishuChatId = getActiveChatId("feishu");
+  const qqChatId = getActiveChatId("qq");
   const wechatChatId = getActiveChatId("wechat");
   const weworkChatId = getActiveChatId("wework");
   const dingtalkTarget = getDingTalkActiveTarget();
@@ -62,6 +66,14 @@ async function sendLifecycleNotification(platform: string, message: string) {
     sendPromises.push(
       sendFeishuTextReply(feishuChatId, message).catch((err) => {
         log.debug("Failed to send Feishu notification:", err);
+      }),
+    );
+  }
+
+  if (platform === "qq" && qqChatId) {
+    sendPromises.push(
+      sendQQTextReply(qqChatId, message).catch((err) => {
+        log.debug("Failed to send QQ notification:", err);
       }),
     );
   }
@@ -191,6 +203,7 @@ export async function main() {
 
   let telegramHandle: ReturnType<typeof setupTelegramHandlers> | null = null;
   let feishuHandle: ReturnType<typeof setupFeishuHandlers> | null = null;
+  let qqHandle: ReturnType<typeof setupQQHandlers> | null = null;
   let wechatHandle: ReturnType<typeof setupWeChatHandlers> | null = null;
   let weworkHandle: ReturnType<typeof setupWeWorkHandlers> | null = null;
   let dingtalkHandle: ReturnType<typeof setupDingTalkHandlers> | null = null;
@@ -216,6 +229,16 @@ export async function main() {
       successfulPlatforms.push("feishu");
     } catch (err) {
       log.error("Failed to initialize Feishu:", err);
+    }
+  }
+
+  if (config.enabledPlatforms.includes("qq")) {
+    try {
+      qqHandle = setupQQHandlers(config, sessionManager);
+      await initQQ(config, qqHandle.handleEvent);
+      successfulPlatforms.push("qq");
+    } catch (err) {
+      log.error("Failed to initialize QQ:", err);
     }
   }
 
@@ -297,6 +320,8 @@ export async function main() {
     stopTelegram();
     feishuHandle?.stop();
     stopFeishu();
+    qqHandle?.stop();
+    await stopQQ();
     wechatHandle?.stop();
     stopWeChat();
     weworkHandle?.stop();
