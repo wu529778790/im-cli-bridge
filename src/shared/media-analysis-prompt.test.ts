@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSavedMediaPrompt } from "./media-analysis-prompt.js";
+import { buildSavedMediaBatchPrompt, buildSavedMediaPrompt } from "./media-analysis-prompt.js";
 
 describe("buildSavedMediaPrompt", () => {
   it("includes source, local path, and optional text", () => {
@@ -25,5 +25,22 @@ describe("buildSavedMediaPrompt", () => {
 
     expect(prompt).toContain("transcribe");
     expect(prompt).toContain("/tmp/example.ogg");
+  });
+
+  it("includes every saved file when multiple attachments are available", () => {
+    const prompt = buildSavedMediaBatchPrompt({
+      source: "QQ",
+      text: "compare these",
+      items: [
+        { kind: "image", localPath: "/tmp/one.jpg", label: "photo" },
+        { kind: "video", localPath: "/tmp/two.mp4", label: "clip" },
+      ],
+    });
+
+    expect(prompt).toContain("2 QQ media attachments");
+    expect(prompt).toContain("/tmp/one.jpg");
+    expect(prompt).toContain("/tmp/two.mp4");
+    expect(prompt).toContain("compare these");
+    expect(prompt).toContain("combined contents");
   });
 });

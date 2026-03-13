@@ -24,7 +24,7 @@ import { createLogger } from "../logger.js";
 import type { ThreadContext } from "../shared/types.js";
 import type { QQAttachment, QQMessageEvent } from "./types.js";
 import { buildMediaMetadataPrompt } from "../shared/media-prompt.js";
-import { buildSavedMediaPrompt } from "../shared/media-analysis-prompt.js";
+import { buildSavedMediaBatchPrompt, buildSavedMediaPrompt } from "../shared/media-analysis-prompt.js";
 import { buildMediaContext } from "../shared/media-context.js";
 import { downloadMediaFromUrl } from "../shared/media-storage.js";
 
@@ -103,6 +103,19 @@ async function buildAttachmentPrompt(event: QQMessageEvent): Promise<string | nu
         Width: attachmentSummary[0].width,
         Height: attachmentSummary[0].height,
       }, event.content || undefined),
+    });
+  }
+
+  const savedAttachments = attachmentSummary.filter((attachment) => attachment.localPath);
+  if (savedAttachments.length > 1 && savedAttachments.length === attachmentSummary.length) {
+    return buildSavedMediaBatchPrompt({
+      source: "QQ",
+      text: event.content || undefined,
+      items: savedAttachments.map((attachment) => ({
+        kind: attachment.kind,
+        localPath: attachment.localPath!,
+        label: attachment.filename,
+      })),
     });
   }
 

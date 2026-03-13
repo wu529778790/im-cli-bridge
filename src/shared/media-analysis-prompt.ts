@@ -5,6 +5,18 @@ export interface SavedMediaPromptOptions {
   text?: string;
 }
 
+export interface SavedMediaBatchItem {
+  kind: string;
+  localPath: string;
+  label?: string;
+}
+
+export interface SavedMediaBatchPromptOptions {
+  source: string;
+  items: SavedMediaBatchItem[];
+  text?: string;
+}
+
 function buildSavedMediaGuidance(kind: string): string {
   if (kind === "audio" || kind === "voice") {
     return "Use the Read tool to inspect the saved file, transcribe any speech, and respond based on the audio contents.";
@@ -24,5 +36,24 @@ export function buildSavedMediaPrompt(options: SavedMediaPromptOptions): string 
     options.text ? `Accompanying text:\n${options.text}` : "",
     `Saved local file path: ${options.localPath}`,
     buildSavedMediaGuidance(options.kind),
+  ].filter(Boolean).join("\n\n");
+}
+
+export function buildSavedMediaBatchPrompt(options: SavedMediaBatchPromptOptions): string {
+  const kinds = Array.from(new Set(options.items.map((item) => item.kind))).join(", ");
+  const fileList = options.items
+    .map((item, index) => {
+      const label = item.label?.trim();
+      const prefix = label ? `${label}: ` : "";
+      return `${index + 1}. ${prefix}${item.localPath} (${item.kind})`;
+    })
+    .join("\n");
+
+  return [
+    `The user sent ${options.items.length} ${options.source} media attachments${kinds ? ` (${kinds})` : ""}.`,
+    options.text ? `Accompanying text:\n${options.text}` : "",
+    "Saved local file paths:",
+    fileList,
+    "Use the Read tool to inspect each saved file and respond based on the combined contents.",
   ].filter(Boolean).join("\n\n");
 }
