@@ -143,6 +143,63 @@ function validatePayload(payload: WebConfigPayload): string[] {
   return errors;
 }
 
+function validateConfigForPlatform(platform: string, config: Record<string, unknown>): string[] {
+  const errors: string[] = [];
+  const c = config;
+
+  switch (platform) {
+    case "telegram":
+      if (!c.botToken || typeof c.botToken !== "string" || !clean(c.botToken)) {
+        errors.push("Telegram bot token is required and must be a non-empty string.");
+      }
+      if (c.proxy && typeof c.proxy !== "string") {
+        errors.push("Proxy must be a string if provided.");
+      }
+      break;
+
+    case "feishu":
+      if (!c.appId || typeof c.appId !== "string" || !clean(c.appId)) {
+        errors.push("Feishu app ID is required and must be a non-empty string.");
+      }
+      if (!c.appSecret || typeof c.appSecret !== "string" || !clean(c.appSecret)) {
+        errors.push("Feishu app secret is required and must be a non-empty string.");
+      }
+      break;
+
+    case "qq":
+      if (!c.appId || typeof c.appId !== "string" || !clean(c.appId)) {
+        errors.push("QQ app ID is required and must be a non-empty string.");
+      }
+      if (!c.secret || typeof c.secret !== "string" || !clean(c.secret)) {
+        errors.push("QQ app secret is required and must be a non-empty string.");
+      }
+      break;
+
+    case "wework":
+      if (!c.corpId || typeof c.corpId !== "string" || !clean(c.corpId)) {
+        errors.push("WeWork corp ID is required and must be a non-empty string.");
+      }
+      if (!c.secret || typeof c.secret !== "string" || !clean(c.secret)) {
+        errors.push("WeWork secret is required and must be a non-empty string.");
+      }
+      break;
+
+    case "dingtalk":
+      if (!c.clientId || typeof c.clientId !== "string" || !clean(c.clientId)) {
+        errors.push("DingTalk client ID is required and must be a non-empty string.");
+      }
+      if (!c.clientSecret || typeof c.clientSecret !== "string" || !clean(c.clientSecret)) {
+        errors.push("DingTalk client secret is required and must be a non-empty string.");
+      }
+      break;
+
+    default:
+      errors.push(`Unknown platform: ${platform}`);
+  }
+
+  return errors;
+}
+
 function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConfig {
   return {
     ...existing,
@@ -294,6 +351,7 @@ const PAGE_HTML = String.raw`<!doctype html>
               <label>Bot token<input id="telegram-botToken" placeholder="123456:ABC..." /></label>
               <label>Proxy<input id="telegram-proxy" placeholder="http://127.0.0.1:7890" /></label>
               <label>Allowed user IDs<textarea id="telegram-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
+              <div style="margin-top:12px;"><button id="test-telegram" class="secondary" type="button" style="width:100%;padding:8px;font-size:0.9em;">测试连接</button><div class="message" id="test-telegram-result" style="min-height:20px;margin-top:8px;"></div></div>
             </article>
             <article class="panel" id="feishu-panel">
               <div class="panel-head"><h3>Feishu</h3><label class="toggle"><input id="feishu-enabled" type="checkbox" /> Enabled</label></div>
@@ -301,6 +359,7 @@ const PAGE_HTML = String.raw`<!doctype html>
               <label>App ID<input id="feishu-appId" /></label>
               <label>App Secret<input id="feishu-appSecret" /></label>
               <label>Allowed user IDs<textarea id="feishu-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
+              <div style="margin-top:12px;"><button id="test-feishu" class="secondary" type="button" style="width:100%;padding:8px;font-size:0.9em;">测试连接</button><div class="message" id="test-feishu-result" style="min-height:20px;margin-top:8px;"></div></div>
             </article>
             <article class="panel" id="qq-panel">
               <div class="panel-head"><h3>QQ</h3><label class="toggle"><input id="qq-enabled" type="checkbox" /> Enabled</label></div>
@@ -308,6 +367,7 @@ const PAGE_HTML = String.raw`<!doctype html>
               <label>App ID<input id="qq-appId" /></label>
               <label>App Secret<input id="qq-secret" /></label>
               <label>Allowed user IDs<textarea id="qq-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
+              <div style="margin-top:12px;"><button id="test-qq" class="secondary" type="button" style="width:100%;padding:8px;font-size:0.9em;">测试连接</button><div class="message" id="test-qq-result" style="min-height:20px;margin-top:8px;"></div></div>
             </article>
             <article class="panel" id="wework-panel">
               <div class="panel-head"><h3>WeWork</h3><label class="toggle"><input id="wework-enabled" type="checkbox" /> Enabled</label></div>
@@ -315,6 +375,7 @@ const PAGE_HTML = String.raw`<!doctype html>
               <label>Corp ID / Bot ID<input id="wework-corpId" /></label>
               <label>Secret<input id="wework-secret" /></label>
               <label>Allowed user IDs<textarea id="wework-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
+              <div style="margin-top:12px;"><button id="test-wework" class="secondary" type="button" style="width:100%;padding:8px;font-size:0.9em;">测试连接</button><div class="message" id="test-wework-result" style="min-height:20px;margin-top:8px;"></div></div>
             </article>
             <article class="panel" id="dingtalk-panel">
               <div class="panel-head"><h3>DingTalk</h3><label class="toggle"><input id="dingtalk-enabled" type="checkbox" /> Enabled</label></div>
@@ -323,6 +384,7 @@ const PAGE_HTML = String.raw`<!doctype html>
               <label>Client Secret / AppSecret<input id="dingtalk-clientSecret" /></label>
               <label>Card template ID<input id="dingtalk-cardTemplateId" placeholder="Optional" /></label>
               <label>Allowed user IDs<textarea id="dingtalk-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
+              <div style="margin-top:12px;"><button id="test-dingtalk" class="secondary" type="button" style="width:100%;padding:8px;font-size:0.9em;">测试连接</button><div class="message" id="test-dingtalk-result" style="min-height:20px;margin-top:8px;"></div></div>
             </article>
           </div>
         </section>
@@ -412,6 +474,10 @@ const PAGE_HTML = String.raw`<!doctype html>
           autoApprove: "Auto-approve tool permissions",
           sdkMode: "Use Claude SDK mode",
           validate: "Validate",
+          test: "Test",
+          testing: "Testing...",
+          testSuccess: "Configuration is valid!",
+          testFailed: "Configuration error: {error}",
           save: "Save config",
           start: "Start bridge",
           stop: "Stop bridge",
@@ -475,6 +541,10 @@ const PAGE_HTML = String.raw`<!doctype html>
           autoApprove: "自动允许工具权限",
           sdkMode: "使用 Claude SDK 模式",
           validate: "校验配置",
+          test: "测试",
+          testing: "测试中...",
+          testSuccess: "配置验证通过！",
+          testFailed: "配置错误：{error}",
           save: "保存配置",
           start: "启动桥接",
           stop: "停止桥接",
@@ -545,14 +615,6 @@ const PAGE_HTML = String.raw`<!doctype html>
         dingtalkLabels[2].childNodes[0].textContent = t("cardTemplateId");
         dingtalkLabels[3].childNodes[0].textContent = t("allowedUserIds");
         el("dingtalk-help").innerHTML = t("dingtalkHelp");
-        weworkLabels[0].childNodes[0].textContent = t("corpId");
-        weworkLabels[1].childNodes[0].textContent = t("secret");
-        weworkLabels[2].childNodes[0].textContent = t("allowedUserIds");
-        const dingtalkLabels = el("dingtalk-panel").querySelectorAll(":scope > label");
-        dingtalkLabels[0].childNodes[0].textContent = t("clientId");
-        dingtalkLabels[1].childNodes[0].textContent = t("clientSecret");
-        dingtalkLabels[2].childNodes[0].textContent = t("cardTemplateId");
-        dingtalkLabels[3].childNodes[0].textContent = t("allowedUserIds");
         el("telegram-allowedUserIds").placeholder = t("commaSeparatedIds");
         el("feishu-allowedUserIds").placeholder = t("commaSeparatedIds");
         el("qq-allowedUserIds").placeholder = t("commaSeparatedIds");
@@ -588,6 +650,12 @@ const PAGE_HTML = String.raw`<!doctype html>
         el("saveButton").textContent = t("save");
         el("startButton").textContent = t("start");
         el("stopButton").textContent = t("stop");
+        ["telegram","feishu","qq","wework","dingtalk"].forEach((platform) => {
+          const testBtn = el("test-" + platform);
+          if (testBtn) {
+            testBtn.textContent = t("test");
+          }
+        });
         if (currentMeta) {
           el("modeBadge").textContent = t("mode") + ": " + currentMeta.mode;
         }
@@ -613,8 +681,83 @@ const PAGE_HTML = String.raw`<!doctype html>
       async function save() { setBusy(true); try { await request("/api/config/save?final=1", { method: "POST", body: JSON.stringify(payload()) }); setMessage(t("saveOk"), "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
       async function startService() { setBusy(true); try { await request("/api/config/save", { method: "POST", body: JSON.stringify(payload()) }); await request("/api/service/start", { method: "POST" }); await refreshStatus(); setMessage(t("startOk"), "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
       async function stopService() { setBusy(true); try { await request("/api/service/stop", { method: "POST" }); await refreshStatus(); setMessage(t("stopOk"), "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
+      async function testPlatform(platform) {
+        const resultDiv = el("test-" + platform + "-result");
+        const testBtn = el("test-" + platform);
+
+        if (!resultDiv || !testBtn) return;
+
+        const originalText = testBtn.textContent;
+        testBtn.textContent = t("testing");
+        testBtn.disabled = true;
+        resultDiv.textContent = "";
+        resultDiv.className = "message";
+
+        try {
+          let platformConfig = {};
+
+          switch (platform) {
+            case "telegram":
+              platformConfig = {
+                botToken: el("telegram-botToken").value,
+                proxy: el("telegram-proxy").value
+              };
+              break;
+            case "feishu":
+              platformConfig = {
+                appId: el("feishu-appId").value,
+                appSecret: el("feishu-appSecret").value
+              };
+              break;
+            case "qq":
+              platformConfig = {
+                appId: el("qq-appId").value,
+                secret: el("qq-secret").value
+              };
+              break;
+            case "wework":
+              platformConfig = {
+                corpId: el("wework-corpId").value,
+                secret: el("wework-secret").value
+              };
+              break;
+            case "dingtalk":
+              platformConfig = {
+                clientId: el("dingtalk-clientId").value,
+                clientSecret: el("dingtalk-clientSecret").value
+              };
+              break;
+          }
+
+          const result = await request("/api/config/test", {
+            method: "POST",
+            body: JSON.stringify({ platform, config: platformConfig })
+          });
+
+          if (result.success) {
+            resultDiv.textContent = t("testSuccess");
+            resultDiv.className = "message success";
+          } else {
+            resultDiv.textContent = t("testFailed", { error: result.error || "Unknown error" });
+            resultDiv.className = "message error";
+          }
+        } catch (error) {
+          resultDiv.textContent = t("testFailed", { error: error.message || String(error) });
+          resultDiv.className = "message error";
+        } finally {
+          testBtn.textContent = originalText;
+          testBtn.disabled = false;
+        }
+      }
       el("langButton").onclick = () => { currentLang = currentLang === "zh" ? "en" : "zh"; localStorage.setItem(storageKey, currentLang); applyLanguage(); updateVisualState(); refreshStatus().catch(() => {}); };
-      el("validateButton").onclick = validate; el("saveButton").onclick = save; el("startButton").onclick = startService; el("stopButton").onclick = stopService; boot();
+      el("validateButton").onclick = validate; el("saveButton").onclick = save; el("startButton").onclick = startService; el("stopButton").onclick = stopService;
+      ["telegram","feishu","qq","wework","dingtalk"].forEach((platform) => {
+        const testBtn = el("test-" + platform);
+        if (testBtn) {
+          testBtn.onclick = () => testPlatform(platform);
+        }
+      });
+      boot();
     </script>
   </body>
 </html>`;
@@ -713,6 +856,22 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
           json(response, 200, { message: result.pid ? `Bridge stopped (pid ${result.pid}).` : "Bridge was already stopped." });
         } catch (error) {
           json(response, 400, { error: error instanceof Error ? error.message : String(error) });
+        }
+        return;
+      }
+
+      if (request.method === "POST" && requestUrl.pathname === "/api/config/test") {
+        try {
+          const body = await readJson<{ platform: string; config: Record<string, unknown> }>(request);
+          const { platform, config } = body;
+          const errors = validateConfigForPlatform(platform, config);
+          if (errors.length > 0) {
+            json(response, 400, { error: errors.join("; "), success: false });
+            return;
+          }
+          json(response, 200, { message: "Configuration looks valid.", success: true });
+        } catch (error) {
+          json(response, 400, { error: error instanceof Error ? error.message : String(error), success: false });
         }
         return;
       }
