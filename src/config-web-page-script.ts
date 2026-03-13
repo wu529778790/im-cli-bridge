@@ -1,4 +1,12 @@
-export const PAGE_SCRIPT = String.raw`      const ids = ["telegram-enabled","telegram-botToken","telegram-proxy","telegram-allowedUserIds","feishu-enabled","feishu-appId","feishu-appSecret","feishu-allowedUserIds","qq-enabled","qq-appId","qq-secret","qq-allowedUserIds","wework-enabled","wework-corpId","wework-secret","wework-allowedUserIds","dingtalk-enabled","dingtalk-clientId","dingtalk-clientSecret","dingtalk-cardTemplateId","dingtalk-allowedUserIds","ai-aiCommand","ai-claudeCliPath","ai-claudeWorkDir","ai-claudeSkipPermissions","ai-claudeTimeoutMs","ai-claudeModel","ai-cursorCliPath","ai-codexCliPath","ai-codexProxy","ai-hookPort","ai-logLevel","ai-useSdkMode"];
+export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
+        { key: "telegram", label: "Telegram", fields: ["botToken", "proxy", "allowedUserIds"], testFields: ["botToken", "proxy"] },
+        { key: "feishu", label: "Feishu", fields: ["appId", "appSecret", "allowedUserIds"], testFields: ["appId", "appSecret"] },
+        { key: "qq", label: "QQ", fields: ["appId", "secret", "allowedUserIds"], testFields: ["appId", "secret"] },
+        { key: "wework", label: "WeWork", fields: ["corpId", "secret", "allowedUserIds"], testFields: ["corpId", "secret"] },
+        { key: "dingtalk", label: "DingTalk", fields: ["clientId", "clientSecret", "cardTemplateId", "allowedUserIds"], testFields: ["clientId", "clientSecret"] },
+      ];
+      const platformKeys = platformDefinitions.map((platform) => platform.key);
+      const ids = platformDefinitions.flatMap((platform) => ["enabled", ...platform.fields].map((field) => platform.key + "-" + field)).concat(["ai-aiCommand","ai-claudeCliPath","ai-claudeWorkDir","ai-claudeSkipPermissions","ai-claudeTimeoutMs","ai-claudeModel","ai-cursorCliPath","ai-codexCliPath","ai-codexProxy","ai-hookPort","ai-logLevel","ai-useSdkMode"]);
       const el = (id) => document.getElementById(id);
       const storageKey = "open-im-web-lang";
       const texts = __PAGE_TEXTS__;
@@ -17,6 +25,14 @@ export const PAGE_SCRIPT = String.raw`      const ids = ["telegram-enabled","tel
       const setChecked = (id, value) => { const node = el(id); if (node) node.checked = Boolean(value); };
       const setMessage = (text, type="") => { const node = el("message"); node.textContent = text; node.className = ("message " + type).trim(); };
       const setBusy = (busy) => ["validateButton","saveButton","startButton","stopButton","langButton"].forEach((id) => { el(id).disabled = busy; });
+      const readPlatformConfig = (platform) => platform.testFields.reduce((config, field) => {
+        config[field] = getValue(platform.key + "-" + field);
+        return config;
+      }, {});
+      const fillPlatform = (platform, values) => {
+        setChecked(platform.key + "-enabled", values.enabled);
+        platform.fields.forEach((field) => setValue(platform.key + "-" + field, values[field]));
+      };
       function applyLanguage(meta) {
         if (meta) currentMeta = meta;
         const isZh = currentLang === "zh";
@@ -128,10 +144,10 @@ export const PAGE_SCRIPT = String.raw`      const ids = ["telegram-enabled","tel
       }
       function updateVisualState() {
         const enabled = [];
-        [["telegram","Telegram"],["feishu","Feishu"],["qq","QQ"],["wework","WeWork"],["dingtalk","DingTalk"]].forEach(([key,label]) => {
-          const active = el(key + "-enabled").checked;
-          el(key + "-panel").classList.toggle("off", !active);
-          if (active) enabled.push(label);
+        platformDefinitions.forEach((platform) => {
+          const active = el(platform.key + "-enabled").checked;
+          el(platform.key + "-panel").classList.toggle("off", !active);
+          if (active) enabled.push(platform.label);
         });
         const aiTool = el("ai-aiCommand").value;
         el("liveSummary").textContent = enabled.length
@@ -143,7 +159,6 @@ export const PAGE_SCRIPT = String.raw`      const ids = ["telegram-enabled","tel
           const data = await request("/api/health");
           const platforms = data.platforms || {};
           const serviceStatus = data.serviceStatus || {};
-          const platformKeys = ["telegram","feishu","qq","wework","dingtalk"];
           let configuredCount = 0;
           let enabledCount = 0;
 
@@ -222,39 +237,16 @@ export const PAGE_SCRIPT = String.raw`      const ids = ["telegram-enabled","tel
         scrollToSection("configSection", "navPlatformsBtn");
       }
       const payload = () => ({
-        platforms: {
-          telegram: {
-            enabled: getChecked("telegram-enabled"),
-            botToken: getValue("telegram-botToken"),
-            proxy: getValue("telegram-proxy"),
-            allowedUserIds: getValue("telegram-allowedUserIds"),
+        platforms: Object.fromEntries(platformDefinitions.map((platform) => [
+          platform.key,
+          {
+            enabled: getChecked(platform.key + "-enabled"),
+            ...platform.fields.reduce((values, field) => {
+              values[field] = getValue(platform.key + "-" + field);
+              return values;
+            }, {}),
           },
-          feishu: {
-            enabled: getChecked("feishu-enabled"),
-            appId: getValue("feishu-appId"),
-            appSecret: getValue("feishu-appSecret"),
-            allowedUserIds: getValue("feishu-allowedUserIds"),
-          },
-          qq: {
-            enabled: getChecked("qq-enabled"),
-            appId: getValue("qq-appId"),
-            secret: getValue("qq-secret"),
-            allowedUserIds: getValue("qq-allowedUserIds"),
-          },
-          wework: {
-            enabled: getChecked("wework-enabled"),
-            corpId: getValue("wework-corpId"),
-            secret: getValue("wework-secret"),
-            allowedUserIds: getValue("wework-allowedUserIds"),
-          },
-          dingtalk: {
-            enabled: getChecked("dingtalk-enabled"),
-            clientId: getValue("dingtalk-clientId"),
-            clientSecret: getValue("dingtalk-clientSecret"),
-            cardTemplateId: getValue("dingtalk-cardTemplateId"),
-            allowedUserIds: getValue("dingtalk-allowedUserIds"),
-          },
-        },
+        ])),
         ai: {
           aiCommand: getValue("ai-aiCommand"),
           claudeCliPath: getValue("ai-claudeCliPath"),
@@ -274,27 +266,7 @@ export const PAGE_SCRIPT = String.raw`      const ids = ["telegram-enabled","tel
       function fill(data, meta) {
         el("configPath").textContent = meta.configPath;
         applyLanguage(meta);
-        setChecked("telegram-enabled", data.platforms.telegram.enabled);
-        setValue("telegram-botToken", data.platforms.telegram.botToken);
-        setValue("telegram-proxy", data.platforms.telegram.proxy);
-        setValue("telegram-allowedUserIds", data.platforms.telegram.allowedUserIds);
-        setChecked("feishu-enabled", data.platforms.feishu.enabled);
-        setValue("feishu-appId", data.platforms.feishu.appId);
-        setValue("feishu-appSecret", data.platforms.feishu.appSecret);
-        setValue("feishu-allowedUserIds", data.platforms.feishu.allowedUserIds);
-        setChecked("qq-enabled", data.platforms.qq.enabled);
-        setValue("qq-appId", data.platforms.qq.appId);
-        setValue("qq-secret", data.platforms.qq.secret);
-        setValue("qq-allowedUserIds", data.platforms.qq.allowedUserIds);
-        setChecked("wework-enabled", data.platforms.wework.enabled);
-        setValue("wework-corpId", data.platforms.wework.corpId);
-        setValue("wework-secret", data.platforms.wework.secret);
-        setValue("wework-allowedUserIds", data.platforms.wework.allowedUserIds);
-        setChecked("dingtalk-enabled", data.platforms.dingtalk.enabled);
-        setValue("dingtalk-clientId", data.platforms.dingtalk.clientId);
-        setValue("dingtalk-clientSecret", data.platforms.dingtalk.clientSecret);
-        setValue("dingtalk-cardTemplateId", data.platforms.dingtalk.cardTemplateId);
-        setValue("dingtalk-allowedUserIds", data.platforms.dingtalk.allowedUserIds);
+        platformDefinitions.forEach((platform) => fillPlatform(platform, data.platforms[platform.key]));
         setValue("ai-aiCommand", data.ai.aiCommand);
         setValue("ai-claudeCliPath", data.ai.claudeCliPath);
         setValue("ai-claudeWorkDir", data.ai.claudeWorkDir);
@@ -344,29 +316,6 @@ export const PAGE_SCRIPT = String.raw`      const ids = ["telegram-enabled","tel
       async function testPlatform(platform) {
         const resultDiv = el("test-" + platform + "-result");
         const testBtn = el("test-" + platform);
-        const platformConfigBuilders = {
-          telegram: () => ({
-            botToken: getValue("telegram-botToken"),
-            proxy: getValue("telegram-proxy"),
-          }),
-          feishu: () => ({
-            appId: getValue("feishu-appId"),
-            appSecret: getValue("feishu-appSecret"),
-          }),
-          qq: () => ({
-            appId: getValue("qq-appId"),
-            secret: getValue("qq-secret"),
-          }),
-          wework: () => ({
-            corpId: getValue("wework-corpId"),
-            secret: getValue("wework-secret"),
-          }),
-          dingtalk: () => ({
-            clientId: getValue("dingtalk-clientId"),
-            clientSecret: getValue("dingtalk-clientSecret"),
-          }),
-        };
-
         if (!resultDiv || !testBtn) return;
 
         const originalText = testBtn.textContent;
@@ -376,11 +325,11 @@ export const PAGE_SCRIPT = String.raw`      const ids = ["telegram-enabled","tel
         resultDiv.className = "message";
 
         try {
-          const buildPlatformConfig = platformConfigBuilders[platform];
-          if (!buildPlatformConfig) {
+          const platformDefinition = platformDefinitions.find((item) => item.key === platform);
+          if (!platformDefinition) {
             throw new Error("Unknown platform");
           }
-          const platformConfig = buildPlatformConfig();
+          const platformConfig = readPlatformConfig(platformDefinition);
 
           const result = await request("/api/config/test", {
             method: "POST",
@@ -404,7 +353,7 @@ export const PAGE_SCRIPT = String.raw`      const ids = ["telegram-enabled","tel
       }
       el("langButton").onclick = () => { currentLang = currentLang === "zh" ? "en" : "zh"; localStorage.setItem(storageKey, currentLang); applyLanguage(); updateVisualState(); refreshStatus().catch((err) => console.warn("[config-web] Failed to refresh status after language change:", err)); };
       el("validateButton").onclick = validate; el("saveButton").onclick = save; el("startButton").onclick = startService; el("stopButton").onclick = stopService;
-      ["telegram","feishu","qq","wework","dingtalk"].forEach((platform) => {
+      platformKeys.forEach((platform) => {
         const testBtn = el("test-" + platform);
         if (testBtn) {
           testBtn.onclick = () => testPlatform(platform);
