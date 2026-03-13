@@ -11,6 +11,7 @@ import {
   updateMessage,
   sendFinalMessages,
   sendTextReply,
+  sendImageReply,
   startTypingLoop,
   sendPermissionCard,
   sendModeCard,
@@ -27,7 +28,7 @@ import { setChatUser } from '../shared/chat-user-map.js';
 import { createLogger } from '../logger.js';
 import type { ThreadContext } from '../shared/types.js';
 import type { WeWorkCallbackMessage } from './types.js';
-import { buildImageFallbackMessage, buildUnsupportedInboundMessage } from '../channels/capabilities.js';
+import { buildUnsupportedInboundMessage } from '../channels/capabilities.js';
 import { buildMediaMetadataPrompt } from '../shared/media-prompt.js';
 import { downloadMediaFromUrl, saveBase64Media } from '../shared/media-storage.js';
 import { buildSavedMediaPrompt } from '../shared/media-analysis-prompt.js';
@@ -268,7 +269,7 @@ export function setupWeWorkHandlers(
             runningTasks.set(taskKey, state);
           },
           sendImage: async (path) => {
-            await sendTextReply(chatId, buildImageFallbackMessage('wework', path), reqId);
+            await sendImageReply(chatId, path);
           },
         },
       );

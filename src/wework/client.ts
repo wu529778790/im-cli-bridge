@@ -360,6 +360,19 @@ export function sendStream(reqId: string, streamId: string, content: string, fin
   });
 }
 
+export function sendStreamWithItems(
+  reqId: string,
+  streamId: string,
+  content: string,
+  finish: boolean,
+  msgItem: NonNullable<WeWorkHttpResponseBody['stream']>['msg_item'],
+): void {
+  sendWebSocketReply(reqId, {
+    msgtype: 'stream',
+    stream: { id: streamId, finish, content, msg_item: msgItem },
+  });
+}
+
 /**
  * Update connection state and notify listeners
  */

@@ -169,6 +169,13 @@ export interface WeWorkHttpResponseBody {
     id: string;
     finish: boolean;
     content: string;
+    msg_item?: Array<{
+      msgtype: 'image' | 'file';
+      image?: {
+        base64: string;
+        md5: string;
+      };
+    }>;
   };
 }
 

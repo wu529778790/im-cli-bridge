@@ -37,7 +37,7 @@ export const CHANNEL_CAPABILITIES: Record<Platform, ChannelCapabilities> = {
   },
   wework: {
     inbound: { text: "native", image: "fallback", file: "fallback", voice: "fallback", video: "fallback" },
-    outbound: { streamEdit: "native", streamPush: "fallback", image: "fallback", card: "native", typing: "native" },
+    outbound: { streamEdit: "native", streamPush: "fallback", image: "native", card: "native", typing: "native" },
   },
   dingtalk: {
     inbound: { text: "native", image: "fallback", file: "fallback", voice: "fallback", video: "fallback" },
