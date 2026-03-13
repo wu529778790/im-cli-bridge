@@ -77,10 +77,49 @@ function extractMediaPayload(message: DingTalkRobotPayload, kind: DingTalkInboun
   return null;
 }
 
+function buildDingTalkMediaContext(
+  text: string | undefined,
+  payload: Record<string, unknown>,
+): string | undefined {
+  const lines: string[] = [];
+  if (text) {
+    lines.push(text);
+  }
+
+  const fileName = typeof payload.fileName === 'string'
+    ? payload.fileName
+    : typeof payload.file_name === 'string'
+      ? payload.file_name
+      : undefined;
+  const duration = typeof payload.duration === 'number'
+    ? payload.duration
+    : typeof payload.duration === 'string'
+      ? payload.duration
+      : undefined;
+  const mediaType = typeof payload.fileType === 'string'
+    ? payload.fileType
+    : typeof payload.file_type === 'string'
+      ? payload.file_type
+      : undefined;
+
+  if (fileName) {
+    lines.push(`Filename: ${fileName}`);
+  }
+  if (mediaType) {
+    lines.push(`MediaType: ${mediaType}`);
+  }
+  if (duration !== undefined) {
+    lines.push(`Duration: ${duration}`);
+  }
+
+  return lines.length > 0 ? lines.join('\n') : undefined;
+}
+
 async function buildMediaPrompt(message: DingTalkRobotPayload, kind: DingTalkInboundKind): Promise<string | null> {
   const payload = extractMediaPayload(message, kind);
   if (!payload) return null;
   const text = typeof message.text?.content === 'string' ? message.text.content.trim() : undefined;
+  const contextText = buildDingTalkMediaContext(text, payload);
 
   const remoteUrl = [
     payload.url,
@@ -105,7 +144,7 @@ async function buildMediaPrompt(message: DingTalkRobotPayload, kind: DingTalkInb
       source: 'DingTalk',
       kind,
       localPath,
-      text,
+      text: contextText,
     });
   }
 
@@ -119,7 +158,7 @@ async function buildMediaPrompt(message: DingTalkRobotPayload, kind: DingTalkInb
   return buildMediaMetadataPrompt({
     source: 'DingTalk',
     kind,
-    text,
+    text: contextText,
     metadata: sanitized,
   });
 }
