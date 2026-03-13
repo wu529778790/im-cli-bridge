@@ -30,6 +30,7 @@ import { MODE_LABELS } from "../permission-mode/types.js";
 import { createLogger } from "../logger.js";
 import { downloadMediaFromUrl } from "../shared/media-storage.js";
 import { buildSavedMediaPrompt } from "../shared/media-analysis-prompt.js";
+import { buildMediaContext } from "../shared/media-context.js";
 
 const log = createLogger("TgHandler");
 
@@ -95,23 +96,6 @@ async function downloadTelegramFile(
     basenameHint: safeId,
     fallbackExtension,
   });
-}
-
-function buildTelegramMediaContext(
-  caption: string | undefined,
-  details: Record<string, string | number | undefined>,
-): string | undefined {
-  const lines: string[] = [];
-  if (caption) {
-    lines.push(`Caption: ${caption}`);
-  }
-
-  for (const [label, value] of Object.entries(details)) {
-    if (value === undefined || value === "") continue;
-    lines.push(`${label}: ${value}`);
-  }
-
-  return lines.length > 0 ? lines.join("\n") : undefined;
 }
 
 export interface TelegramEventHandlerHandle {
@@ -490,10 +474,10 @@ export function setupTelegramHandlers(
 
     const photos = ctx.message.photo;
     const largest = photos[photos.length - 1];
-    const contextText = buildTelegramMediaContext(caption || undefined, {
+    const contextText = buildMediaContext({
       Width: largest.width,
       Height: largest.height,
-    });
+    }, caption ? `Caption: ${caption}` : undefined);
     let imagePath: string;
     try {
       imagePath = await downloadTelegramPhoto(bot, largest.file_id);
@@ -518,11 +502,11 @@ export function setupTelegramHandlers(
 
     try {
       const document = ctx.message.document;
-      const contextText = buildTelegramMediaContext(caption || undefined, {
+      const contextText = buildMediaContext({
         Filename: document.file_name,
         MimeType: document.mime_type,
         Size: document.file_size,
-      });
+      }, caption ? `Caption: ${caption}` : undefined);
       const path = await downloadTelegramFile(
         bot,
         document.file_id,
@@ -548,13 +532,13 @@ export function setupTelegramHandlers(
 
     try {
       const audio = ctx.message.audio;
-      const contextText = buildTelegramMediaContext(caption || undefined, {
+      const contextText = buildMediaContext({
         Filename: audio.file_name,
         Title: audio.title,
         Performer: audio.performer,
         DurationSeconds: audio.duration,
         MimeType: audio.mime_type,
-      });
+      }, caption ? `Caption: ${caption}` : undefined);
       const path = await downloadTelegramFile(
         bot,
         audio.file_id,
@@ -579,7 +563,7 @@ export function setupTelegramHandlers(
 
     try {
       const voice = ctx.message.voice;
-      const contextText = buildTelegramMediaContext(undefined, {
+      const contextText = buildMediaContext({
         DurationSeconds: voice.duration,
         MimeType: voice.mime_type,
       });
@@ -608,13 +592,13 @@ export function setupTelegramHandlers(
 
     try {
       const video = ctx.message.video;
-      const contextText = buildTelegramMediaContext(caption || undefined, {
+      const contextText = buildMediaContext({
         Filename: video.file_name,
         DurationSeconds: video.duration,
         Width: video.width,
         Height: video.height,
         MimeType: video.mime_type,
-      });
+      }, caption ? `Caption: ${caption}` : undefined);
       const path = await downloadTelegramFile(
         bot,
         video.file_id,

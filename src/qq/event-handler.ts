@@ -25,6 +25,7 @@ import type { QQAttachment, QQMessageEvent } from "./types.js";
 import { buildImageFallbackMessage } from "../channels/capabilities.js";
 import { buildMediaMetadataPrompt } from "../shared/media-prompt.js";
 import { buildSavedMediaPrompt } from "../shared/media-analysis-prompt.js";
+import { buildMediaContext } from "../shared/media-context.js";
 import { downloadMediaFromUrl } from "../shared/media-storage.js";
 
 const log = createLogger("QQHandler");
@@ -46,38 +47,6 @@ function classifyAttachment(attachment: QQAttachment): "image" | "file" {
   const filename = attachment.filename?.toLowerCase() ?? "";
   if (/\.(png|jpe?g|gif|webp|bmp)$/.test(filename)) return "image";
   return "file";
-}
-
-function buildQQAttachmentContext(
-  text: string,
-  attachment: {
-    filename?: string;
-    contentType?: string;
-    size?: number;
-    width?: number;
-    height?: number;
-  },
-): string | undefined {
-  const lines: string[] = [];
-  if (text) {
-    lines.push(text);
-  }
-  if (attachment.filename) {
-    lines.push(`Filename: ${attachment.filename}`);
-  }
-  if (attachment.contentType) {
-    lines.push(`MimeType: ${attachment.contentType}`);
-  }
-  if (attachment.size !== undefined) {
-    lines.push(`Size: ${attachment.size}`);
-  }
-  if (attachment.width !== undefined) {
-    lines.push(`Width: ${attachment.width}`);
-  }
-  if (attachment.height !== undefined) {
-    lines.push(`Height: ${attachment.height}`);
-  }
-  return lines.length > 0 ? lines.join("\n") : undefined;
 }
 
 async function buildAttachmentPrompt(event: QQMessageEvent): Promise<string | null> {
@@ -115,7 +84,13 @@ async function buildAttachmentPrompt(event: QQMessageEvent): Promise<string | nu
       source: "QQ",
       kind: attachmentSummary[0].kind,
       localPath: attachmentSummary[0].localPath,
-      text: buildQQAttachmentContext(event.content, attachmentSummary[0]),
+      text: buildMediaContext({
+        Filename: attachmentSummary[0].filename,
+        MimeType: attachmentSummary[0].contentType,
+        Size: attachmentSummary[0].size,
+        Width: attachmentSummary[0].width,
+        Height: attachmentSummary[0].height,
+      }, event.content || undefined),
     });
   }
 

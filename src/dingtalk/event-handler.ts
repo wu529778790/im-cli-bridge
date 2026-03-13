@@ -29,6 +29,7 @@ import type { DingTalkStreamingTarget } from './client.js';
 import { buildImageFallbackMessage, buildUnsupportedInboundMessage } from '../channels/capabilities.js';
 import { buildMediaMetadataPrompt } from '../shared/media-prompt.js';
 import { buildSavedMediaPrompt } from '../shared/media-analysis-prompt.js';
+import { buildMediaContext } from '../shared/media-context.js';
 import { downloadMediaFromUrl } from '../shared/media-storage.js';
 
 const log = createLogger('DingTalkHandler');
@@ -77,15 +78,7 @@ function extractMediaPayload(message: DingTalkRobotPayload, kind: DingTalkInboun
   return null;
 }
 
-function buildDingTalkMediaContext(
-  text: string | undefined,
-  payload: Record<string, unknown>,
-): string | undefined {
-  const lines: string[] = [];
-  if (text) {
-    lines.push(text);
-  }
-
+function buildDingTalkMediaContext(text: string | undefined, payload: Record<string, unknown>): string | undefined {
   const fileName = typeof payload.fileName === 'string'
     ? payload.fileName
     : typeof payload.file_name === 'string'
@@ -101,18 +94,11 @@ function buildDingTalkMediaContext(
     : typeof payload.file_type === 'string'
       ? payload.file_type
       : undefined;
-
-  if (fileName) {
-    lines.push(`Filename: ${fileName}`);
-  }
-  if (mediaType) {
-    lines.push(`MediaType: ${mediaType}`);
-  }
-  if (duration !== undefined) {
-    lines.push(`Duration: ${duration}`);
-  }
-
-  return lines.length > 0 ? lines.join('\n') : undefined;
+  return buildMediaContext({
+    Filename: fileName,
+    MediaType: mediaType,
+    Duration: duration,
+  }, text);
 }
 
 async function buildMediaPrompt(message: DingTalkRobotPayload, kind: DingTalkInboundKind): Promise<string | null> {

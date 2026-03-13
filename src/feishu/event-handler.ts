@@ -35,6 +35,7 @@ import { setChatUser } from '../shared/chat-user-map.js';
 import { createLogger } from '../logger.js';
 import { createMediaTargetPath } from '../shared/media-storage.js';
 import { buildSavedMediaPrompt } from '../shared/media-analysis-prompt.js';
+import { buildMediaContext } from '../shared/media-context.js';
 
 const log = createLogger('FeishuHandler');
 
@@ -57,17 +58,6 @@ async function downloadFeishuMessageResource(
   });
   await response.writeFile(targetPath);
   return targetPath;
-}
-
-function buildFeishuMediaContext(
-  details: Record<string, string | number | undefined>,
-): string | undefined {
-  const lines: string[] = [];
-  for (const [label, value] of Object.entries(details)) {
-    if (value === undefined || value === '') continue;
-    lines.push(`${label}: ${value}`);
-  }
-  return lines.length > 0 ? lines.join('\n') : undefined;
 }
 
 /**
@@ -659,7 +649,7 @@ export function setupFeishuHandlers(
             source: 'Feishu',
             kind: 'image',
             localPath: imagePath,
-            text: buildFeishuMediaContext({
+            text: buildMediaContext({
               ImageKey: imageKey,
             }),
           });
@@ -696,7 +686,7 @@ export function setupFeishuHandlers(
             source: 'Feishu',
             kind: msgType,
             localPath: savedPath,
-            text: buildFeishuMediaContext({
+            text: buildMediaContext({
               FileName: fileName,
               FileKey: fileKey,
               Duration: duration,

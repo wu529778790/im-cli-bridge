@@ -31,6 +31,7 @@ import { buildImageFallbackMessage, buildUnsupportedInboundMessage } from '../ch
 import { buildMediaMetadataPrompt } from '../shared/media-prompt.js';
 import { downloadMediaFromUrl, saveBase64Media } from '../shared/media-storage.js';
 import { buildSavedMediaPrompt } from '../shared/media-analysis-prompt.js';
+import { buildMediaContext } from '../shared/media-context.js';
 
 const log = createLogger('WeWorkHandler');
 
@@ -109,32 +110,14 @@ function extractMediaPayload(data: WeWorkCallbackMessage, kind: MediaKind): WeWo
   return null;
 }
 
-function buildWeWorkMediaContext(text: string, payload: WeWorkMediaPayload | null): string | undefined {
-  const lines: string[] = [];
-  if (text) {
-    lines.push(text);
-  }
-  if (!payload) {
-    return lines.length > 0 ? lines.join('\n') : undefined;
-  }
-
-  if (payload.filename) {
-    lines.push(`Filename: ${payload.filename}`);
-  }
-  if (payload.fileext) {
-    lines.push(`Extension: ${payload.fileext}`);
-  }
-  if (typeof payload.duration === 'number') {
-    lines.push(`DurationMs: ${payload.duration}`);
-  }
-
-  return lines.length > 0 ? lines.join('\n') : undefined;
-}
-
 async function buildMediaPrompt(data: WeWorkCallbackMessage, kind: MediaKind): Promise<string | null> {
   const text = extractTextContent(data);
   const payload = extractMediaPayload(data, kind);
-  const contextText = buildWeWorkMediaContext(text, payload);
+  const contextText = buildMediaContext({
+    Filename: payload?.filename,
+    Extension: payload?.fileext,
+    DurationMs: payload?.duration,
+  }, text || undefined);
 
   if (kind === 'image') {
     const imagePayload = payload ?? extractImagePayload(data);
