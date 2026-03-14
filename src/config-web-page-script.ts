@@ -159,6 +159,7 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           { id: "ai-codebuddyTimeoutMs-label", key: "codebuddyTimeout" },
           { id: "ai-hookPort-label", key: "hookPort" },
           { id: "ai-logLevel-label", key: "logLevel" },
+          { id: "ai-configDir-label", key: "configDir" },
         ],
         buttons: [
           { id: "validateButton", key: "validate" },
@@ -363,6 +364,7 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         { id: "ai-codebuddyTimeoutMs", key: "codebuddyTimeoutMs" },
         { id: "ai-hookPort", key: "hookPort" },
         { id: "ai-logLevel", key: "logLevel" },
+        { id: "ai-configDir", key: "configDir" },
       ];
 
       function fill(data, meta) {

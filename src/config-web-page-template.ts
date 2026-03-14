@@ -725,11 +725,6 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
             <span id="navServiceText">Service</span>
           </button>
         </nav>
-        <div class="sidebar-footer">
-          <a href="https://github.com/wu529778790/open-im" target="_blank" class="link-chip">
-            <span id="footerGithubText">GitHub</span>
-          </a>
-        </div>
       </aside>
 
       <!-- Main Content -->
@@ -740,6 +735,12 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
             <p class="main-subtitle" id="mainSubtitle">Platform status and setup progress</p>
           </div>
           <div class="header-actions">
+            <a href="https://github.com/wu529778790/open-im" target="_blank" class="btn btn-ghost btn-sm">
+              <svg style="width:16px;height:16px" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.95 8.205 11.538.6.113.11.659.229.943.345 2.275-3.587 4.15-6.892 4.465-.78.07-1.532-.187-2.237-.365-.91-.232-1.745-.527-2.484-.89-.736-.41-1.36-.89-1.845-1.415-.41-.415-.815-.83-1.19-1.23-.375-.375-.735-.765-1.075-1.17-.34-.445-.645-.915-.875-1.405-.23-.45-.435-.93-.635-1.435-.19-.49-.345-.995-.465-1.505-.12-.505-.175-1.01-.175-1.505 0-.515.055-1.01.165-1.485.27-.94.535-1.795 1.16-2.55 1.91-.765.765-1.365 1.65-1.795 2.655-.21.505-.33 1.02-.33 1.545 0 .515.11 1.02.33 1.485.275.94.715 1.785 1.63 2.555 1.13.73 2.035 1.105 2.725.105.39.155.795.155 1.185 0 .39-.055.765-.165 1.115-.27.765-.52 1.435-1.12 1.96-1.785.765-.765 1.345-1.65 1.735-2.64.21-.505.33-1.005.33-1.505 0-.515-.105-1.01-.33-1.475-.275-.94-.715-1.795-1.635-2.55-.765-.765-1.365-1.65-1.795-2.655-.21-.505-.3-1.01-.3-1.505 0-.515.055-1.01.165-1.485.27-.94.535-1.795 1.16-2.55 1.91-.765.765-1.365 1.65-1.795 2.655-.21.505-.33 1.02-.33 1.545 0 .515.11 1.02.33 1.485.275.94.715 1.785 1.63 2.555 1.13.73 2.035 1.105 2.725.105.39.155.795.155 1.185 0 .39-.055.765-.165 1.115-.27.765-.52 1.435-1.12 1.96-1.785.765-.765 1.345-1.65 1.735-2.64.21-.505.33-1.005.33-1.505 0-.515-.105-1.01-.33-1.475-.275-.94-.715-1.795-1.635-2.55-.765-.765-1.365-1.65-1.795-2.655z"/>
+              </svg>
+              <span id="footerGithubText">GitHub</span>
+            </a>
             <button class="lang-button" id="langButton">中文</button>
           </div>
         </header>
@@ -1038,6 +1039,11 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                       <option value="WARN">WARN</option>
                       <option value="ERROR">ERROR</option>
                     </select>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" id="ai-configDir-label">Config Directory</label>
+                    <input id="ai-configDir" class="form-input mono" type="text" />
+                    <div class="form-hint">Directory path for configuration files (optional)</div>
                   </div>
                 </div>
               </div>
