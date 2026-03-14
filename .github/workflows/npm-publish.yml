@@ -6,8 +6,18 @@ on:
       - 'v*'
   workflow_dispatch:
     inputs:
+      release_channel:
+        description: 'Release channel'
+        required: true
+        default: 'stable'
+        type: choice
+        options:
+          - stable
+          - beta
+          - rc
+          - alpha
       version_bump:
-        description: 'Version bump type (自动从 dev 分支发布 prerelease)'
+        description: 'Base version bump type'
         required: true
         default: 'patch'
         type: choice
@@ -15,18 +25,8 @@ on:
           - patch
           - minor
           - major
-          - prerelease
-      prerelease_tag:
-        description: 'Prerelease tag (选择 prerelease 时生效)'
-        required: false
-        default: 'beta'
-        type: choice
-        options:
-          - beta
-          - rc
-          - alpha
       dry_run:
-        description: 'Dry run (不发布，仅打包)'
+        description: 'Dry run (build package without publishing)'
         required: false
         default: false
         type: boolean
@@ -58,151 +58,74 @@ jobs:
           echo "Using version from tag: $VERSION"
           npm pkg set version="$VERSION"
 
-      - name: Bump version (manual trigger only)
+      - name: Bump version for manual release
         if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
+          CHANNEL="${{ github.event.inputs.release_channel || 'stable' }}"
           BUMP="${{ github.event.inputs.version_bump || 'patch' }}"
-          TAG="${{ github.event.inputs.prerelease_tag || 'beta' }}"
-          IS_DEV="$([[ "${{ github.ref_name }}" == "dev" ]] && echo "true" || echo "false")"
+          echo "Inputs: CHANNEL=$CHANNEL, BUMP=$BUMP"
 
-          echo "Inputs: BUMP=$BUMP, TAG=$TAG, IS_DEV=$IS_DEV"
-
-          # 安装 semver（如果还没有）
           npm install --no-save semver
 
-          # 创建 CommonJS 脚本（使用 .cjs 扩展名）
           cat > bump-version.cjs << 'NODEEOF'
           const { execSync } = require('child_process');
           const semver = require('semver');
-          const fs = require('fs');
-          const bump = process.argv[2];
-          const tag = process.argv[3];
-          const isDev = process.argv[4] === 'true';
-          const doPrerelease = isDev || bump === 'prerelease';
 
-          console.error('DEBUG: bump=' + bump + ', tag=' + tag + ', isDev=' + isDev + ', doPrerelease=' + doPrerelease);
+          const channel = process.argv[2];
+          const bump = process.argv[3];
 
-          let version, isPrerelease, prereleaseTag;
+          function npmView(command, fallback) {
+            return execSync(
+              `${command} 2>/dev/null || echo ${JSON.stringify(fallback)}`,
+              { encoding: 'utf8', shell: '/bin/bash' }
+            ).trim();
+          }
 
-          function getPackageVersion() {
-            try {
-              return JSON.parse(fs.readFileSync('package.json', 'utf8')).version;
-            } catch (e) {
-              console.error('WARN: failed to read package.json version: ' + e.message);
-              return null;
+          const latest = npmView(
+            'npm view @wu529778790/open-im dist-tags.latest',
+            '0.0.0'
+          );
+
+          const stableBase = semver.valid(latest) ? latest : '0.0.0';
+          const nextStable = semver.inc(stableBase, bump);
+          if (!nextStable) {
+            throw new Error(`Failed to calculate next version from ${latest} with bump ${bump}`);
+          }
+
+          if (channel === 'stable') {
+            console.log(nextStable);
+            process.exit(0);
+          }
+
+          const channelTag = npmView(`npm view @wu529778790/open-im dist-tags.${channel}`, '');
+          const currentChannelVersion = semver.valid(channelTag) ? channelTag : null;
+
+          if (
+            currentChannelVersion &&
+            semver.prerelease(currentChannelVersion)?.[0] === channel &&
+            semver.gte(currentChannelVersion, `${nextStable}-${channel}.0`)
+          ) {
+            const continued = semver.inc(currentChannelVersion, 'prerelease', channel);
+            if (!continued) {
+              throw new Error(`Failed to continue ${channel} prerelease from ${currentChannelVersion}`);
             }
+            console.log(continued);
+            process.exit(0);
           }
 
-          function getLatestGitTagVersion() {
-            try {
-              const tags = execSync('git tag --list "v*"', { encoding: 'utf8', shell: '/bin/bash' })
-                .trim()
-                .split('\n')
-                .map(tagName => tagName.replace(/^v/, ''))
-                .filter(Boolean)
-                .filter(semver.valid);
-              return tags.length > 0 ? tags.sort(semver.compare).pop() : null;
-            } catch (e) {
-              console.error('WARN: failed to read git tags: ' + e.message);
-              return null;
-            }
-          }
-
-          function getLatestRegistryVersion() {
-            try {
-              const versionsJson = execSync('npm view @wu529778790/open-im versions --json 2>/dev/null || echo []', { encoding: 'utf8', shell: '/bin/bash' });
-              const versions = JSON.parse(versionsJson.trim() || '[]').filter(semver.valid);
-              return versions.length > 0 ? versions.sort(semver.compare).pop() : null;
-            } catch (e) {
-              console.error('WARN: failed to read npm versions: ' + e.message);
-              return null;
-            }
-          }
-
-          function getHighestVersion(candidates) {
-            const validVersions = candidates.filter(semver.valid);
-            return validVersions.length > 0 ? validVersions.sort(semver.compare).pop() : '0.0.0';
-          }
-
-          if (!doPrerelease) {
-            const npmVer = execSync('npm view @wu529778790/open-im version 2>/dev/null || echo 0.0.0', { encoding: 'utf8', shell: '/bin/bash' }).trim();
-            version = semver.inc(npmVer, bump);
-            isPrerelease = false;
-            prereleaseTag = '';
-          } else {
-            try {
-              const packageVer = getPackageVersion();
-              const tagVer = getLatestGitTagVersion();
-              const registryVer = getLatestRegistryVersion();
-              const currentVer = getHighestVersion([packageVer, tagVer, registryVer]);
-              console.error('DEBUG: package=' + packageVer + ', gitTag=' + tagVer + ', registry=' + registryVer + ', current=' + currentVer);
-
-              const prerelease = semver.prerelease(currentVer);
-
-              if (!prerelease || prerelease.length === 0) {
-                const base = semver.inc(currentVer, 'patch');
-                version = base + '-' + tag + '.0';
-              } else if (currentVer.indexOf('-' + tag + '.') >= 0) {
-                version = semver.inc(currentVer, 'prerelease', tag);
-              } else {
-                const base = currentVer.split('-')[0];
-                version = base + '-' + tag + '.0';
-              }
-
-              console.error('DEBUG: Next version: ' + version);
-              isPrerelease = true;
-              prereleaseTag = tag;
-            } catch (e) {
-              console.error('ERROR: ' + e.message);
-              console.error(e.stack);
-              version = '1.0.0-' + tag + '.0';
-              isPrerelease = true;
-              prereleaseTag = tag;
-            }
-          }
-
-          // 写入结果文件
-          fs.writeFileSync('/tmp/bump-result.txt', [
-            'VERSION=' + version,
-            'IS_PRERELEASE=' + isPrerelease,
-            'PRERELEASE_TAG=' + prereleaseTag
-          ].join('\n'));
-
-          console.log('Result written to /tmp/bump-result.txt');
+          console.log(`${nextStable}-${channel}.0`);
           NODEEOF
 
-          # 执行脚本
-          node bump-version.cjs "$BUMP" "$TAG" "$IS_DEV"
-          RC=$?
-
-          if [ $RC -ne 0 ]; then
-            echo "Script failed with exit code $RC"
-            exit 1
-          fi
-
-          # 从结果文件读取变量
-          if [ ! -f /tmp/bump-result.txt ]; then
-            echo "ERROR: Result file not found!"
-            exit 1
-          fi
-
-          cat /tmp/bump-result.txt
-          eval "$(cat /tmp/bump-result.txt)"
-
-          echo "=== Extracted Values ==="
-          echo "VERSION=$VERSION"
-          echo "IS_PRERELEASE=$IS_PRERELEASE"
-          echo "PRERELEASE_TAG=$PRERELEASE_TAG"
+          VERSION="$(node bump-version.cjs "$CHANNEL" "$BUMP")"
+          echo "Calculated release version: $VERSION"
 
           if [ -z "$VERSION" ]; then
             echo "ERROR: VERSION is empty!"
             exit 1
           fi
 
-          npm pkg set version=$VERSION
-          echo "IS_PRERELEASE=${IS_PRERELEASE:-false}" >> $GITHUB_ENV
-          echo "PRERELEASE_TAG=${PRERELEASE_TAG:-beta}" >> $GITHUB_ENV
+          npm pkg set version="$VERSION"
 
       - run: npm run build
 
@@ -213,17 +136,14 @@ jobs:
         if: github.event.inputs.dry_run != 'true'
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          TAG="${{ github.event.inputs.prerelease_tag || 'beta' }}"
+          CHANNEL="${{ github.event.inputs.release_channel || 'stable' }}"
 
-          # 检查是否为 prerelease 版本
-          if [[ "$VERSION" =~ -[a-zA-Z] ]]; then
-            # 提取 prerelease tag（从版本号中）
-            VERSION_TAG=$(echo "$VERSION" | sed -n 's/.*-\([a-zA-Z]*\).*/\1/p')
-            echo "Publishing prerelease version $VERSION with tag $VERSION_TAG"
-            npm publish --access public --tag=$VERSION_TAG
-          else
+          if [ "${{ github.event_name }}" = "push" ] || [ "$CHANNEL" = "stable" ]; then
             echo "Publishing stable version $VERSION"
             npm publish --access public
+          else
+            echo "Publishing $CHANNEL version $VERSION with npm tag $CHANNEL"
+            npm publish --access public --tag "$CHANNEL"
           fi
 
       - name: Dry run (no publish)

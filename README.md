@@ -14,6 +14,19 @@ Multi-platform IM bridge for AI CLI tools. Connect Telegram, Feishu, WeCom, Ding
 - Isolated sessions: each user gets an independent local session, and `/new` resets it
 - Built-in commands: `/help`, `/new`, `/cd`, `/pwd`, `/status`
 
+## Coverage Matrix
+
+Capability levels: `Native` = fully supported in-channel, `Fallback` = degraded behavior or text fallback, `None` = not currently supported.
+
+| Platform | Text Inbound | Image Inbound | File Inbound | Voice Inbound | Video Inbound | Streaming Reply | Image Reply | Card Reply |
+| ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |
+| Telegram | Native | Native | Native | Native | Native | Native | Native | Native |
+| Feishu | Native | Native | Native | Fallback | Fallback | Native | Native | Native |
+| QQ | Native | Fallback | Fallback | Fallback | Fallback | None | Fallback | Fallback |
+| WeCom | Native | Fallback | Fallback | Fallback | Fallback | Native | Native | Native |
+| DingTalk | Native | Fallback | Fallback | Fallback | Fallback | Native | Fallback | Native |
+| WeChat (experimental) | Native | Fallback | Fallback | Fallback | Fallback | Native | Fallback | Native |
+
 ## Requirements
 
 - Node.js >= 20

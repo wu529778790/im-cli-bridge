@@ -37,4 +37,20 @@ describe("config web page assembly", () => {
       expect(PAGE_HTML).toContain(`id="${id}"`);
     }
   });
+
+  it("keeps AI tool switch buttons and tool panels aligned", () => {
+    const toolListMatch = PAGE_SCRIPT.match(/const aiTools = \[([^\]]+)\]/);
+    expect(toolListMatch).toBeTruthy();
+
+    const tools = Array.from(
+      (toolListMatch?.[1] ?? "").matchAll(/"([^"]+)"/g),
+      (match) => match[1],
+    );
+
+    expect(tools).toEqual(["claude", "codex", "cursor", "codebuddy"]);
+    for (const tool of tools) {
+      expect(PAGE_HTML).toContain(`data-tool="${tool}"`);
+      expect(PAGE_HTML).toContain(`data-tool-panel="${tool}"`);
+    }
+  });
 });

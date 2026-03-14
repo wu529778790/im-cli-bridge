@@ -47,6 +47,16 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
       #configSection .panel,#aiSection .panel,#serviceSection{background:rgba(255,253,247,.82)}
       #configSection .panel-head,#aiSection .panel-head,#serviceSection .panel-head{margin-bottom:14px}
       #configSection .panel .summary,#aiSection .panel .summary{line-height:1.58}
+      .ai-layout{display:grid;gap:16px}
+      .ai-switcher{display:flex;flex-wrap:wrap;gap:10px}
+      .tool-switch{padding:10px 14px;background:rgba(19,35,26,.06);color:var(--ink);border:1px solid var(--line);box-shadow:none}
+      .tool-switch:hover{box-shadow:none}
+      .tool-switch.active{background:var(--green);border-color:var(--green);color:#fff7eb}
+      .ai-card{display:grid;gap:14px}
+      .ai-card[hidden]{display:none}
+      .ai-section-label{font-size:.75rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+      .ai-summary-bar{padding:14px 16px;border:1px dashed var(--line-strong);background:rgba(255,255,255,.5);color:var(--muted)}
+      .toggle-grid{display:grid;gap:12px}
       #serviceSection .actions{grid-template-columns:repeat(auto-fit,minmax(170px,1fr));align-items:stretch}
       #startButton{background:var(--green);box-shadow:0 12px 22px rgba(26,106,68,.18)}
       #saveButton{background:rgba(19,35,26,.88)}
@@ -206,28 +216,67 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
         </section>
         <section class="section" id="aiSection">
           <div class="panel-head"><h2 id="aiTitle">AI Tooling</h2><div id="aiHint">WeChat is intentionally excluded from this first version.</div></div>
-          <article class="panel note" id="claudeNote">Claude credentials are still read from environment variables or ~/.claude/settings.json. This page manages local bridge config, not Claude account auth.</article>
-          <article class="panel">
-            <div class="two-col">
-              <label><span id="ai-aiCommand-label">Default AI tool</span><select id="ai-aiCommand"><option value="claude">claude</option><option value="codex">codex</option><option value="cursor">cursor</option><option value="codebuddy">codebuddy</option></select></label>
-              <label><span id="ai-claudeWorkDir-label">Default work directory</span><input id="ai-claudeWorkDir" class="mono" /></label>
-              <label><span id="ai-claudeCliPath-label">Claude CLI path</span><input id="ai-claudeCliPath" class="mono" /></label>
-              <label><span id="ai-cursorCliPath-label">Cursor CLI path</span><input id="ai-cursorCliPath" class="mono" /></label>
-              <label><span id="ai-codexCliPath-label">Codex CLI path</span><input id="ai-codexCliPath" class="mono" /></label>
-              <label><span id="ai-codebuddyCliPath-label">CodeBuddy CLI path</span><input id="ai-codebuddyCliPath" class="mono" /></label>
-              <label><span id="ai-codexProxy-label">Codex proxy</span><input id="ai-codexProxy" class="mono" placeholder="Optional" /></label>
-              <label><span id="ai-claudeTimeoutMs-label">Claude timeout (ms)</span><input id="ai-claudeTimeoutMs" type="number" min="1" /></label>
-              <label><span id="ai-codexTimeoutMs-label">Codex timeout (ms)</span><input id="ai-codexTimeoutMs" type="number" min="1" /></label>
-              <label><span id="ai-codebuddyTimeoutMs-label">CodeBuddy timeout (ms)</span><input id="ai-codebuddyTimeoutMs" type="number" min="1" /></label>
-              <label><span id="ai-claudeModel-label">Claude model</span><input id="ai-claudeModel" placeholder="Optional" /></label>
-              <label><span id="ai-hookPort-label">Hook port</span><input id="ai-hookPort" type="number" min="1" /></label>
-              <label><span id="ai-logLevel-label">Log level</span><select id="ai-logLevel"><option value="default">default</option><option value="DEBUG">DEBUG</option><option value="INFO">INFO</option><option value="WARN">WARN</option><option value="ERROR">ERROR</option></select></label>
-            </div>
-            <div class="actions" style="margin-top:14px">
-              <label class="toggle"><input id="ai-claudeSkipPermissions" type="checkbox" /> <span id="ai-claudeSkipPermissions-label">Auto-approve tool permissions</span></label>
-              <label class="toggle"><input id="ai-useSdkMode" type="checkbox" /> <span id="ai-useSdkMode-label">Use Claude SDK mode</span></label>
-            </div>
-          </article>
+          <div class="ai-layout">
+            <article class="panel note" id="claudeNote">Claude credentials are still read from environment variables or ~/.claude/settings.json. This page manages local bridge config, not Claude account auth.</article>
+            <article class="panel ai-card">
+              <div class="panel-head">
+                <h3 id="aiCommonTitle">Shared defaults</h3>
+                <div class="summary" id="aiCommonHint">Choose the default AI tool first. Tool-specific fields are shown below.</div>
+              </div>
+              <div class="two-col">
+                <label><span id="ai-aiCommand-label">Default AI tool</span><select id="ai-aiCommand"><option value="claude">claude</option><option value="codex">codex</option><option value="cursor">cursor</option><option value="codebuddy">codebuddy</option></select></label>
+                <label><span id="ai-claudeWorkDir-label">Default work directory</span><input id="ai-claudeWorkDir" class="mono" /></label>
+                <label><span id="ai-hookPort-label">Hook port</span><input id="ai-hookPort" type="number" min="1" /></label>
+                <label><span id="ai-logLevel-label">Log level</span><select id="ai-logLevel"><option value="default">default</option><option value="DEBUG">DEBUG</option><option value="INFO">INFO</option><option value="WARN">WARN</option><option value="ERROR">ERROR</option></select></label>
+              </div>
+              <div class="ai-summary-bar" id="aiConfigSummary"></div>
+            </article>
+            <article class="panel ai-card">
+              <div class="panel-head">
+                <h3 id="aiToolConfigTitle">Tool-specific settings</h3>
+                <div class="summary" id="aiToolConfigHint">Only the selected tool's fields are shown.</div>
+              </div>
+              <div class="ai-switcher" id="aiToolSwitcher">
+                <button type="button" class="tool-switch" data-tool="claude">claude</button>
+                <button type="button" class="tool-switch" data-tool="codex">codex</button>
+                <button type="button" class="tool-switch" data-tool="cursor">cursor</button>
+                <button type="button" class="tool-switch" data-tool="codebuddy">codebuddy</button>
+              </div>
+              <section class="ai-card" id="ai-tool-claude" data-tool-panel="claude">
+                <div class="ai-section-label" id="ai-claudeSectionLabel">Claude</div>
+                <div class="two-col">
+                  <label><span id="ai-claudeCliPath-label">Claude CLI path</span><input id="ai-claudeCliPath" class="mono" /></label>
+                  <label><span id="ai-claudeTimeoutMs-label">Claude timeout (ms)</span><input id="ai-claudeTimeoutMs" type="number" min="1" /></label>
+                  <label><span id="ai-claudeModel-label">Claude model</span><input id="ai-claudeModel" placeholder="Optional" /></label>
+                </div>
+                <div class="toggle-grid">
+                  <label class="toggle"><input id="ai-claudeSkipPermissions" type="checkbox" /> <span id="ai-claudeSkipPermissions-label">Auto-approve tool permissions</span></label>
+                  <label class="toggle"><input id="ai-useSdkMode" type="checkbox" /> <span id="ai-useSdkMode-label">Use Claude SDK mode</span></label>
+                </div>
+              </section>
+              <section class="ai-card" id="ai-tool-codex" data-tool-panel="codex" hidden>
+                <div class="ai-section-label" id="ai-codexSectionLabel">Codex</div>
+                <div class="two-col">
+                  <label><span id="ai-codexCliPath-label">Codex CLI path</span><input id="ai-codexCliPath" class="mono" /></label>
+                  <label><span id="ai-codexTimeoutMs-label">Codex timeout (ms)</span><input id="ai-codexTimeoutMs" type="number" min="1" /></label>
+                  <label><span id="ai-codexProxy-label">Codex proxy</span><input id="ai-codexProxy" class="mono" placeholder="Optional" /></label>
+                </div>
+              </section>
+              <section class="ai-card" id="ai-tool-cursor" data-tool-panel="cursor" hidden>
+                <div class="ai-section-label" id="ai-cursorSectionLabel">Cursor</div>
+                <div class="two-col">
+                  <label><span id="ai-cursorCliPath-label">Cursor CLI path</span><input id="ai-cursorCliPath" class="mono" /></label>
+                </div>
+              </section>
+              <section class="ai-card" id="ai-tool-codebuddy" data-tool-panel="codebuddy" hidden>
+                <div class="ai-section-label" id="ai-codebuddySectionLabel">CodeBuddy</div>
+                <div class="two-col">
+                  <label><span id="ai-codebuddyCliPath-label">CodeBuddy CLI path</span><input id="ai-codebuddyCliPath" class="mono" /></label>
+                  <label><span id="ai-codebuddyTimeoutMs-label">CodeBuddy timeout (ms)</span><input id="ai-codebuddyTimeoutMs" type="number" min="1" /></label>
+                </div>
+              </section>
+            </article>
+          </div>
         </section>
         <section class="footer" id="serviceSection">
           <div class="panel-head"><h2 id="serviceTitle">Service Control</h2><div id="serviceHint">Validate, save, start, and stop the local bridge from one place.</div></div>
