@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const sendPrivateMessageMock = vi.fn();
 const sendGroupMessageMock = vi.fn();
@@ -14,10 +14,18 @@ vi.mock("./client.js", () => ({
 
 describe("QQ message sender", () => {
   beforeEach(() => {
+    vi.useFakeTimers();
     vi.resetModules();
     sendPrivateMessageMock.mockReset();
     sendGroupMessageMock.mockReset();
     sendChannelMessageMock.mockReset();
+    sendPrivateMessageMock.mockResolvedValue(undefined);
+    sendGroupMessageMock.mockResolvedValue(undefined);
+    sendChannelMessageMock.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("routes image replies through the fallback text sender", async () => {
@@ -31,33 +39,18 @@ describe("QQ message sender", () => {
     expect(sendGroupMessageMock.mock.calls[0][1]).toContain("C:\\images\\out.png");
   });
 
-  it("does not send a second completion message after streaming the full reply", async () => {
+  it("ignores intermediate stream updates and sends only the final reply", async () => {
     const sender = await import("./message-sender.js");
 
     const messageId = await sender.sendThinkingMessage("private:user-1", "reply-1", "codex");
-    await sender.updateMessage("private:user-1", messageId, "第一段回复", "streaming", undefined, "codex");
-    await sender.sendFinalMessages("private:user-1", messageId, "第一段回复", "耗时 1.2s", "codex");
+    await sender.updateMessage("private:user-1", messageId, "第一段", "streaming", undefined, "codex");
+    await sender.updateMessage("private:user-1", messageId, "第一段\n第二段", "streaming", "耗时 1.2s", "codex");
+    await sender.sendFinalMessages("private:user-1", messageId, "最终答案", "耗时 1.2s", "codex");
 
     expect(sendPrivateMessageMock).toHaveBeenCalledTimes(1);
-    expect(sendPrivateMessageMock.mock.calls[0][1]).toContain("第一段回复");
-    expect(sendPrivateMessageMock.mock.calls[0][1]).not.toContain("耗时 1.2s");
-  });
-
-  it("resets the stream when content switches from a longer draft to a shorter answer", async () => {
-    const sender = await import("./message-sender.js");
-
-    const messageId = await sender.sendThinkingMessage("private:user-1", undefined, "codex");
-    await sender.updateMessage(
-      "private:user-1",
-      messageId,
-      "这是比较长的前置内容，用来模拟思考流。",
-      "streaming",
-      undefined,
-      "codex",
-    );
-    await sender.updateMessage("private:user-1", messageId, "短答案", "streaming", undefined, "codex");
-
-    expect(sendPrivateMessageMock).toHaveBeenCalledTimes(2);
-    expect(sendPrivateMessageMock.mock.calls[1][1]).toContain("短答案");
+    expect(sendPrivateMessageMock.mock.calls[0][0]).toBe("user-1");
+    expect(sendPrivateMessageMock.mock.calls[0][1]).toContain("最终答案");
+    expect(sendPrivateMessageMock.mock.calls[0][1]).not.toContain("第一段");
+    expect(sendPrivateMessageMock.mock.calls[0][2]).toBe("reply-1");
   });
 });

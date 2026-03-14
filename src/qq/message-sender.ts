@@ -3,23 +3,16 @@ import { splitLongContent } from "../shared/utils.js";
 import { buildImageFallbackMessage } from "../channels/capabilities.js";
 import { getQQBot } from "./client.js";
 import { buildMessageTitle, OPEN_IM_SYSTEM_TITLE } from "../shared/message-title.js";
-import { buildTextNote } from "../shared/message-note.js";
 import { buildDirectoryMessage, buildModeMessage } from "../shared/system-messages.js";
 
 const log = createLogger("QQSender");
 const MAX_QQ_MESSAGE_LENGTH = 1500;
-const STREAM_CHUNK_LENGTH = 1200;
 
-interface StreamState {
-  chatId: string;
+interface PendingReplyState {
   replyToMessageId?: string;
-  lastSentLength: number;
-  lastToolNote?: string;
-  pendingText: string;
-  sentStreamChunk: boolean;
 }
 
-const streamStates = new Map<string, StreamState>();
+const pendingReplies = new Map<string, PendingReplyState>();
 
 function parseChatTarget(chatId: string): { kind: "group" | "private"; id: string } {
   if (chatId.startsWith("group:")) {
@@ -46,108 +39,6 @@ async function sendRaw(chatId: string, text: string, replyToMessageId?: string):
   return bot.sendPrivateMessage(target.id, text, replyToMessageId);
 }
 
-function getOrCreateStreamState(
-  messageId: string,
-  chatId: string,
-  replyToMessageId?: string,
-): StreamState {
-  const existing = streamStates.get(messageId);
-  if (existing) return existing;
-
-  const state: StreamState = {
-    chatId,
-    replyToMessageId,
-    lastSentLength: 0,
-    sentStreamChunk: false,
-    pendingText: "",
-  };
-  streamStates.set(messageId, state);
-  return state;
-}
-
-function buildStreamChunk(toolId: string, content: string, note?: string, withHeader = false): string {
-  const header = withHeader ? buildMessageTitle(toolId, "streaming") : "";
-  const noteBlock = note ? `\n\n${buildTextNote(note)}` : "";
-  return `${header}${header ? "\n" : ""}${content}${noteBlock}`.trim();
-}
-
-function findPreferredSplit(text: string, limit: number): number {
-  const normalizedLimit = Math.min(text.length, limit);
-  const boundaries = ["\n\n", "\n", "。", "，", "；", ". ", "! ", "? ", ", ", " "];
-  const minimumUsefulSplit = Math.min(80, Math.floor(normalizedLimit / 3));
-
-  for (const boundary of boundaries) {
-    const index = text.lastIndexOf(boundary, normalizedLimit);
-    if (index >= minimumUsefulSplit) {
-      return index + boundary.length;
-    }
-  }
-
-  if (text.length >= minimumUsefulSplit) {
-    return normalizedLimit;
-  }
-
-  return 0;
-}
-
-function resetStreamState(state: StreamState): void {
-  state.lastSentLength = 0;
-  state.lastToolNote = undefined;
-  state.pendingText = "";
-  state.sentStreamChunk = false;
-}
-
-async function sendIncrementalContent(
-  state: StreamState,
-  toolId: string,
-  content: string,
-  note?: string,
-  flushAll = false,
-): Promise<void> {
-  if (!flushAll && content.length < state.lastSentLength) {
-    resetStreamState(state);
-  }
-
-  const delta = content.slice(state.lastSentLength);
-  const hasNewNote = !!note && note !== state.lastToolNote;
-
-  if (!delta && !hasNewNote) return;
-
-  if (delta) {
-    state.pendingText += delta;
-    let noteSent = false;
-
-    while (state.pendingText.length > 0) {
-      const splitAt = flushAll
-        ? Math.min(state.pendingText.length, STREAM_CHUNK_LENGTH)
-        : findPreferredSplit(state.pendingText, STREAM_CHUNK_LENGTH);
-
-      if (splitAt <= 0) break;
-
-      const part = state.pendingText.slice(0, splitAt).trim();
-      state.pendingText = state.pendingText.slice(splitAt).trimStart();
-      if (!part) continue;
-
-      const text = buildStreamChunk(
-        toolId,
-        part,
-        state.pendingText.length === 0 && hasNewNote ? note : undefined,
-        !state.sentStreamChunk,
-      );
-      await sendRaw(state.chatId, text, state.replyToMessageId);
-      if (state.pendingText.length === 0 && hasNewNote) noteSent = true;
-      state.sentStreamChunk = true;
-    }
-
-    state.lastSentLength = content.length;
-    if (noteSent) state.lastToolNote = note;
-    return;
-  }
-
-  await sendRaw(state.chatId, `[${toolId}] ${note}`, state.replyToMessageId);
-  state.lastToolNote = note;
-}
-
 export async function sendTextReply(chatId: string, text: string): Promise<void> {
   try {
     const formatted = `${buildMessageTitle(OPEN_IM_SYSTEM_TITLE, "done")}\n\n${text}`;
@@ -164,56 +55,41 @@ export async function sendImageReply(chatId: string, imagePath: string): Promise
 }
 
 export async function sendThinkingMessage(chatId: string, replyToMessageId?: string, _toolId = "claude"): Promise<string> {
-  const messageId = `${Date.now()}`;
-  getOrCreateStreamState(messageId, chatId, replyToMessageId);
+  const messageId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  pendingReplies.set(messageId, { replyToMessageId });
   return messageId;
 }
 
 export async function updateMessage(
-  chatId: string,
-  messageId: string,
-  content: string,
-  status: "thinking" | "streaming" | "done" | "error",
-  note?: string,
-  toolId = "claude",
+  _chatId: string,
+  _messageId: string,
+  _content: string,
+  _status: "thinking" | "streaming" | "done" | "error",
+  _note?: string,
+  _toolId = "claude",
 ): Promise<void> {
-  if (status !== "streaming" && status !== "thinking") return;
-  const state = getOrCreateStreamState(messageId, chatId);
-  await sendIncrementalContent(state, toolId, content, note);
+  // QQ 官方机器人接口不支持单条消息流式更新，这里显式忽略中间增量，只发送最终结果。
 }
 
 export async function sendFinalMessages(
   chatId: string,
   messageId: string,
   fullContent: string,
-  note: string,
+  _note: string,
   toolId = "claude",
 ): Promise<void> {
-  const state = getOrCreateStreamState(messageId, chatId);
+  const replyToMessageId = pendingReplies.get(messageId)?.replyToMessageId;
+  pendingReplies.delete(messageId);
 
-  if (state.sentStreamChunk && fullContent.length === state.lastSentLength) {
-    streamStates.delete(messageId);
-    return;
+  const completionText = `${buildMessageTitle(toolId, "done")}\n${fullContent}`;
+  for (const part of splitLongContent(completionText, MAX_QQ_MESSAGE_LENGTH)) {
+    await sendRaw(chatId, part, replyToMessageId);
   }
-
-  await sendIncrementalContent(state, toolId, fullContent, note || undefined, true);
-
-  if (!state.sentStreamChunk) {
-    const completionText = note
-      ? buildStreamChunk(toolId, fullContent, note, true)
-      : `${buildMessageTitle(toolId, "done")}\n${fullContent}`;
-
-    for (const part of splitLongContent(completionText, MAX_QQ_MESSAGE_LENGTH)) {
-      await sendRaw(chatId, part, state.replyToMessageId);
-    }
-  }
-
-  streamStates.delete(messageId);
 }
 
 export async function sendErrorMessage(chatId: string, messageId: string, error: string, toolId = "claude"): Promise<void> {
-  const replyToMessageId = streamStates.get(messageId)?.replyToMessageId;
-  streamStates.delete(messageId);
+  const replyToMessageId = pendingReplies.get(messageId)?.replyToMessageId;
+  pendingReplies.delete(messageId);
   await sendRaw(chatId, `${buildMessageTitle(toolId, "error")}\n${error}`, replyToMessageId);
 }
 
