@@ -277,8 +277,14 @@ export async function sendFinalMessages(
   toolId = 'claude',
   reqId?: string
 ): Promise<void> {
+  const contentToSend = fullContent?.trim() || '(无输出)';
+  const reqIdUsed = getReqId(reqId);
+  if (!reqIdUsed) {
+    log.warn(`sendFinalMessages: no req_id, streamId=${streamId}, contentLen=${contentToSend.length}`);
+  }
+  log.info(`sendFinalMessages: streamId=${streamId}, contentLen=${contentToSend.length}, reqId=${reqIdUsed ? 'ok' : 'missing'}`);
   const title = getToolTitle(toolId, 'done');
-  const parts = splitLongContent(fullContent, MAX_WEWORK_MESSAGE_LENGTH);
+  const parts = splitLongContent(contentToSend, MAX_WEWORK_MESSAGE_LENGTH);
   const finalMessage = formatWeWorkMessage(
     title,
     parts[0],
