@@ -218,7 +218,7 @@ export const PAGE_TEXTS = {
           claudeProxy: "\u4ee3\u7406\uff08\u53ef\u9009\uff09",
           codexTimeout: "Codex \u8d85\u65f6\uff08\u6beb\u79d2\uff09",
           cursorTimeout: "Cursor \u8d85\u65f6\uff08\u6beb\u79d2\uff09",
-          cursorModel: "\u6a21\u578b\uff08\u5982 auto\uff09",
+          cursorModel: "模型（如 auto）",
           codebuddyTimeout: "CodeBuddy \u8d85\u65f6\uff08\u6beb\u79d2\uff09",
           cursorProxy: "\u4ee3\u7406\uff08\u53ef\u9009\uff09",
           hookPort: "Hook \u7aef\u53e3",

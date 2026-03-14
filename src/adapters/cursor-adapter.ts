@@ -61,7 +61,9 @@ export class CursorAdapter implements ToolAdapter {
                 ? 'Cursor 会话已失效，旧 session 已清理。请直接重试当前请求。'
                 : msg.includes('stream disconnected') || msg.includes('error sending request') || msg.includes('Connection refused') || msg.includes('ENOTFOUND') || msg.includes('ETIMEDOUT')
                   ? 'Cursor 网络请求失败。如无法访问 Cursor API，可在 tools.cursor.proxy 或 CURSOR_PROXY 中配置代理。'
-                  : msg;
+                  : msg.includes('usage limit') || msg.includes('You\'ve hit your usage limit')
+                    ? 'Cursor 模型用量已超限（如 Opus）。请在 config.json 的 tools.cursor.model 中改为 claude-4-sonnet 或其他非 Opus 模型，或运行 agent --list-models 查看可用模型。'
+                    : msg;
         callbacks.onError(friendly);
       },
       onSessionId: callbacks.onSessionId,
