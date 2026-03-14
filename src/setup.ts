@@ -122,6 +122,13 @@ function printManualInstructions(configPath: string): void {
       "appSecret": "你的飞书 App Secret（可选）",
       "allowedUserIds": ["允许访问的飞书用户 ID（可选）"]
     },
+    "qq": {
+      "enabled": false,
+      "aiCommand": "codebuddy",
+      "appId": "你的 QQ App ID（可选）",
+      "secret": "你的 QQ App Secret（可选）",
+      "allowedUserIds": ["允许访问的 QQ 用户 ID（可选）"]
+    },
     "wework": {
       "enabled": false,
       "corpId": "你的企业微信 Corp ID（可选）",
@@ -145,9 +152,9 @@ function printManualInstructions(configPath: string): void {
   }
 }`);
   console.log("");
-  console.log("提示：至少需要配置 Telegram、Feishu、WeChat、WeWork 或 DingTalk 其中一个平台");
+  console.log("提示：至少需要配置 Telegram、Feishu、QQ、WeChat、WeWork 或 DingTalk 其中一个平台");
   console.log(
-    "或设置环境变量: TELEGRAM_BOT_TOKEN=xxx、FEISHU_APP_ID=xxx、WECHAT_APP_ID=xxx、WEWORK_CORP_ID=xxx 或 DINGTALK_CLIENT_ID=xxx 后再运行",
+    "或设置环境变量: TELEGRAM_BOT_TOKEN=xxx、FEISHU_APP_ID=xxx、QQ_BOT_APPID=xxx、WECHAT_APP_ID=xxx、WEWORK_CORP_ID=xxx 或 DINGTALK_CLIENT_ID=xxx 后再运行",
   );
   console.log("");
 }

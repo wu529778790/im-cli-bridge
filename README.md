@@ -105,6 +105,25 @@ Both the official API and compatible third-party endpoints are supported:
 }
 ```
 
+### CodeBuddy
+
+CodeBuddy uses the local CLI. Install it first, then either log in interactively or provide credentials through `env`.
+
+```bash
+npm install -g @tencent-ai/codebuddy-code
+codebuddy --version
+codebuddy login
+```
+
+Common config keys:
+
+- `tools.codebuddy.cliPath`: CLI path, defaults to `codebuddy`
+- `tools.codebuddy.skipPermissions`: whether to skip permission confirmation, defaults to `true`
+- `tools.codebuddy.timeoutMs`: total execution timeout, defaults to `600000`
+- `platforms.<platform>.aiCommand`: set to `codebuddy` if that IM platform should use CodeBuddy
+
+On Windows, if `cliPath` is still `codebuddy`, open-im also tries common npm global locations such as `AppData\\Roaming\\npm\\codebuddy.cmd`.
+
 ### Example Config File
 
 The following is valid JSON and can be saved directly as `~/.open-im/config.json`:
@@ -152,7 +171,7 @@ The following is valid JSON and can be saved directly as `~/.open-im/config.json
     },
     "qq": {
       "enabled": false,
-      "aiCommand": "claude",
+      "aiCommand": "codebuddy",
       "allowedUserIds": [],
       "appId": "YOUR_QQ_APP_ID",
       "secret": "YOUR_QQ_APP_SECRET"
@@ -195,6 +214,10 @@ The following is valid JSON and can be saved directly as `~/.open-im/config.json
 | `CODEX_PROXY` | Proxy used by Codex to access `chatgpt.com` |
 | `OPENAI_API_KEY` | Codex API key, can replace `codex login` |
 | `CURSOR_API_KEY` | Cursor API key, can replace `agent login` |
+| `CODEBUDDY_CLI_PATH` | Override CodeBuddy CLI path |
+| `CODEBUDDY_TIMEOUT_MS` | Override CodeBuddy timeout |
+| `CODEBUDDY_SKIP_PERMISSIONS` | Override CodeBuddy skip-permissions behavior |
+| `CODEBUDDY_IDLE_TIMEOUT_MS` | Abort CodeBuddy when it stays silent for too long |
 | `CODEBUDDY_API_KEY` | CodeBuddy API key, can replace `codebuddy login` |
 | `CODEBUDDY_AUTH_TOKEN` | CodeBuddy auth token, can replace `codebuddy login` |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token |
