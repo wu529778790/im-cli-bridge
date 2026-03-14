@@ -76,6 +76,7 @@ export interface WeWorkCallbackMessage {
       /** 图片 base64 数据（直接传输时） */
       base64?: string;
       md5?: string;
+      aeskey?: string;
     };
     /** 图文混排消息 */
     mixed?: {
@@ -88,6 +89,7 @@ export interface WeWorkCallbackMessage {
           url?: string;
           base64?: string;
           md5?: string;
+          aeskey?: string;
         };
       }>;
     };
