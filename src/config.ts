@@ -813,12 +813,6 @@ export function loadConfig(): Config {
         throw new Error(installGuide);
       }
     }
-    if (!process.env.CODEBUDDY_API_KEY && !process.env.CODEBUDDY_AUTH_TOKEN) {
-      console.warn(
-        '\n⚠ CodeBuddy 模式：未检测到 CODEBUDDY_API_KEY 或 CODEBUDDY_AUTH_TOKEN。首次使用请先运行 codebuddy login，\n' +
-        '  或在 ~/.open-im/config.json 的 env 中添加 "CODEBUDDY_API_KEY" / "CODEBUDDY_AUTH_TOKEN"。\n'
-      );
-    }
   }
 
   // 9. 校验 Cursor CLI（使用 cursor 时）

@@ -295,7 +295,7 @@ DingTalk AI card templates are already compatible with the official "Search Resu
 
 **Codex shows `stream disconnected` or `error sending request`**: `chatgpt.com` is not reachable. Configure `tools.codex.proxy` or set `CODEX_PROXY`.
 
-**CodeBuddy prompts for login**: run `codebuddy login` first, or set `CODEBUDDY_API_KEY` / `CODEBUDDY_AUTH_TOKEN` in `env`.
+**CodeBuddy prompts for login**: run `codebuddy login` first. `open-im` does not read CodeBuddy login state from `~/.open-im/config.json`.
 
 ## License
 

@@ -295,7 +295,7 @@ codebuddy login
 
 **Codex 报 `stream disconnected` / `error sending request`**：无法访问 `chatgpt.com`，请配置 `tools.codex.proxy` 或环境变量 `CODEX_PROXY`。
 
-**CodeBuddy 提示需要登录**：先执行 `codebuddy login`，或在 `env` 中设置 `CODEBUDDY_API_KEY` / `CODEBUDDY_AUTH_TOKEN`。
+**CodeBuddy 提示需要登录**：先执行 `codebuddy login`。`open-im` 不会从 `~/.open-im/config.json` 读取 CodeBuddy 的登录态。
 
 ## License
 
