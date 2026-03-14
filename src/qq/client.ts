@@ -1,7 +1,7 @@
 import WebSocket from "ws";
 import type { Config } from "../config.js";
 import { createLogger } from "../logger.js";
-import type { QQMessageEvent } from "./types.js";
+import type { QQAttachment, QQMessageEvent } from "./types.js";
 
 const log = createLogger("QQ");
 
@@ -143,12 +143,28 @@ async function getGatewayUrl(config: Config): Promise<string> {
 function normalizeInboundEvent(payload: GatewayPayload): QQMessageEvent | null {
   const type = payload.t;
   const data = (payload.d ?? {}) as Record<string, any>;
+  const attachments = Array.isArray(data.attachments)
+    ? data.attachments.map((attachment): QQAttachment => ({
+        url: typeof attachment?.url === "string" ? attachment.url : undefined,
+        filename: typeof attachment?.filename === "string" ? attachment.filename : undefined,
+        contentType: typeof attachment?.content_type === "string" ? attachment.content_type : undefined,
+        size: typeof attachment?.size === "number" ? attachment.size : undefined,
+        width: typeof attachment?.width === "number" ? attachment.width : undefined,
+        height: typeof attachment?.height === "number" ? attachment.height : undefined,
+        raw: attachment as Record<string, unknown>,
+      }))
+    : undefined;
+  const baseEvent = {
+    id: String(data.id ?? ""),
+    content: String(data.content ?? "").trim(),
+    attachments,
+    raw: data,
+  };
 
   if (type === "C2C_MESSAGE_CREATE") {
     return {
       type: "private",
-      id: String(data.id ?? ""),
-      content: String(data.content ?? "").trim(),
+      ...baseEvent,
       userOpenid: String(data.author?.user_openid ?? ""),
     };
   }
@@ -156,8 +172,7 @@ function normalizeInboundEvent(payload: GatewayPayload): QQMessageEvent | null {
   if (type === "GROUP_AT_MESSAGE_CREATE") {
     return {
       type: "group",
-      id: String(data.id ?? ""),
-      content: String(data.content ?? "").trim(),
+      ...baseEvent,
       userOpenid: String(data.author?.member_openid ?? ""),
       groupOpenid: String(data.group_openid ?? ""),
     };
@@ -166,8 +181,7 @@ function normalizeInboundEvent(payload: GatewayPayload): QQMessageEvent | null {
   if (type === "AT_MESSAGE_CREATE" || type === "DIRECT_MESSAGE_CREATE") {
     return {
       type: "channel",
-      id: String(data.id ?? ""),
-      content: String(data.content ?? "").trim(),
+      ...baseEvent,
       userOpenid: String(data.author?.id ?? ""),
       channelId: String(data.channel_id ?? ""),
     };
@@ -249,7 +263,7 @@ async function connectWebSocket(config: Config, handler: (event: QQMessageEvent)
         }
 
         const event = normalizeInboundEvent(payload);
-        if (event && event.content) {
+        if (event && (event.content || (event.attachments?.length ?? 0) > 0)) {
           await handler(event);
         }
       } catch (error) {

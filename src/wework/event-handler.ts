@@ -1,5 +1,5 @@
 /**
- * WeWork (企业微信) Event Handler - Handle WeWork message events
+ * WeWork Event Handler - Handle WeWork message events
  */
 
 import type { Config } from '../config.js';
@@ -11,14 +11,13 @@ import {
   updateMessage,
   sendFinalMessages,
   sendTextReply,
+  sendImageReply,
   startTypingLoop,
   sendPermissionCard,
   sendModeCard,
   setCurrentReqId,
 } from './message-sender.js';
 import { registerPermissionSender } from '../hook/permission-server.js';
-import { setPermissionMode } from '../permission-mode/session-mode.js';
-import { MODE_LABELS } from '../permission-mode/types.js';
 import { CommandHandler } from '../commands/handler.js';
 import { getAdapter } from '../adapters/registry.js';
 import { runAITask, type TaskRunState } from '../shared/ai-task.js';
@@ -29,8 +28,35 @@ import { setChatUser } from '../shared/chat-user-map.js';
 import { createLogger } from '../logger.js';
 import type { ThreadContext } from '../shared/types.js';
 import type { WeWorkCallbackMessage } from './types.js';
+import { buildUnsupportedInboundMessage } from '../channels/capabilities.js';
+import { buildMediaMetadataPrompt } from '../shared/media-prompt.js';
+import {
+  decryptAes256CbcMedia,
+  downloadMediaFromUrl,
+  inferExtensionFromBuffer,
+  inferExtensionFromContentType,
+  saveBase64Media,
+  saveBufferMedia,
+} from '../shared/media-storage.js';
+import { buildSavedMediaPrompt } from '../shared/media-analysis-prompt.js';
+import { buildMediaContext } from '../shared/media-context.js';
+import { buildErrorNote, buildProgressNote } from '../shared/message-note.js';
 
 const log = createLogger('WeWorkHandler');
+const WEWORK_MEDIA_TIMEOUT_MS = 60_000;
+
+type MediaKind = 'image' | 'file' | 'voice' | 'video';
+
+interface WeWorkMediaPayload {
+  url?: string;
+  base64?: string;
+  md5?: string;
+  aeskey?: string;
+  filename?: string;
+  fileext?: string;
+  duration?: number;
+  [key: string]: unknown;
+}
 
 export interface WeWorkEventHandlerHandle {
   stop: () => void;
@@ -38,9 +64,171 @@ export interface WeWorkEventHandlerHandle {
   handleEvent: (data: WeWorkCallbackMessage) => Promise<void>;
 }
 
+async function saveWeWorkUrlMedia(
+  payload: WeWorkMediaPayload,
+  fallbackExtension: string,
+): Promise<string> {
+  if (!payload.url) {
+    throw new Error("Missing WeWork media URL");
+  }
+
+  if (typeof payload.aeskey === "string" && payload.aeskey.trim().length > 0) {
+    const response = await fetch(payload.url, { signal: AbortSignal.timeout(WEWORK_MEDIA_TIMEOUT_MS) });
+    if (!response.ok) {
+      throw new Error(`Failed to download media: HTTP ${response.status}`);
+    }
+
+    const encryptedBuffer = Buffer.from(await response.arrayBuffer());
+    const decryptedBuffer = decryptAes256CbcMedia(encryptedBuffer, payload.aeskey);
+    const extension =
+      inferExtensionFromBuffer(decryptedBuffer) ||
+      inferExtensionFromContentType(response.headers.get("content-type") ?? "") ||
+      `.${fallbackExtension}`;
+    return saveBufferMedia(decryptedBuffer, extension, payload.filename ?? payload.md5);
+  }
+
+  return downloadMediaFromUrl(payload.url, {
+    basenameHint: payload.filename ?? payload.md5,
+    fallbackExtension,
+  });
+}
+
+function extractTextContent(data: WeWorkCallbackMessage): string {
+  const body = data.body;
+
+  if (body.msgtype === 'text' && body.text?.content) {
+    return body.text.content.trim();
+  }
+
+  if (body.msgtype === 'mixed' && body.mixed?.msg_item) {
+    return body.mixed.msg_item
+      .filter((item) => item.msgtype === 'text' && item.text?.content)
+      .map((item) => item.text!.content.trim())
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  return '';
+}
+
+function extractImagePayload(data: WeWorkCallbackMessage): WeWorkMediaPayload | null {
+  const body = data.body;
+
+  if (body.msgtype === 'image' && body.image) {
+    return body.image;
+  }
+
+  if (body.msgtype === 'mixed' && body.mixed?.msg_item) {
+    const imageItem = body.mixed.msg_item.find((item) => item.msgtype === 'image' && item.image);
+    return imageItem?.image ?? null;
+  }
+
+  return null;
+}
+
+function extractMediaPayload(data: WeWorkCallbackMessage, kind: MediaKind): WeWorkMediaPayload | null {
+  if (kind === 'image') {
+    return extractImagePayload(data);
+  }
+
+  const raw = data.body as unknown as Record<string, unknown>;
+  const direct = raw[kind];
+  if (direct && typeof direct === 'object') {
+    return direct as WeWorkMediaPayload;
+  }
+
+  const quote = raw.quote;
+  if (quote && typeof quote === 'object') {
+    const quotePayload = quote as Record<string, unknown>;
+    const quotedKindPayload = quotePayload[kind];
+    if (quotedKindPayload && typeof quotedKindPayload === 'object') {
+      return quotedKindPayload as WeWorkMediaPayload;
+    }
+  }
+
+  return null;
+}
+
+export async function buildMediaPrompt(data: WeWorkCallbackMessage, kind: MediaKind): Promise<string | null> {
+  const text = extractTextContent(data);
+  const payload = extractMediaPayload(data, kind);
+  const contextText = buildMediaContext({
+    Filename: payload?.filename,
+    Extension: payload?.fileext,
+    DurationMs: payload?.duration,
+  }, text || undefined);
+
+  if (kind === 'image') {
+    const imagePayload = payload ?? extractImagePayload(data);
+    if (!imagePayload) return null;
+
+    let imageReference = '';
+    if (typeof imagePayload.base64 === 'string' && imagePayload.base64.length > 0) {
+      const savedPath = await saveBase64Media(imagePayload.base64, 'jpg');
+      return buildSavedMediaPrompt({
+        source: 'WeWork',
+        kind: 'image',
+        localPath: savedPath,
+        text: contextText,
+      });
+    } else if (typeof imagePayload.url === 'string' && imagePayload.url.length > 0) {
+      try {
+        const savedPath = await saveWeWorkUrlMedia(imagePayload, 'jpg');
+        log.info(`Downloaded WeWork image: ${savedPath}`);
+        return buildSavedMediaPrompt({
+          source: 'WeWork',
+          kind: 'image',
+          localPath: savedPath,
+          text: contextText,
+        });
+      } catch {
+        imageReference = `Remote image URL: ${imagePayload.url}`;
+      }
+    }
+
+    return buildMediaMetadataPrompt({
+      source: 'WeWork',
+      kind: 'image',
+      text: contextText,
+      metadata: {
+        reference: imageReference || 'No direct image bytes were included; only metadata is available.',
+        payload: imagePayload,
+      },
+      guidance:
+        'Analyze the image if a local path or accessible URL is available. Otherwise explain the limitation and ask the user to resend via Telegram/Feishu or provide more context.',
+    });
+  }
+
+  if (payload?.url) {
+    try {
+      const savedPath = await saveWeWorkUrlMedia(
+        payload,
+        kind === 'voice' ? 'ogg' : kind === 'video' ? 'mp4' : 'bin',
+      );
+      return buildSavedMediaPrompt({
+        source: 'WeWork',
+        kind,
+        localPath: savedPath,
+        text: contextText,
+      });
+    } catch {
+      // Fall back to metadata-only prompt.
+    }
+  }
+
+  return buildMediaMetadataPrompt({
+    source: 'WeWork',
+    kind,
+    text: contextText,
+    metadata: payload ?? 'none',
+    guidance:
+      'If the media content is not directly accessible, explain that clearly and ask the user for a text summary, transcript, or a resend via a channel with native media support.',
+  });
+}
+
 export function setupWeWorkHandlers(
   config: Config,
-  sessionManager: SessionManager
+  sessionManager: SessionManager,
 ): WeWorkEventHandlerHandle {
   const accessControl = new AccessControl(config.weworkAllowedUserIds);
   const requestQueue = new RequestQueue();
@@ -65,127 +253,86 @@ export function setupWeWorkHandlers(
     convId?: string,
     _threadCtx?: { rootMessageId: string; threadId: string },
     replyToMessageId?: string,
-    reqId?: string
+    reqId?: string,
   ) {
     log.info(`[AI_REQUEST] userId=${userId}, chatId=${chatId}, promptLength=${prompt.length}`);
     if (reqId) setCurrentReqId(reqId);
 
     try {
-    const toolAdapter = getAdapter(config.aiCommand);
-    if (!toolAdapter) {
-      log.error(`[handleAIRequest] No adapter found for: ${config.aiCommand}`);
-      await sendTextReply(chatId, `未配置 AI 工具: ${config.aiCommand}`, reqId);
-      return;
-    }
-
-    const sessionId = convId ? sessionManager.getSessionIdForConv(userId, convId, config.aiCommand) : undefined;
-    log.info(`[handleAIRequest] Running ${config.aiCommand} for user ${userId}, sessionId=${sessionId ?? 'new'}`);
-
-    const toolId = config.aiCommand;
-    let msgId: string;
-    try {
-      msgId = await sendThinkingMessage(chatId, replyToMessageId, toolId, reqId);
-    } catch (err) {
-      log.error('Failed to send thinking message:', err);
-      return;
-    }
-
-    const stopTyping = startTypingLoop(chatId);
-    const taskKey = `${userId}:${msgId}`;
-
-    await runAITask(
-      { config, sessionManager },
-      { userId, chatId, workDir, sessionId, convId, platform: 'wework', taskKey },
-      prompt,
-      toolAdapter,
-      {
-        throttleMs: WEWORK_THROTTLE_MS,
-        streamUpdate: async (content, toolNote) => {
-          const note = toolNote ? '输出中...\n' + toolNote : '输出中...';
-          try {
-            await updateMessage(chatId, msgId, content, 'streaming', note, toolId, reqId);
-          } catch (err) {
-            log.debug('Stream update failed:', err);
-          }
-        },
-        sendComplete: async (content, note) => {
-          await sendFinalMessages(chatId, msgId, content, note ?? '', toolId, reqId);
-        },
-        sendError: async (error) => {
-          await updateMessage(chatId, msgId, `错误：${error}`, 'error', '执行失败', toolId, reqId);
-        },
-        extraCleanup: () => {
-          stopTyping();
-          runningTasks.delete(taskKey);
-        },
-        onTaskReady: (state) => {
-          runningTasks.set(taskKey, state);
-        },
-        sendImage: async (path) => {
-          // WeWork image handling
-          await sendTextReply(chatId, `图片已保存: ${path}`, reqId);
-        },
+      const toolAdapter = getAdapter(config.aiCommand);
+      if (!toolAdapter) {
+        log.error(`[handleAIRequest] No adapter found for: ${config.aiCommand}`);
+        await sendTextReply(chatId, `AI tool is not configured: ${config.aiCommand}`, reqId);
+        return;
       }
-    );
+
+      const sessionId = convId
+        ? sessionManager.getSessionIdForConv(userId, convId, config.aiCommand)
+        : undefined;
+      log.info(`[handleAIRequest] Running ${config.aiCommand} for user ${userId}, sessionId=${sessionId ?? 'new'}`);
+
+      const toolId = config.aiCommand;
+      const msgId = await sendThinkingMessage(chatId, replyToMessageId, toolId, reqId);
+      const stopTyping = startTypingLoop(chatId);
+      const taskKey = `${userId}:${msgId}`;
+
+      await runAITask(
+        { config, sessionManager },
+        { userId, chatId, workDir, sessionId, convId, platform: 'wework', taskKey },
+        prompt,
+        toolAdapter,
+        {
+          throttleMs: WEWORK_THROTTLE_MS,
+          streamUpdate: async (content, toolNote) => {
+            const note = buildProgressNote(toolNote);
+            try {
+              await updateMessage(chatId, msgId, content, 'streaming', note, toolId, reqId);
+            } catch (err) {
+              log.debug('Stream update failed:', err);
+            }
+          },
+          sendComplete: async (content, note) => {
+            await sendFinalMessages(chatId, msgId, content, note ?? '', toolId, reqId);
+          },
+          sendError: async (error) => {
+            await updateMessage(chatId, msgId, `Error: ${error}`, 'error', buildErrorNote(), toolId, reqId);
+          },
+          extraCleanup: () => {
+            stopTyping();
+            runningTasks.delete(taskKey);
+          },
+          onTaskReady: (state) => {
+            runningTasks.set(taskKey, state);
+          },
+          sendImage: async (path) => {
+            await sendImageReply(chatId, path);
+          },
+        },
+      );
     } finally {
       setCurrentReqId(null);
     }
   }
 
-  /**
-   * Extract text content from WeWork message body
-   */
-  function extractTextContent(data: WeWorkCallbackMessage): string {
-    const body = data.body;
+  async function enqueuePrompt(
+    userId: string,
+    chatId: string,
+    prompt: string,
+    reqId: string,
+  ): Promise<void> {
+    const workDir = sessionManager.getWorkDir(userId);
+    const convId = sessionManager.getConvId(userId);
+    const enqueueResult = requestQueue.enqueue(userId, convId, prompt, async (nextPrompt) => {
+      await handleAIRequest(userId, chatId, nextPrompt, workDir, convId, undefined, undefined, reqId);
+    });
 
-    // Direct text message
-    if (body.msgtype === 'text' && body.text?.content) {
-      return body.text.content.trim();
+    if (enqueueResult === 'rejected') {
+      await sendTextReply(chatId, 'Request queue is full. Please try again later.', reqId);
+    } else if (enqueueResult === 'queued') {
+      await sendTextReply(chatId, 'Your request is queued.', reqId);
     }
-
-    // Mixed message (text + images)
-    if (body.msgtype === 'mixed' && body.mixed?.msg_item) {
-      const textItems = body.mixed.msg_item
-        .filter(item => item.msgtype === 'text' && item.text?.content)
-        .map(item => item.text!.content)
-        .join('\n');
-      return textItems;
-    }
-
-    return '';
   }
 
-  /**
-   * Extract image content from WeWork message body
-   */
-  function extractImageContent(data: WeWorkCallbackMessage): { url?: string; base64?: string } | null {
-    const body = data.body;
-
-    // Direct image message
-    if (body.msgtype === 'image' && body.image) {
-      return {
-        url: body.image.url,
-        base64: body.image.base64,
-      };
-    }
-
-    // Mixed message with images
-    if (body.msgtype === 'mixed' && body.mixed?.msg_item) {
-      const firstImage = body.mixed.msg_item.find(item => item.msgtype === 'image' && item.image);
-      if (firstImage?.image) {
-        return {
-          url: firstImage.image.url,
-          base64: firstImage.image.base64,
-        };
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * Handle incoming WeWork callback event
-   */
   async function handleEvent(data: WeWorkCallbackMessage): Promise<void> {
     log.info('[handleEvent] Called with data:', JSON.stringify(data).slice(0, 800));
 
@@ -196,109 +343,69 @@ export function setupWeWorkHandlers(
       const body = data.body;
       const msgType = body.msgtype;
       const fromUser = body.from.userid;
-      // 单聊时 chatid 可能不返回，用 userid 作为会话标识
       const chatId = body.chatid ?? fromUser;
-      const chatType = body.chattype;
 
-      log.info(`WeWork event: msgType=${msgType}, from=${fromUser}, chatId=${chatId}, chatType=${chatType}`);
+      log.info(`WeWork event: msgType=${msgType}, from=${fromUser}, chatId=${chatId}`);
 
-      // Access control check
       if (!accessControl.isAllowed(fromUser)) {
         log.warn(`Access denied for sender: ${fromUser}`);
-        await sendTextReply(fromUser, `抱歉，您没有访问权限。\n您的 ID: ${fromUser}`, reqId);
+        await sendTextReply(chatId, `Access denied. Your WeWork user ID: ${fromUser}`, reqId);
         return;
       }
 
-      log.info(`Access granted for sender: ${fromUser}`);
+      setActiveChatId('wework', chatId);
+      setChatUser(chatId, fromUser, 'wework');
 
-      setActiveChatId('wework', fromUser);
-      setChatUser(fromUser, fromUser, 'wework');
-
-      // Handle text messages
-      if (msgType === 'text' || msgType === 'mixed') {
+      if (msgType === 'text') {
         const text = extractTextContent(data);
+        if (!text) return;
 
-        if (!text) {
-          log.debug('[MSG] No text content found in message');
-          return;
-        }
-
-        log.info(`[MSG] Type=${msgType}, User=${fromUser}, Length=${text.length}, Content="${text}"`);
-
-        // Handle commands (sync, uses setCurrentReqId)
         try {
-          const handleAIRequestWithReqId = (u: string, c: string, p: string, w: string, conv?: string, tc?: ThreadContext, replyTo?: string) =>
-            handleAIRequest(u, c, p, w, conv, tc, replyTo, reqId);
-          const handled = await commandHandler.dispatch(text, fromUser, fromUser, 'wework', handleAIRequestWithReqId);
-          if (handled) {
-            log.info(`Command handled for message: ${text}`);
-            return;
-          }
+          const handleAIRequestWithReqId = (
+            u: string,
+            c: string,
+            p: string,
+            w: string,
+            conv?: string,
+            tc?: ThreadContext,
+            replyTo?: string,
+          ) => handleAIRequest(u, c, p, w, conv, tc, replyTo, reqId);
+          const handled = await commandHandler.dispatch(text, chatId, fromUser, 'wework', handleAIRequestWithReqId);
+          if (handled) return;
         } catch (err) {
           log.error('Error in commandHandler.dispatch:', err);
         }
 
-        // Handle AI request
-        log.info(`Enqueueing AI request for: ${text}`);
-        const workDir = sessionManager.getWorkDir(fromUser);
-        const convId = sessionManager.getConvId(fromUser);
-        const enqueueResult = requestQueue.enqueue(fromUser, convId, text, async (prompt) => {
-          log.info(`Executing AI request for: ${prompt}`);
-          await handleAIRequest(fromUser, fromUser, prompt, workDir, convId, undefined, undefined, reqId);
-        });
-
-        if (enqueueResult === 'rejected') {
-          await sendTextReply(fromUser, '请求队列已满，请稍后再试。', reqId);
-        } else if (enqueueResult === 'queued') {
-          await sendTextReply(fromUser, '您的请求已排队等待。', reqId);
-        }
+        await enqueuePrompt(fromUser, chatId, text, reqId);
+        return;
       }
-      // Handle image messages
-      else if (msgType === 'image') {
-        const imageData = extractImageContent(data);
 
-        if (!imageData) {
-          log.warn('[MSG] Image message has no content');
+      if (msgType === 'mixed' || msgType === 'image') {
+        const prompt = await buildMediaPrompt(data, 'image');
+        if (!prompt) {
+          await sendTextReply(chatId, buildUnsupportedInboundMessage('wework', 'image'), reqId);
           return;
         }
+        await enqueuePrompt(fromUser, chatId, prompt, reqId);
+        return;
+      }
 
-        const imageDesc = imageData.url ? `URL: ${imageData.url}` : `Base64数据 (${imageData.base64?.length || 0} 字符)`;
-        log.info(`Processing image message from ${fromUser}, ${imageDesc}`);
+      if (msgType === 'file' || msgType === 'voice' || msgType === 'video') {
+        const prompt = await buildMediaPrompt(data, msgType);
+        if (!prompt) {
+          await sendTextReply(chatId, buildUnsupportedInboundMessage('wework', msgType), reqId);
+          return;
+        }
+        await enqueuePrompt(fromUser, chatId, prompt, reqId);
+        return;
+      }
 
-        // TODO: Implement image analysis
-        const prompt = `用户发送了一张图片。请分析图片内容。`;
-
-        const workDir = sessionManager.getWorkDir(fromUser);
-        const convId = sessionManager.getConvId(fromUser);
-        requestQueue.enqueue(fromUser, convId, prompt, async (p) => {
-          await handleAIRequest(fromUser, fromUser, p, workDir, convId, undefined, undefined, reqId);
-        });
-      }
-      // Handle file messages
-      else if (msgType === 'file') {
-        log.info(`[MSG] File message from ${fromUser} - not supported`);
-        await sendTextReply(fromUser, '文件消息暂不支持', reqId);
-      }
-      // Handle voice messages
-      else if (msgType === 'voice') {
-        log.info(`[MSG] Voice message from ${fromUser} - not supported`);
-        await sendTextReply(fromUser, '语音消息暂不支持', reqId);
-      }
-      // Handle video messages
-      else if (msgType === 'video') {
-        log.info(`[MSG] Video message from ${fromUser} - not supported`);
-        await sendTextReply(fromUser, '视频消息暂不支持', reqId);
-      }
-      // Handle stream messages (WebSocket streaming response)
-      else if (msgType === 'stream') {
+      if (msgType === 'stream') {
         log.debug(`[MSG] Stream message from ${fromUser}, streamId=${body.stream?.id}`);
-        // Stream messages are typically responses, not requests
-        // We can ignore them or handle them if needed
+        return;
       }
-      // Unsupported message type
-      else {
-        log.warn(`[MSG] Unsupported message type: ${msgType}, fromUser=${fromUser}`);
-      }
+
+      log.warn(`[MSG] Unsupported message type: ${msgType}, fromUser=${fromUser}`);
     } catch (err) {
       log.error('[handleEvent] Error processing event:', err);
     } finally {

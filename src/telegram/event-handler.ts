@@ -1,5 +1,3 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import type { Telegraf } from "telegraf";
 import { message } from "telegraf/filters";
 import type { Config } from "../config.js";
@@ -24,12 +22,16 @@ import { CommandHandler } from "../commands/handler.js";
 import { getAdapter } from "../adapters/registry.js";
 import { runAITask, type TaskRunState } from "../shared/ai-task.js";
 import { startTaskCleanup } from "../shared/task-cleanup.js";
-import { TELEGRAM_THROTTLE_MS, IMAGE_DIR } from "../constants.js";
+import { TELEGRAM_THROTTLE_MS } from "../constants.js";
 import { setActiveChatId } from "../shared/active-chats.js";
 import { setChatUser } from "../shared/chat-user-map.js";
 import { setPermissionMode } from "../permission-mode/session-mode.js";
 import { MODE_LABELS } from "../permission-mode/types.js";
 import { createLogger } from "../logger.js";
+import { downloadMediaFromUrl } from "../shared/media-storage.js";
+import { buildSavedMediaPrompt } from "../shared/media-analysis-prompt.js";
+import { buildMediaContext } from "../shared/media-context.js";
+import { buildErrorNote, buildProgressNote } from "../shared/message-note.js";
 
 const log = createLogger("TgHandler");
 
@@ -80,16 +82,21 @@ async function downloadTelegramPhoto(
   bot: Telegraf,
   fileId: string,
 ): Promise<string> {
-  await mkdir(IMAGE_DIR, { recursive: true });
+  return downloadTelegramFile(bot, fileId, fileId, "jpg");
+}
+
+async function downloadTelegramFile(
+  bot: Telegraf,
+  fileId: string,
+  basenameHint: string,
+  fallbackExtension: string,
+): Promise<string> {
   const fileLink = await bot.telegram.getFileLink(fileId);
-  const res = await fetch(fileLink.href, {
-    signal: AbortSignal.timeout(30000),
+  const safeId = basenameHint.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return downloadMediaFromUrl(fileLink.href, {
+    basenameHint: safeId,
+    fallbackExtension,
   });
-  const buffer = Buffer.from(await res.arrayBuffer());
-  const safeId = fileId.replace(/[^a-zA-Z0-9_-]/g, "_");
-  const imagePath = join(IMAGE_DIR, `${Date.now()}-${safeId.slice(-8)}.jpg`);
-  await writeFile(imagePath, buffer);
-  return imagePath;
 }
 
 export interface TelegramEventHandlerHandle {
@@ -116,6 +123,26 @@ export function setupTelegramHandlers(
   });
 
   registerPermissionSender("telegram", { sendTextReply });
+
+  async function enqueueSavedMedia(
+    userId: string,
+    chatId: string,
+    kind: string,
+    localPath: string,
+    text?: string,
+  ): Promise<"running" | "queued" | "rejected"> {
+    const prompt = buildSavedMediaPrompt({
+      source: "Telegram",
+      kind,
+      localPath,
+      text,
+    });
+    const workDir = sessionManager.getWorkDir(userId);
+    const convId = sessionManager.getConvId(userId);
+    return requestQueue.enqueue(userId, convId, prompt, async (nextPrompt) => {
+      await handleAIRequest(userId, chatId, nextPrompt, workDir, convId);
+    });
+  }
 
   async function handleAIRequest(
     userId: string,
@@ -226,7 +253,7 @@ export function setupTelegramHandlers(
                 : content;
           }
 
-          const note = toolNote ? "输出中...\n" + toolNote : "输出中...";
+          const note = buildProgressNote(toolNote);
           await updateMessage(
             chatId,
             msgId,
@@ -317,7 +344,7 @@ export function setupTelegramHandlers(
             msgId,
             `错误：${error}`,
             "error",
-            "执行失败",
+            buildErrorNote(),
             toolId,
           );
         },
@@ -448,6 +475,10 @@ export function setupTelegramHandlers(
 
     const photos = ctx.message.photo;
     const largest = photos[photos.length - 1];
+    const contextText = buildMediaContext({
+      Width: largest.width,
+      Height: largest.height,
+    }, caption ? `Caption: ${caption}` : undefined);
     let imagePath: string;
     try {
       imagePath = await downloadTelegramPhoto(bot, largest.file_id);
@@ -457,15 +488,154 @@ export function setupTelegramHandlers(
       return;
     }
 
-    const prompt = caption
-      ? `用户发送了一张图片（附言：${caption}），已保存到 ${imagePath}。请用 Read 工具查看并分析。`
-      : `用户发送了一张图片，已保存到 ${imagePath}。请用 Read 工具查看并分析。`;
+    const enqueueResult = await enqueueSavedMedia(userId, chatId, "image", imagePath, contextText);
+    if (enqueueResult === "rejected") {
+      await sendTextReply(chatId, "Request queue is full. Please try again later.");
+    } else if (enqueueResult === "queued") {
+      await sendTextReply(chatId, "Your request is queued.");
+    }
+  });
 
-    const workDir = sessionManager.getWorkDir(userId);
-    const convId = sessionManager.getConvId(userId);
-    requestQueue.enqueue(userId, convId, prompt, async (p) => {
-      await handleAIRequest(userId, chatId, p, workDir, convId);
-    });
+  bot.on(message("document"), async (ctx) => {
+    const chatId = String(ctx.chat.id);
+    const userId = String(ctx.from!.id);
+    const caption = ctx.message.caption?.trim() || "";
+
+    if (!accessControl.isAllowed(userId)) return;
+
+    setActiveChatId("telegram", chatId);
+    setChatUser(chatId, userId, "telegram");
+
+    try {
+      const document = ctx.message.document;
+      const contextText = buildMediaContext({
+        Filename: document.file_name,
+        MimeType: document.mime_type,
+        Size: document.file_size,
+      }, caption ? `Caption: ${caption}` : undefined);
+      const path = await downloadTelegramFile(
+        bot,
+        document.file_id,
+        document.file_name ?? document.file_id,
+        "bin",
+      );
+      const enqueueResult = await enqueueSavedMedia(userId, chatId, "document", path, contextText);
+      if (enqueueResult === "rejected") {
+        await sendTextReply(chatId, "Request queue is full. Please try again later.");
+      } else if (enqueueResult === "queued") {
+        await sendTextReply(chatId, "Your request is queued.");
+      }
+    } catch (err) {
+      log.error("Failed to download document:", err);
+      await sendTextReply(chatId, "Document download failed.");
+    }
+  });
+
+  bot.on(message("audio"), async (ctx) => {
+    const chatId = String(ctx.chat.id);
+    const userId = String(ctx.from!.id);
+    const caption = ctx.message.caption?.trim() || "";
+
+    if (!accessControl.isAllowed(userId)) return;
+
+    setActiveChatId("telegram", chatId);
+    setChatUser(chatId, userId, "telegram");
+
+    try {
+      const audio = ctx.message.audio;
+      const contextText = buildMediaContext({
+        Filename: audio.file_name,
+        Title: audio.title,
+        Performer: audio.performer,
+        DurationSeconds: audio.duration,
+        MimeType: audio.mime_type,
+      }, caption ? `Caption: ${caption}` : undefined);
+      const path = await downloadTelegramFile(
+        bot,
+        audio.file_id,
+        audio.file_name ?? audio.file_id,
+        "mp3",
+      );
+      const enqueueResult = await enqueueSavedMedia(userId, chatId, "audio", path, contextText);
+      if (enqueueResult === "rejected") {
+        await sendTextReply(chatId, "Request queue is full. Please try again later.");
+      } else if (enqueueResult === "queued") {
+        await sendTextReply(chatId, "Your request is queued.");
+      }
+    } catch (err) {
+      log.error("Failed to download audio:", err);
+      await sendTextReply(chatId, "Audio download failed.");
+    }
+  });
+
+  bot.on(message("voice"), async (ctx) => {
+    const chatId = String(ctx.chat.id);
+    const userId = String(ctx.from!.id);
+
+    if (!accessControl.isAllowed(userId)) return;
+
+    setActiveChatId("telegram", chatId);
+    setChatUser(chatId, userId, "telegram");
+
+    try {
+      const voice = ctx.message.voice;
+      const contextText = buildMediaContext({
+        DurationSeconds: voice.duration,
+        MimeType: voice.mime_type,
+      });
+      const path = await downloadTelegramFile(
+        bot,
+        voice.file_id,
+        voice.file_unique_id ?? voice.file_id,
+        "ogg",
+      );
+      const enqueueResult = await enqueueSavedMedia(userId, chatId, "voice", path, contextText);
+      if (enqueueResult === "rejected") {
+        await sendTextReply(chatId, "Request queue is full. Please try again later.");
+      } else if (enqueueResult === "queued") {
+        await sendTextReply(chatId, "Your request is queued.");
+      }
+    } catch (err) {
+      log.error("Failed to download voice message:", err);
+      await sendTextReply(chatId, "Voice download failed.");
+    }
+  });
+
+  bot.on(message("video"), async (ctx) => {
+    const chatId = String(ctx.chat.id);
+    const userId = String(ctx.from!.id);
+    const caption = ctx.message.caption?.trim() || "";
+
+    if (!accessControl.isAllowed(userId)) return;
+
+    setActiveChatId("telegram", chatId);
+    setChatUser(chatId, userId, "telegram");
+
+    try {
+      const video = ctx.message.video;
+      const contextText = buildMediaContext({
+        Filename: video.file_name,
+        DurationSeconds: video.duration,
+        Width: video.width,
+        Height: video.height,
+        MimeType: video.mime_type,
+      }, caption ? `Caption: ${caption}` : undefined);
+      const path = await downloadTelegramFile(
+        bot,
+        video.file_id,
+        video.file_name ?? video.file_unique_id ?? video.file_id,
+        "mp4",
+      );
+      const enqueueResult = await enqueueSavedMedia(userId, chatId, "video", path, contextText);
+      if (enqueueResult === "rejected") {
+        await sendTextReply(chatId, "Request queue is full. Please try again later.");
+      } else if (enqueueResult === "queued") {
+        await sendTextReply(chatId, "Your request is queued.");
+      }
+    } catch (err) {
+      log.error("Failed to download video:", err);
+      await sendTextReply(chatId, "Video download failed.");
+    }
   });
 
   return {

@@ -59,6 +59,7 @@ export interface Config {
   claudeSkipPermissions: boolean;
   defaultPermissionMode: 'ask' | 'accept-edits' | 'plan' | 'yolo';
   claudeTimeoutMs: number;
+  codexTimeoutMs: number;
   claudeModel?: string;
   hookPort: number;
   logDir: string;
@@ -169,6 +170,7 @@ export interface FileToolCursor {
 export interface FileToolCodex {
   cliPath?: string;
   workDir?: string;
+  timeoutMs?: number;
   /** 是否跳过权限确认（默认 true） */
   skipPermissions?: boolean;
   /** HTTP/HTTPS 代理，用于访问 chatgpt.com（如 http://127.0.0.1:7890） */
@@ -259,6 +261,7 @@ function migrateToNewConfigFormat(raw: Record<string, unknown>): Record<string, 
       cliPath: tcod.cliPath ?? 'codex',
       workDir: tcod.workDir ?? raw.claudeWorkDir ?? process.cwd(),
       skipPermissions: tcod.skipPermissions ?? raw.claudeSkipPermissions ?? true,
+      timeoutMs: tcod.timeoutMs ?? raw.claudeTimeoutMs ?? 600000,
       proxy: tcod.proxy,
     },
   };
@@ -617,6 +620,10 @@ export function loadConfig(): Config {
     process.env.CLAUDE_TIMEOUT_MS !== undefined
       ? parseInt(process.env.CLAUDE_TIMEOUT_MS, 10) || 600000
       : tc.timeoutMs ?? 600000;
+  const codexTimeoutMs =
+    process.env.CODEX_TIMEOUT_MS !== undefined
+      ? parseInt(process.env.CODEX_TIMEOUT_MS, 10) || 600000
+      : tcod.timeoutMs ?? 600000;
 
   const hookPort =
     process.env.HOOK_PORT !== undefined
@@ -905,6 +912,7 @@ export function loadConfig(): Config {
     claudeSkipPermissions,
     defaultPermissionMode,
     claudeTimeoutMs,
+    codexTimeoutMs,
     claudeModel: process.env.CLAUDE_MODEL ?? tc.model,
     hookPort,
     logDir,

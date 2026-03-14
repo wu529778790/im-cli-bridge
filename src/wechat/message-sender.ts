@@ -4,34 +4,43 @@
 
 import { sendAGPMessage } from './client.js';
 import { createLogger } from '../logger.js';
-import { splitLongContent, getAIToolDisplayName } from '../shared/utils.js';
+import { splitLongContent } from '../shared/utils.js';
+import { buildImageFallbackMessage } from '../channels/capabilities.js';
 import type { MessageStatus } from './types.js';
+import { buildMessageTitle, OPEN_IM_SYSTEM_TITLE } from '../shared/message-title.js';
+import { buildTextNote } from '../shared/message-note.js';
+import {
+  buildModeMessage,
+  buildPermissionRequestMessage,
+} from '../shared/system-messages.js';
 
 const log = createLogger('WeChatSender');
 
 const MAX_WECHAT_MESSAGE_LENGTH = 2048;
 
 const STATUS_CONFIG: Record<MessageStatus, { icon: string; title: string }> = {
-  thinking: { icon: '🔵', title: '思考中' },
+  thinking: { icon: '🤔', title: '思考中' },
   streaming: { icon: '🔄', title: '执行中' },
   done: { icon: '✅', title: '完成' },
   error: { icon: '❌', title: '错误' },
 };
 
 function getToolTitle(toolId: string, status: MessageStatus): string {
-  const name = getAIToolDisplayName(toolId);
-  const statusText = STATUS_CONFIG[status].title;
-  return status === 'done' ? name : `${name} - ${statusText}`;
+  return buildMessageTitle(toolId, status, {
+    statusTitles: {
+      thinking: STATUS_CONFIG.thinking.title,
+      streaming: STATUS_CONFIG.streaming.title,
+      done: STATUS_CONFIG.done.title,
+      error: STATUS_CONFIG.error.title,
+    },
+  });
 }
 
-/**
- * Format message for WeChat (simple text format for AGP)
- */
 function formatWeChatMessage(
   title: string,
   content: string,
   status: MessageStatus,
-  note?: string
+  note?: string,
 ): string {
   const statusConfig = STATUS_CONFIG[status];
   let message = `${statusConfig.icon} **${title}**\n\n`;
@@ -39,23 +48,20 @@ function formatWeChatMessage(
   if (content) {
     message += `${content}\n\n`;
   } else if (status === 'thinking') {
-    message += `_正在思考，请稍候..._\n\n💭 **准备中**\n\n`;
+    message += `_正在思考，请稍候..._\n\n🤖 **准备中**\n\n`;
   }
 
   if (note) {
-    message += `---\n\n💡 **${note}**`;
+    message += buildTextNote(note);
   }
 
   return message;
 }
 
-/**
- * Send thinking message to WeChat
- */
 export async function sendThinkingMessage(
   chatId: string,
   _replyToMessageId: string | undefined,
-  toolId = 'claude'
+  toolId = 'claude',
 ): Promise<string> {
   const messageId = generateMsgId();
   const title = getToolTitle(toolId, 'thinking');
@@ -63,14 +69,11 @@ export async function sendThinkingMessage(
 
   try {
     log.info(`Sending thinking message to chat ${chatId}`);
-
-    // Send session.prompt with thinking content
     sendAGPMessage('session.prompt', {
       session_id: chatId,
       content,
       options: { stream: false },
     });
-
     log.info(`Thinking message sent: ${messageId}`);
     return messageId;
   } catch (err) {
@@ -79,22 +82,18 @@ export async function sendThinkingMessage(
   }
 }
 
-/**
- * Update existing message in WeChat
- */
 export async function updateMessage(
   chatId: string,
   _messageId: string,
   content: string,
   status: MessageStatus,
   note?: string,
-  toolId = 'claude'
+  toolId = 'claude',
 ): Promise<void> {
   const title = getToolTitle(toolId, status);
   const message = formatWeChatMessage(title, content, status, note);
 
   try {
-    // Send session.update with new content
     sendAGPMessage('session.update', {
       session_id: chatId,
       updates: {
@@ -102,7 +101,6 @@ export async function updateMessage(
         content: message,
       },
     });
-
     log.info(`Message updated: ${status}`);
   } catch (err) {
     log.error('Failed to update message:', err);
@@ -110,25 +108,43 @@ export async function updateMessage(
   }
 }
 
-/**
- * Send final messages to WeChat (handle long content)
- */
 export async function sendFinalMessages(
   chatId: string,
   _messageId: string,
   fullContent: string,
   note: string,
-  toolId = 'claude'
+  toolId = 'claude',
 ): Promise<void> {
   const title = getToolTitle(toolId, 'done');
   const parts = splitLongContent(fullContent, MAX_WECHAT_MESSAGE_LENGTH);
 
-  for (let i = 0; i < parts.length; i++) {
-    try {
-      const partContent = i === 0 ? parts[0] : `${parts[i]}\n\n_*(续 ${i + 1}/${parts.length})*_`;
-      const message = formatWeChatMessage(title, partContent, 'done', i === parts.length - 1 ? note : undefined);
+  try {
+    const firstPartNote =
+      parts.length > 1 ? `内容较长，后续消息继续发送 (1/${parts.length})` : note;
+    const firstMessage = formatWeChatMessage(title, parts[0], 'done', firstPartNote);
 
-      // Send session.promptResponse with final content
+    sendAGPMessage('session.update', {
+      session_id: chatId,
+      updates: {
+        status: 'done',
+        content: firstMessage,
+      },
+    });
+    log.info('Final message updated in-place');
+  } catch (err) {
+    log.error('Failed to update final message in-place:', err);
+  }
+
+  for (let i = 1; i < parts.length; i++) {
+    try {
+      const partContent = `${parts[i]}\n\n_*(续 ${i + 1}/${parts.length})*_`;
+      const message = formatWeChatMessage(
+        title,
+        partContent,
+        'done',
+        i === parts.length - 1 ? note : undefined,
+      );
+
       sendAGPMessage('session.promptResponse', {
         session_id: chatId,
         content: message,
@@ -143,11 +159,8 @@ export async function sendFinalMessages(
   }
 }
 
-/**
- * Send simple text reply to WeChat
- */
 export async function sendTextReply(chatId: string, text: string): Promise<void> {
-  const message = formatWeChatMessage('📢 open-im', text, 'done');
+  const message = formatWeChatMessage(OPEN_IM_SYSTEM_TITLE, text, 'done');
 
   try {
     sendAGPMessage('session.promptResponse', {
@@ -155,36 +168,23 @@ export async function sendTextReply(chatId: string, text: string): Promise<void>
       content: message,
       status: 'success',
     });
-
     log.info(`Text reply sent to chat ${chatId}`);
   } catch (err) {
     log.error('Failed to send text reply:', err);
   }
 }
 
-/**
- * Send permission card with action buttons (for permission prompts)
- */
+export async function sendImageReply(chatId: string, imagePath: string): Promise<void> {
+  await sendTextReply(chatId, buildImageFallbackMessage('wechat', imagePath));
+}
+
 export async function sendPermissionCard(
   chatId: string,
   requestId: string,
   toolName: string,
-  toolInput: string
+  toolInput: string,
 ): Promise<void> {
-  const message = `🔐 **权限请求**
-
-**工具:** \`${toolName}\`
-
-**参数:**
-\`\`\`
-${toolInput}
-\`\`\`
-
-请回复以下命令进行操作:
-• \`/allow\` - 允许
-• \`/deny\` - 拒绝
-
-**请求 ID:** \`${requestId}\``;
+  const message = buildPermissionRequestMessage(toolName, toolInput, requestId);
 
   try {
     sendAGPMessage('session.promptResponse', {
@@ -193,30 +193,18 @@ ${toolInput}
       status: 'success',
       metadata: { type: 'permission', requestId },
     });
-
     log.info(`Permission card sent to chat ${chatId}`);
   } catch (err) {
     log.error('Failed to send permission card:', err);
   }
 }
 
-/**
- * Send mode switch card
- */
 export async function sendModeCard(
   chatId: string,
   _userId: string,
-  currentMode: string
+  currentMode: string,
 ): Promise<void> {
-  const message = `🔐 **权限模式**
-
-**当前模式:** \`${currentMode}\`
-
-点击下方按钮或发送命令切换模式:
-• \`/mode ask\` - 每次询问
-• \`/mode accept-edits\` - 自动批准编辑
-• \`/mode plan\` - 仅分析
-• \`/mode yolo\` - 跳过所有权限`;
+  const message = buildModeMessage(currentMode);
 
   try {
     sendAGPMessage('session.promptResponse', {
@@ -225,34 +213,22 @@ export async function sendModeCard(
       status: 'success',
       metadata: { type: 'mode_switch' },
     });
-
     log.info(`Mode card sent to chat ${chatId}`);
   } catch (err) {
     log.error('Failed to send mode card:', err);
   }
 }
 
-/**
- * Generate unique message ID
- */
 function generateMsgId(): string {
   return `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
 }
 
-/**
- * Start typing indicator (WeChat may not support this, return no-op)
- */
 export function startTypingLoop(_chatId: string): () => void {
-  // WeChat doesn't have a typing indicator like Telegram
-  // Return a no-op function
   return () => {};
 }
 
-/**
- * Send error message
- */
 export async function sendErrorMessage(chatId: string, error: string): Promise<void> {
-  const message = formatWeChatMessage('❌ 错误', error, 'error');
+  const message = formatWeChatMessage('错误', error, 'error');
 
   try {
     sendAGPMessage('session.promptResponse', {
@@ -261,7 +237,6 @@ export async function sendErrorMessage(chatId: string, error: string): Promise<v
       status: 'error',
       metadata: { type: 'error' },
     });
-
     log.info(`Error message sent to chat ${chatId}`);
   } catch (err) {
     log.error('Failed to send error message:', err);

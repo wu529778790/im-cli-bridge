@@ -1,5 +1,3 @@
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import { Client } from '@larksuiteoapi/node-sdk';
 import type { Config } from '../config.js';
 import { AccessControl } from '../access/access-control.js';
@@ -31,67 +29,36 @@ import { runAITask, type TaskRunState } from '../shared/ai-task.js';
 import { buildCardV2 } from './card-builder.js';
 import { disableStreaming, updateCardFull, destroySession } from './cardkit-manager.js';
 import { startTaskCleanup } from '../shared/task-cleanup.js';
-import { CARDKIT_THROTTLE_MS, IMAGE_DIR } from '../constants.js';
+import { CARDKIT_THROTTLE_MS } from '../constants.js';
 import { setActiveChatId } from '../shared/active-chats.js';
 import { setChatUser } from '../shared/chat-user-map.js';
 import { createLogger } from '../logger.js';
+import { createMediaTargetPath } from '../shared/media-storage.js';
+import { buildSavedMediaPrompt } from '../shared/media-analysis-prompt.js';
+import { buildMediaContext } from '../shared/media-context.js';
+import { buildProgressNote } from '../shared/message-note.js';
 
 const log = createLogger('FeishuHandler');
 
-async function downloadFeishuImage(client: Client, imageKey: string): Promise<string> {
-  await mkdir(IMAGE_DIR, { recursive: true });
+type FeishuResourceType = 'image' | 'file' | 'media';
 
-  // Get tenant access token
-  const tokenResp = await client.auth.tenantAccessToken.internal({
-    data: {
-      app_id: client.appId,
-      app_secret: client.appSecret,
+async function downloadFeishuMessageResource(
+  client: Client,
+  messageId: string,
+  fileKey: string,
+  type: FeishuResourceType,
+  options?: { basenameHint?: string; fallbackExtension?: string },
+): Promise<string> {
+  const targetPath = createMediaTargetPath(options?.fallbackExtension ?? 'bin', options?.basenameHint ?? fileKey);
+  const response = await client.im.messageResource.get({
+    params: { type },
+    path: {
+      message_id: messageId,
+      file_key: fileKey,
     },
   });
-  if (tokenResp.code !== 0 || !tokenResp.data) {
-    throw new Error(`Failed to get tenant access token: ${tokenResp.msg}`);
-  }
-  const token = (tokenResp.data as { tenant_access_token: string }).tenant_access_token;
-
-  // Get the image download URL using the correct API endpoint
-  const resourceResp = await fetch(
-    `https://open.feishu.cn/open-apis/im/v1/images/${imageKey}`,
-    {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
-  );
-
-  if (!resourceResp.ok) {
-    throw new Error(`Failed to get image resource: ${resourceResp.statusText}`);
-  }
-
-  const resourceData = await resourceResp.json();
-  if (resourceData.code !== 0) {
-    throw new Error(`Failed to get image resource: ${resourceData.msg}`);
-  }
-
-  // Download the image
-  const imageUrl = resourceData.data?.file_download_url || resourceData.data?.url;
-  if (!imageUrl) {
-    throw new Error('No image URL found in response');
-  }
-
-  const imgResp = await fetch(imageUrl, {
-    signal: AbortSignal.timeout(30000),
-  });
-
-  if (!imgResp.ok) {
-    throw new Error(`Failed to download image: ${imgResp.statusText}`);
-  }
-
-  const buffer = Buffer.from(await imgResp.arrayBuffer());
-  const safeId = imageKey.replace(/[^a-zA-Z0-9_-]/g, '_');
-  const imagePath = join(IMAGE_DIR, `${Date.now()}-${safeId.slice(-8)}.jpg`);
-  await writeFile(imagePath, buffer);
-  return imagePath;
+  await response.writeFile(targetPath);
+  return targetPath;
 }
 
 /**
@@ -121,14 +88,16 @@ async function sendPermissionCard(
 ${formattedInput}
 \`\`\`
 
-**请求 ID:** \`${requestId.slice(-8)}\``;
+**请求 ID:** \`${requestId.slice(-8)}\`
+
+请点击下方按钮进行处理。`;
 
   const cardContent = createFeishuButtonCard(
     '权限请求',
     content,
     [
-      { label: '✅ 允许', value: `allow_${requestId}`, type: 'primary' },
-      { label: '❌ 拒绝', value: `deny_${requestId}`, type: 'default' },
+      { label: '允许', value: `allow_${requestId}`, type: 'primary' },
+      { label: '拒绝', value: `deny_${requestId}`, type: 'default' },
     ]
   );
 
@@ -211,7 +180,7 @@ export function setupFeishuHandlers(
     const taskKey = `${userId}:${cardId}`;
 
     const streamUpdate = (content: string, toolNote?: string) => {
-      const note = toolNote ? '输出中...\n' + toolNote : '输出中...';
+      const note = buildProgressNote(toolNote);
       streamContentUpdate(cardId, content, note).catch((e) =>
         log.debug('Stream update failed (will retry on next update):', e?.message ?? e)
       );
@@ -667,7 +636,10 @@ export function setupFeishuHandlers(
 
           let imagePath: string;
           try {
-            imagePath = await downloadFeishuImage(c, imageKey);
+            imagePath = await downloadFeishuMessageResource(c, messageId, imageKey, 'image', {
+              basenameHint: imageKey.slice(-8),
+              fallbackExtension: 'jpg',
+            });
           } catch (err) {
             log.error('Failed to download image:', err);
             sendTextReply(chatId, '图片下载失败。').catch((err) => {
@@ -676,15 +648,83 @@ export function setupFeishuHandlers(
             return;
           }
 
-          const prompt = `用户发送了一张图片，已保存到 ${imagePath}。请用 Read 工具查看并分析。`;
+          const prompt = buildSavedMediaPrompt({
+            source: 'Feishu',
+            kind: 'image',
+            localPath: imagePath,
+            text: buildMediaContext({
+              ImageKey: imageKey,
+            }),
+          });
 
           const workDir = sessionManager.getWorkDir(senderId);
           const convId = sessionManager.getConvId(senderId);
-          requestQueue.enqueue(senderId, convId, prompt, async (p) => {
+          const enqueueResult = requestQueue.enqueue(senderId, convId, prompt, async (p) => {
             await handleAIRequest(senderId, chatId, p, workDir, convId, undefined, messageId);
           });
+          if (enqueueResult === 'rejected') {
+            sendTextReply(chatId, 'Request queue is full. Please try again later.').catch((sendErr) => {
+              log.warn('[feishu] Failed to send queue full message for image:', sendErr);
+            });
+          } else if (enqueueResult === 'queued') {
+            sendTextReply(chatId, 'Your request is queued.').catch((sendErr) => {
+              log.warn('[feishu] Failed to send queued message for image:', sendErr);
+            });
+          }
         } catch (err) {
           log.error('Error processing image message:', err);
+        }
+      } else if (msgType === 'file' || msgType === 'media') {
+        const fileKey = content.file_key as string | undefined;
+        if (!fileKey) {
+          log.warn(`[MSG] Feishu ${msgType} message missing file_key`);
+          return;
+        }
+
+        log.info(`Processing ${msgType} message from ${senderId}, file_key: ${fileKey}`);
+
+        try {
+          const { getClient } = await import('./client.js');
+          const c = getClient();
+          const fileName = (content.file_name as string | undefined) ?? (content.name as string | undefined);
+          const duration = content.duration as number | undefined;
+          const fileSize = content.file_size as number | undefined;
+          const savedPath = await downloadFeishuMessageResource(c, messageId, fileKey, msgType, {
+            basenameHint: fileName ?? fileKey.slice(-8),
+            fallbackExtension: msgType === 'media' ? 'mp4' : 'bin',
+          });
+
+          const prompt = buildSavedMediaPrompt({
+            source: 'Feishu',
+            kind: msgType,
+            localPath: savedPath,
+            text: buildMediaContext({
+              FileName: fileName,
+              FileKey: fileKey,
+              Duration: duration,
+              Size: fileSize,
+            }),
+          });
+
+          const workDir = sessionManager.getWorkDir(senderId);
+          const convId = sessionManager.getConvId(senderId);
+          const enqueueResult = requestQueue.enqueue(senderId, convId, prompt, async (p) => {
+            await handleAIRequest(senderId, chatId, p, workDir, convId, undefined, messageId);
+          });
+          if (enqueueResult === 'rejected') {
+            sendTextReply(chatId, 'Request queue is full. Please try again later.').catch((sendErr) => {
+              log.warn(`[feishu] Failed to send queue full message for ${msgType}:`, sendErr);
+            });
+          } else if (enqueueResult === 'queued') {
+            sendTextReply(chatId, 'Your request is queued.').catch((sendErr) => {
+              log.warn(`[feishu] Failed to send queued message for ${msgType}:`, sendErr);
+            });
+          }
+        } catch (err) {
+          log.error(`Error processing ${msgType} message:`, err);
+          sendTextReply(chatId, `${msgType} 资源下载失败。`).catch((sendErr) => {
+            log.warn(`[feishu] Failed to send ${msgType} download failed message:`, sendErr);
+          });
         }
       } else {
         log.warn(`[MSG] Unsupported message type: ${msgType}, senderId=${senderId}`);

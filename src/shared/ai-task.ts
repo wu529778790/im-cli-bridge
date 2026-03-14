@@ -166,6 +166,11 @@ export function runAITask(
         : undefined;
     }
 
+    const timeoutMs =
+      config.aiCommand === 'codex'
+        ? config.codexTimeoutMs
+        : config.claudeTimeoutMs;
+
     const handle = toolAdapter.run(
       prompt,
       ctx.sessionId,
@@ -267,7 +272,7 @@ export function runAITask(
       {
         skipPermissions,
         permissionMode,
-        timeoutMs: config.claudeTimeoutMs,
+        timeoutMs,
         model: sessionManager.getModel(ctx.userId, ctx.threadId) ?? config.claudeModel,
         chatId: ctx.chatId,
         ...(config.useSdkMode ? {} : { hookPort: config.hookPort }),

@@ -180,4 +180,15 @@ describe('DingTalk message sender', () => {
       expect.any(Object),
     );
   });
+
+  it('routes image replies through the fallback text sender', async () => {
+    const sender = await import('./message-sender.js');
+
+    await sender.sendImageReply('cid-image', 'C:\\images\\out.png');
+
+    expect(sendTextMock).toHaveBeenCalledWith(
+      'cid-image',
+      expect.stringContaining('C:\\images\\out.png'),
+    );
+  });
 });

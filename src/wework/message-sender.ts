@@ -1,19 +1,27 @@
 /**
- * WeWork (企业微信) Message Sender - Send messages to WeWork
- * 通过 WebSocket aibot_respond_msg 发送，需透传 req_id
+ * WeWork (企业微信/WeCom) Message Sender
+ * 通过 WebSocket `aibot_respond_msg` 发送消息，并透传 `req_id`
  */
 
-import { sendText, sendStream, sendMessage, sendProactiveMessage } from './client.js';
+import { sendText, sendStream, sendStreamWithItems, sendProactiveMessage } from './client.js';
 import { createLogger } from '../logger.js';
-import { splitLongContent, getAIToolDisplayName } from '../shared/utils.js';
+import { splitLongContent } from '../shared/utils.js';
+import { buildMessageTitle, OPEN_IM_SYSTEM_TITLE } from '../shared/message-title.js';
+import { buildTextNote } from '../shared/message-note.js';
+import {
+  buildDirectoryMessage,
+  buildModeMessage,
+  buildPermissionRequestMessage,
+} from '../shared/system-messages.js';
 import { MAX_WEWORK_MESSAGE_LENGTH } from '../constants.js';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 
 const log = createLogger('WeWorkSender');
 const STREAM_SEND_INTERVAL_MS = 900;
 const STREAM_SAFE_TTL_MS = 5 * 60 * 1000;
 
-/** 当前同步处理中的 req_id（仅用于 commandHandler 等同步调用） */
+/** 当前同步处理中的 req_id，仅用于 commandHandler 等同步调用。 */
 let currentReqId: string | null = null;
 
 export function setCurrentReqId(reqId: string | null): void {
@@ -32,35 +40,75 @@ function getReqId(explicitReqId?: string): string {
 type MessageStatus = 'thinking' | 'streaming' | 'done' | 'error';
 
 const STATUS_CONFIG: Record<MessageStatus, { icon: string; title: string }> = {
-  thinking: { icon: '🔵', title: '思考中' },
-  streaming: { icon: '🔄', title: '执行中' },
-  done: { icon: '✅', title: '完成' },
-  error: { icon: '❌', title: '错误' },
+  thinking: { icon: '[thinking]', title: '思考中' },
+  streaming: { icon: '[streaming]', title: '输出中' },
+  done: { icon: '[done]', title: '完成' },
+  error: { icon: '[error]', title: '错误' },
 };
 
 function getToolTitle(toolId: string, status: MessageStatus): string {
-  const name = getAIToolDisplayName(toolId);
-  const statusText = STATUS_CONFIG[status].title;
-  return status === 'done' ? name : `${name} - ${statusText}`;
+  return buildMessageTitle(toolId, status, {
+    statusTitles: {
+      thinking: STATUS_CONFIG.thinking.title,
+      streaming: STATUS_CONFIG.streaming.title,
+      done: STATUS_CONFIG.done.title,
+      error: STATUS_CONFIG.error.title,
+    },
+  });
 }
 
-/**
- * Generate unique request ID
- */
 function generateReqId(): string {
   return `${Date.now()}-${randomBytes(8).toString('hex')}`;
 }
 
-/**
- * Generate unique stream ID for WeWork streaming responses
- */
 function generateStreamId(): string {
   return `${Date.now()}-${randomBytes(8).toString('hex')}`;
 }
 
-/**
- * Format message for WeWork (markdown-like format)
- */
+function formatWeWorkNote(note: string): string {
+  const trimmedNote = note.trim();
+  const lines = trimmedNote.split('\n').map((line) => line.trim()).filter(Boolean);
+
+  if (lines.length === 0) return buildTextNote(trimmedNote);
+
+  const formattedLines = lines.flatMap((line) => {
+    if (line.startsWith('输出中')) {
+      return ['💡 输出中...'];
+    }
+
+    const bashIndex = line.indexOf('Bash');
+    if (bashIndex >= 0) {
+      const command = line
+        .slice(bashIndex + 'Bash'.length)
+        .replace(/^[\s:：\-–—>→]+/, '')
+        .trim();
+      return command ? ['🔧 Bash', '```', command, '```'] : ['🔧 Bash'];
+    }
+
+    const readIndex = line.indexOf('Read');
+    if (readIndex >= 0) {
+      const path = line
+        .slice(readIndex + 'Read'.length)
+        .replace(/^[\s:：\-–—>→]+/, '')
+        .trim();
+      return path ? [`📖 Read \`${path.replace(/`/g, '\\`')}\``] : ['📖 Read'];
+    }
+
+    const writeIndex = line.indexOf('Write');
+    if (writeIndex >= 0) {
+      const path = line
+        .slice(writeIndex + 'Write'.length)
+        .replace(/^[\s:：\-–—>→]+/, '')
+        .trim();
+      return path ? [`✏️ Write \`${path.replace(/`/g, '\\`')}\``] : ['✏️ Write'];
+    }
+
+    return [line];
+  });
+
+  return `─────────\n\n${formattedLines.join('\n')}`;
+}
+
 function formatWeWorkMessage(
   title: string,
   content: string,
@@ -73,20 +121,16 @@ function formatWeWorkMessage(
   if (content) {
     message += `${content}\n\n`;
   } else if (status === 'thinking') {
-    message += `_正在思考，请稍候..._\n\n💭 **准备中**\n\n`;
+    message += `_正在思考，请稍候..._\n\n[thinking] **准备中**\n\n`;
   }
 
   if (note) {
-    message += `---\n\n💡 **${note}**`;
+    message += formatWeWorkNote(note);
   }
 
   return message;
 }
 
-/**
- * Local tracking for stream states
- * WeWork doesn't support message editing, so we track stream IDs locally
- */
 interface StreamState {
   chatId: string;
   content: string;
@@ -166,9 +210,9 @@ async function flushStreamUpdate(streamId: string, state: StreamState): Promise<
 }
 
 /**
- * Send thinking message to WeWork
- * Returns a stream ID that can be used for updates
- * @param reqId - 消息回调的 req_id，用于 WebSocket 回复
+ * Send thinking message to WeWork.
+ * Returns a stream ID that can be used for updates.
+ * @param reqId 消息回调里的 `req_id`，用于通过 WebSocket 回复
  */
 export async function sendThinkingMessage(
   chatId: string,
@@ -183,10 +227,7 @@ export async function sendThinkingMessage(
   try {
     log.info(`Sending thinking message to user ${chatId}, streamId=${streamId}`);
 
-    // Store initial stream state
     getOrCreateStreamState(streamId, chatId);
-
-    // Send initial stream message (not finished)
     sendStream(getReqId(reqId), streamId, content, false);
 
     log.info(`Thinking message sent: ${streamId}`);
@@ -197,10 +238,6 @@ export async function sendThinkingMessage(
   }
 }
 
-/**
- * Update existing message in WeWork
- * Note: WeWork doesn't support message editing, so we send new stream messages
- */
 export async function updateMessage(
   chatId: string,
   streamId: string,
@@ -232,9 +269,6 @@ export async function updateMessage(
   }
 }
 
-/**
- * Send final messages to WeWork (handle long content)
- */
 export async function sendFinalMessages(
   chatId: string,
   streamId: string,
@@ -245,9 +279,12 @@ export async function sendFinalMessages(
 ): Promise<void> {
   const title = getToolTitle(toolId, 'done');
   const parts = splitLongContent(fullContent, MAX_WEWORK_MESSAGE_LENGTH);
-
-  // Send final stream message to finish the stream
-  const finalMessage = formatWeWorkMessage(title, parts[0], 'done', parts.length > 1 ? `内容较长，已分段发送 (1/${parts.length})` : note);
+  const finalMessage = formatWeWorkMessage(
+    title,
+    parts[0],
+    'done',
+    parts.length > 1 ? `内容较长，已分段发送 (1/${parts.length})` : note
+  );
 
   try {
     const state = streamStates.get(streamId);
@@ -275,11 +312,15 @@ export async function sendFinalMessages(
 
     streamStates.delete(streamId);
 
-    // Send remaining parts as separate messages
     for (let i = 1; i < parts.length; i++) {
       try {
         const partContent = `${parts[i]}\n\n_*(续 ${i + 1}/${parts.length})*_`;
-        const partMessage = formatWeWorkMessage(title, partContent, 'done', i === parts.length - 1 ? note : undefined);
+        const partMessage = formatWeWorkMessage(
+          title,
+          partContent,
+          'done',
+          i === parts.length - 1 ? note : undefined
+        );
 
         sendText(getReqId(reqId), partMessage);
         log.info(`Final message part ${i + 1}/${parts.length} sent`);
@@ -293,10 +334,10 @@ export async function sendFinalMessages(
 }
 
 /**
- * 主动推送文本（用于启动/关闭通知等，无需 req_id）
+ * 主动推送文本，用于启动/关闭通知等场景，无需 req_id。
  */
 export async function sendProactiveTextReply(chatId: string, text: string): Promise<void> {
-  const message = formatWeWorkMessage('📢 open-im', text, 'done');
+  const message = formatWeWorkMessage(OPEN_IM_SYSTEM_TITLE, text, 'done');
   try {
     sendProactiveMessage(chatId, message);
     log.info(`Proactive text sent to user ${chatId}`);
@@ -306,18 +347,16 @@ export async function sendProactiveTextReply(chatId: string, text: string): Prom
 }
 
 /**
- * Send simple text reply to WeWork
- * @param threadCtxOrReqId - 兼容 MessageSender 的 threadCtx；若为 string 则作为 reqId 使用
+ * Send simple text reply to WeWork.
+ * @param threadCtxOrReqId 兼容 MessageSender 的 threadCtx；若为 string 则作为 reqId 使用
  */
 export async function sendTextReply(
   chatId: string,
   text: string,
   threadCtxOrReqId?: import('../shared/types.js').ThreadContext | string
 ): Promise<void> {
-  const message = formatWeWorkMessage('📢 open-im', text, 'done');
-  // 显式传递的 reqId（用于兼容 MessageSender 接口）
+  const message = formatWeWorkMessage(OPEN_IM_SYSTEM_TITLE, text, 'done');
   const explicitReqId = typeof threadCtxOrReqId === 'string' ? threadCtxOrReqId : undefined;
-  // 回退到当前请求的 reqId（在 handleEvent 中通过 setCurrentReqId 设置）
   const effectiveReqId = explicitReqId ?? currentReqId;
 
   try {
@@ -328,10 +367,6 @@ export async function sendTextReply(
   }
 }
 
-/**
- * Send permission card with action buttons (for permission prompts)
- * Note: WeWork doesn't support interactive cards, so we send text with instructions
- */
 export async function sendPermissionCard(
   chatId: string,
   requestId: string,
@@ -339,20 +374,7 @@ export async function sendPermissionCard(
   toolInput: string,
   reqId?: string
 ): Promise<void> {
-  const message = `🔐 **权限请求**
-
-**工具:** \`${toolName}\`
-
-**参数:**
-\`\`\`
-${toolInput.length > 300 ? toolInput.slice(0, 300) + '...' : toolInput}
-\`\`\`
-
-请回复以下命令进行操作:
-• \`/allow\` - 允许
-• \`/deny\` - 拒绝
-
-**请求 ID:** \`${requestId.slice(-8)}\``;
+  const message = buildPermissionRequestMessage(toolName, toolInput, requestId);
 
   try {
     sendText(getReqId(reqId), message);
@@ -362,9 +384,6 @@ ${toolInput.length > 300 ? toolInput.slice(0, 300) + '...' : toolInput}
   }
 }
 
-/**
- * Send mode switch card
- */
 export async function sendModeCard(
   chatId: string,
   _userId: string,
@@ -372,15 +391,8 @@ export async function sendModeCard(
   reqId?: string
 ): Promise<void> {
   const { MODE_LABELS } = await import('../permission-mode/types.js');
-  const message = `🔐 **权限模式**
-
-**当前模式:** \`${MODE_LABELS[currentMode as keyof typeof MODE_LABELS] || currentMode}\`
-
-发送命令切换模式:
-• \`/mode ask\` - 每次询问
-• \`/mode accept-edits\` - 自动批准编辑
-• \`/mode plan\` - 仅分析
-• \`/mode yolo\` - 跳过所有权限`;
+  const label = MODE_LABELS[currentMode as keyof typeof MODE_LABELS] || currentMode;
+  const message = buildModeMessage(label);
 
   try {
     sendText(getReqId(reqId), message);
@@ -390,41 +402,43 @@ export async function sendModeCard(
   }
 }
 
-/**
- * Send image reply
- * Note: WeWork requires media_id for image messages
- */
 export async function sendImageReply(chatId: string, imagePath: string): Promise<void> {
-  // For now, send text with image path
-  // TODO: Implement media upload and send with media_id
-  await sendTextReply(chatId, `图片已保存: ${imagePath}`);
+  try {
+    const reqId = getReqId();
+    if (!reqId) {
+      await sendTextReply(chatId, `Generated image saved at: ${imagePath}`);
+      return;
+    }
+
+    const imageBuffer = await readFile(imagePath);
+    const base64 = imageBuffer.toString('base64');
+    const md5 = createHash('md5').update(imageBuffer).digest('hex');
+    sendStreamWithItems(reqId, generateStreamId(), 'Generated image', true, [
+      {
+        msgtype: 'image',
+        image: { base64, md5 },
+      },
+    ]);
+  } catch (err) {
+    log.warn('Failed to send native WeWork image reply, falling back to text path:', err);
+    await sendTextReply(chatId, `Generated image saved at: ${imagePath}`);
+  }
 }
 
-/**
- * Send directory selection (not supported in WeWork, use text instead)
- */
 export async function sendDirectorySelection(
   chatId: string,
   currentDir: string,
   _userId: string
 ): Promise<void> {
-  await sendTextReply(chatId, `📁 当前目录: \`${currentDir}\`\n\n请使用 \`/cd <目录>\` 命令切换目录`);
+  await sendTextReply(chatId, buildDirectoryMessage(currentDir));
 }
 
-/**
- * Start typing indicator (WeWork doesn't support this)
- */
 export function startTypingLoop(_chatId: string): () => void {
-  // WeWork doesn't have a typing indicator like Telegram
-  // Return a no-op function
   return () => {};
 }
 
-/**
- * Send error message
- */
 export async function sendErrorMessage(chatId: string, error: string, reqId?: string): Promise<void> {
-  const message = formatWeWorkMessage('❌ 错误', error, 'error');
+  const message = formatWeWorkMessage('错误', error, 'error');
 
   try {
     sendText(getReqId(reqId), message);

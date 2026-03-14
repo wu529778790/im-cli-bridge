@@ -1,9 +1,8 @@
 /**
- * Codex CLI Runner - 解析 `codex exec --json` 的 JSONL 输出。
+ * Codex CLI runner for `codex exec --json` JSONL output.
  */
 
-import { spawn } from 'node:child_process';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -11,6 +10,21 @@ import { createLogger } from '../logger.js';
 
 const log = createLogger('CodexCli');
 const windowsCodexLaunchCache = new Map<string, { command: string; args: string[] } | null>();
+const MAX_TIMEOUT_MS = 2_147_483_647;
+const DEFAULT_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+
+function getIdleTimeoutMs(totalTimeoutMs: number): number {
+  const raw = process.env.CODEX_IDLE_TIMEOUT_MS;
+  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  const configuredIdleTimeoutMs =
+    Number.isFinite(parsed) && parsed > 0
+      ? Math.min(parsed, MAX_TIMEOUT_MS)
+      : DEFAULT_IDLE_TIMEOUT_MS;
+
+  return totalTimeoutMs > 0
+    ? Math.min(configuredIdleTimeoutMs, totalTimeoutMs)
+    : configuredIdleTimeoutMs;
+}
 
 export interface CodexRunCallbacks {
   onText: (accumulated: string) => void;
@@ -38,7 +52,6 @@ export interface CodexRunOptions {
   model?: string;
   chatId?: string;
   hookPort?: number;
-  /** HTTP/HTTPS 代理，用于访问 chatgpt.com */
   proxy?: string;
 }
 
@@ -60,36 +73,35 @@ function buildCodexArgs(
   _prompt: string,
   sessionId: string | undefined,
   workDir: string,
-  options?: CodexRunOptions
+  options?: CodexRunOptions,
 ): string[] {
-  const commonOptions = ["--json", "--skip-git-repo-check"];
-  const newSessionOptions = [...commonOptions, "--cd", workDir];
+  const commonOptions = ['--json', '--skip-git-repo-check'];
+  const newSessionOptions = [...commonOptions, '--cd', workDir];
   const resumeOptions = [...commonOptions];
-  const canResume = Boolean(sessionId) && options?.permissionMode !== "plan";
+  const canResume = Boolean(sessionId) && options?.permissionMode !== 'plan';
 
   if (options?.skipPermissions) {
-    newSessionOptions.push("--dangerously-bypass-approvals-and-sandbox");
-    resumeOptions.push("--dangerously-bypass-approvals-and-sandbox");
-  } else if (options?.permissionMode === "plan") {
-    // `codex exec resume` 当前不支持 `--sandbox` / `--cd`，plan 模式统一新开只读会话。
-    newSessionOptions.push("--sandbox", "read-only");
+    newSessionOptions.push('--dangerously-bypass-approvals-and-sandbox');
+    resumeOptions.push('--dangerously-bypass-approvals-and-sandbox');
+  } else if (options?.permissionMode === 'plan') {
+    newSessionOptions.push('--sandbox', 'read-only');
   } else {
-    newSessionOptions.push("--full-auto");
-    resumeOptions.push("--full-auto");
+    newSessionOptions.push('--full-auto');
+    resumeOptions.push('--full-auto');
   }
 
   if (options?.model) {
-    newSessionOptions.push("--model", options.model);
-    resumeOptions.push("--model", options.model);
+    newSessionOptions.push('--model', options.model);
+    resumeOptions.push('--model', options.model);
   }
 
   if (sessionId && !canResume) {
-    log.warn("Codex plan mode does not support resume; starting a new read-only session");
+    log.warn('Codex plan mode does not support resume; starting a new read-only session');
   }
 
   return canResume
-    ? ["exec", "resume", ...resumeOptions, sessionId!, "-"]
-    : ["exec", ...newSessionOptions, "-"];
+    ? ['exec', 'resume', ...resumeOptions, sessionId!, '-']
+    : ['exec', ...newSessionOptions, '-'];
 }
 
 function quoteForWindowsCmd(arg: string): string {
@@ -141,9 +153,7 @@ function resolveWindowsCodexLaunch(
       .map((line) => line.trim())
       .filter(Boolean);
 
-    const cmdShimPath =
-      whereOutput.find((line) => /\.cmd$/i.test(line)) ?? null;
-
+    const cmdShimPath = whereOutput.find((line) => /\.cmd$/i.test(line)) ?? null;
     if (!cmdShimPath) {
       windowsCodexLaunchCache.set(cliPath, null);
       return null;
@@ -173,7 +183,7 @@ export function runCodex(
   sessionId: string | undefined,
   workDir: string,
   callbacks: CodexRunCallbacks,
-  options?: CodexRunOptions
+  options?: CodexRunOptions,
 ): CodexRunHandle {
   const args = buildCodexArgs(prompt, sessionId, workDir, options);
 
@@ -202,9 +212,7 @@ export function runCodex(
   const isWinCmd =
     process.platform === 'win32' &&
     (/\.(cmd|bat)$/i.test(cliPath) || cliPath === 'codex');
-  const directWindowsLaunch = isWinCmd
-    ? resolveWindowsCodexLaunch(cliPath, args)
-    : null;
+  const directWindowsLaunch = isWinCmd ? resolveWindowsCodexLaunch(cliPath, args) : null;
   const spawnCmd = directWindowsLaunch
     ? directWindowsLaunch.command
     : isWinCmd
@@ -236,23 +244,61 @@ export function runCodex(
   let completed = false;
   const toolStats: Record<string, number> = {};
   const startTime = Date.now();
-  const MAX_TIMEOUT = 2_147_483_647;
+
   const timeoutMs =
     options?.timeoutMs && options.timeoutMs > 0
-      ? Math.min(options.timeoutMs, MAX_TIMEOUT)
+      ? Math.min(options.timeoutMs, MAX_TIMEOUT_MS)
       : 0;
+  const idleTimeoutMs = getIdleTimeoutMs(timeoutMs);
+
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  let idleTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+  const rl = createInterface({ input: child.stdout! });
+
+  const clearTimers = () => {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+      timeoutHandle = null;
+    }
+    if (idleTimeoutHandle) {
+      clearTimeout(idleTimeoutHandle);
+      idleTimeoutHandle = null;
+    }
+  };
+
+  const failAndTerminate = (message: string, logMessage: string) => {
+    if (completed) return;
+    completed = true;
+    clearTimers();
+    log.warn(logMessage);
+    rl.close();
+    if (!child.killed) child.kill('SIGTERM');
+    callbacks.onError(message);
+  };
+
+  const resetIdleTimeout = () => {
+    if (idleTimeoutMs <= 0 || completed) return;
+    if (idleTimeoutHandle) clearTimeout(idleTimeoutHandle);
+    idleTimeoutHandle = setTimeout(() => {
+      failAndTerminate(
+        `Codex 执行长时间无输出，已自动终止（${idleTimeoutMs}ms）`,
+        `Codex CLI idle timeout after ${idleTimeoutMs}ms, killing pid=${child.pid}`,
+      );
+    }, idleTimeoutMs);
+  };
 
   if (timeoutMs > 0) {
     timeoutHandle = setTimeout(() => {
       if (!completed && !child.killed) {
-        completed = true;
-        log.warn(`Codex CLI timeout after ${timeoutMs}ms, killing pid=${child.pid}`);
-        child.kill('SIGTERM');
-        callbacks.onError(`执行超时（${timeoutMs}ms），已终止进程`);
+        failAndTerminate(
+          `执行超时（${timeoutMs}ms），已终止进程`,
+          `Codex CLI timeout after ${timeoutMs}ms, killing pid=${child.pid}`,
+        );
       }
     }, timeoutMs);
   }
+  resetIdleTimeout();
 
   const MAX_STDERR_HEAD = 4 * 1024;
   const MAX_STDERR_TAIL = 6 * 1024;
@@ -262,6 +308,7 @@ export function runCodex(
   let stderrHeadFull = false;
 
   child.stderr?.on('data', (chunk: Buffer) => {
+    resetIdleTimeout();
     const text = chunk.toString();
     stderrTotal += text.length;
     if (!stderrHeadFull) {
@@ -278,9 +325,8 @@ export function runCodex(
     log.debug(`[stderr] ${text.trimEnd()}`);
   });
 
-  const rl = createInterface({ input: child.stdout! });
-
   rl.on('line', (line) => {
+    resetIdleTimeout();
     const event = parseCodexEvent(line);
     if (!event) return;
 
@@ -295,7 +341,7 @@ export function runCodex(
 
     if (type === 'turn.failed') {
       completed = true;
-      if (timeoutHandle) clearTimeout(timeoutHandle);
+      clearTimers();
       const err = event.error as { message?: string } | undefined;
       callbacks.onError(err?.message ?? 'Codex turn failed');
       return;
@@ -307,7 +353,7 @@ export function runCodex(
         return;
       }
       completed = true;
-      if (timeoutHandle) clearTimeout(timeoutHandle);
+      clearTimers();
       callbacks.onError(msg ?? 'Codex stream error');
       return;
     }
@@ -368,14 +414,13 @@ export function runCodex(
 
     if (type === 'turn.completed') {
       completed = true;
-      if (timeoutHandle) clearTimeout(timeoutHandle);
-      const durationMs = Date.now() - startTime;
+      clearTimers();
       callbacks.onComplete({
         success: true,
         result: accumulated,
         accumulated,
         cost: 0,
-        durationMs,
+        durationMs: Date.now() - startTime,
         numTurns: 1,
         toolStats,
       });
@@ -388,43 +433,44 @@ export function runCodex(
 
   const finalize = () => {
     if (!rlClosed || !childClosed) return;
-    if (timeoutHandle) clearTimeout(timeoutHandle);
-    if (!completed) {
-      if (exitCode !== null && exitCode !== 0) {
-        let errMsg = '';
-        if (stderrTotal > 0) {
-          if (!stderrHeadFull) {
-            errMsg = stderrHead;
-          } else if (stderrTotal <= MAX_STDERR_HEAD + MAX_STDERR_TAIL) {
-            errMsg = stderrHead + stderrTail.slice(stderrTail.length - (stderrTotal - MAX_STDERR_HEAD));
-          } else {
-            errMsg =
-              stderrHead +
-              `\n\n... (省略 ${stderrTotal - MAX_STDERR_HEAD - MAX_STDERR_TAIL} 字节) ...\n\n` +
-              stderrTail;
-          }
+    clearTimers();
+    if (completed) return;
+
+    if (exitCode !== null && exitCode !== 0) {
+      let errMsg = '';
+      if (stderrTotal > 0) {
+        if (!stderrHeadFull) {
+          errMsg = stderrHead;
+        } else if (stderrTotal <= MAX_STDERR_HEAD + MAX_STDERR_TAIL) {
+          errMsg = stderrHead + stderrTail.slice(stderrTail.length - (stderrTotal - MAX_STDERR_HEAD));
+        } else {
+          errMsg =
+            stderrHead +
+            `\n\n... (omitted ${stderrTotal - MAX_STDERR_HEAD - MAX_STDERR_TAIL} bytes) ...\n\n` +
+            stderrTail;
         }
-        if (
-          sessionId &&
-          (errMsg.includes("No session found") ||
-            errMsg.includes("No conversation found") ||
-            errMsg.includes("Unable to find session"))
-        ) {
-          callbacks.onSessionInvalid?.();
-        }
-        callbacks.onError(errMsg || `Codex CLI exited with code ${exitCode}`);
-      } else {
-        callbacks.onComplete({
-          success: true,
-          result: accumulated,
-          accumulated,
-          cost: 0,
-          durationMs: Date.now() - startTime,
-          numTurns: 0,
-          toolStats,
-        });
       }
+      if (
+        sessionId &&
+        (errMsg.includes('No session found') ||
+          errMsg.includes('No conversation found') ||
+          errMsg.includes('Unable to find session'))
+      ) {
+        callbacks.onSessionInvalid?.();
+      }
+      callbacks.onError(errMsg || `Codex CLI exited with code ${exitCode}`);
+      return;
     }
+
+    callbacks.onComplete({
+      success: true,
+      result: accumulated,
+      accumulated,
+      cost: 0,
+      durationMs: Date.now() - startTime,
+      numTurns: 0,
+      toolStats,
+    });
   };
 
   child.on('close', (code) => {
@@ -442,7 +488,7 @@ export function runCodex(
   child.on('error', (err) => {
     const errorCode = (err as NodeJS.ErrnoException).code;
     log.error(`Codex CLI spawn error: ${err.message}, code=${errorCode}, path=${cliPath}`);
-    if (timeoutHandle) clearTimeout(timeoutHandle);
+    clearTimers();
     if (!completed) {
       completed = true;
       callbacks.onError(`Failed to start Codex CLI: ${err.message}`);
@@ -453,7 +499,8 @@ export function runCodex(
 
   return {
     abort: () => {
-      if (timeoutHandle) clearTimeout(timeoutHandle);
+      completed = true;
+      clearTimers();
       rl.close();
       if (!child.killed) child.kill('SIGTERM');
     },

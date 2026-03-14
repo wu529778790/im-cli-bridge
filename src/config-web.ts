@@ -1,12 +1,17 @@
 import { spawn } from "node:child_process";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { URL } from "node:url";
+import { DWClient } from "dingtalk-stream";
+import type { Config } from "./config.js";
 import { WEB_CONFIG_PORT } from "./constants.js";
 import { CONFIG_PATH, loadConfig, loadFileConfig, saveFileConfig, type FileConfig } from "./config.js";
+import { PAGE_HTML } from "./config-web-page.js";
 import { getServiceStatus, startBackgroundService, stopBackgroundService } from "./service-control.js";
+import { initWeWork, stopWeWork } from "./wework/client.js";
 
 type WebFlowMode = "init" | "start" | "dev";
 type WebFlowResult = "saved" | "cancel";
+const TEST_TIMEOUT_MS = 10000;
 
 export interface StartedWebConfigServer {
   close: () => Promise<void>;
@@ -28,6 +33,7 @@ interface WebConfigPayload {
     claudeWorkDir: string;
     claudeSkipPermissions: boolean;
     claudeTimeoutMs: number;
+    codexTimeoutMs: number;
     claudeModel: string;
     cursorCliPath: string;
     codexCliPath: string;
@@ -111,6 +117,7 @@ function buildInitialPayload(file: FileConfig): WebConfigPayload {
       claudeWorkDir: file.tools?.claude?.workDir ?? process.cwd(),
       claudeSkipPermissions: file.tools?.claude?.skipPermissions ?? true,
       claudeTimeoutMs: file.tools?.claude?.timeoutMs ?? 600000,
+      codexTimeoutMs: file.tools?.codex?.timeoutMs ?? 600000,
       claudeModel: file.tools?.claude?.model ?? "",
       cursorCliPath: file.tools?.cursor?.cliPath ?? "agent",
       codexCliPath: file.tools?.codex?.cliPath ?? "codex",
@@ -139,6 +146,7 @@ function validatePayload(payload: WebConfigPayload): string[] {
   if (payload.platforms.dingtalk.enabled && !clean(payload.platforms.dingtalk.clientSecret)) errors.push("DingTalk client secret is required.");
   if (!clean(payload.ai.claudeWorkDir)) errors.push("Default work directory is required.");
   if (!Number.isFinite(payload.ai.claudeTimeoutMs) || payload.ai.claudeTimeoutMs <= 0) errors.push("Claude timeout must be positive.");
+  if (!Number.isFinite(payload.ai.codexTimeoutMs) || payload.ai.codexTimeoutMs <= 0) errors.push("Codex timeout must be positive.");
   if (!Number.isFinite(payload.ai.hookPort) || payload.ai.hookPort <= 0) errors.push("Hook port must be positive.");
   return errors;
 }
@@ -200,6 +208,168 @@ function validateConfigForPlatform(platform: string, config: Record<string, unkn
   return errors;
 }
 
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function readJsonResponse(response: Response): Promise<Record<string, unknown>> {
+  const text = await response.text();
+  if (!text) return {};
+
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    throw new Error(`Unexpected non-JSON response: ${text.slice(0, 200)}`);
+  }
+}
+
+function createProbeConfig(values: Partial<Config>): Config {
+  return {
+    enabledPlatforms: [],
+    allowedUserIds: [],
+    telegramAllowedUserIds: [],
+    feishuAllowedUserIds: [],
+    qqAllowedUserIds: [],
+    wechatAllowedUserIds: [],
+    weworkAllowedUserIds: [],
+    dingtalkAllowedUserIds: [],
+    aiCommand: "claude",
+    claudeCliPath: "claude",
+    cursorCliPath: "agent",
+    codexCliPath: "codex",
+    claudeWorkDir: process.cwd(),
+    claudeSkipPermissions: true,
+    defaultPermissionMode: "ask",
+    claudeTimeoutMs: 600000,
+    codexTimeoutMs: 600000,
+    hookPort: 35801,
+    logDir: "",
+    logLevel: "INFO",
+    useSdkMode: true,
+    platforms: {},
+    ...values,
+  };
+}
+
+async function probeTelegram(config: Record<string, unknown>): Promise<string> {
+  const botToken = clean(String(config.botToken ?? ""));
+  if (!botToken) throw new Error("Telegram bot token is required.");
+
+  const response = await fetch(`https://api.telegram.org/bot${botToken}/getMe`, {
+    signal: AbortSignal.timeout(TEST_TIMEOUT_MS),
+  });
+  const body = await readJsonResponse(response);
+  if (!response.ok || body.ok !== true) {
+    throw new Error(String(body.description ?? body.error_code ?? `HTTP ${response.status}`));
+  }
+
+  const result = (body.result ?? {}) as Record<string, unknown>;
+  const username = typeof result.username === "string" ? `@${result.username}` : "bot";
+  return `Telegram reachable as ${username}.`;
+}
+
+async function probeFeishu(config: Record<string, unknown>): Promise<string> {
+  const appId = clean(String(config.appId ?? ""));
+  const appSecret = clean(String(config.appSecret ?? ""));
+  if (!appId || !appSecret) throw new Error("Feishu app ID and app secret are required.");
+
+  const response = await fetch("https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
+    signal: AbortSignal.timeout(TEST_TIMEOUT_MS),
+  });
+  const body = await readJsonResponse(response);
+  if (!response.ok || body.code !== 0) {
+    throw new Error(String(body.msg ?? body.message ?? `HTTP ${response.status}`));
+  }
+
+  return "Feishu credentials are valid.";
+}
+
+async function probeQQ(config: Record<string, unknown>): Promise<string> {
+  const appId = clean(String(config.appId ?? ""));
+  const secret = clean(String(config.secret ?? ""));
+  if (!appId || !secret) throw new Error("QQ app ID and app secret are required.");
+
+  const response = await fetch("https://bots.qq.com/app/getAppAccessToken", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ appId, clientSecret: secret }),
+    signal: AbortSignal.timeout(TEST_TIMEOUT_MS),
+  });
+  const body = await readJsonResponse(response);
+  if (!response.ok || typeof body.access_token !== "string" || body.access_token.length === 0) {
+    throw new Error(String(body.message ?? `HTTP ${response.status}`));
+  }
+
+  return "QQ credentials are valid.";
+}
+
+async function probeWeWork(config: Record<string, unknown>): Promise<string> {
+  const corpId = clean(String(config.corpId ?? ""));
+  const secret = clean(String(config.secret ?? ""));
+  if (!corpId || !secret) throw new Error("WeWork corp ID and secret are required.");
+
+  try {
+    await initWeWork(
+      createProbeConfig({ weworkCorpId: corpId, weworkSecret: secret }),
+      async () => {},
+    );
+    return "WeWork WebSocket authentication succeeded.";
+  } finally {
+    stopWeWork();
+  }
+}
+
+async function probeDingTalk(config: Record<string, unknown>): Promise<string> {
+  const clientId = clean(String(config.clientId ?? ""));
+  const clientSecret = clean(String(config.clientSecret ?? ""));
+  if (!clientId || !clientSecret) throw new Error("DingTalk client ID and client secret are required.");
+
+  const client = new DWClient({
+    clientId,
+    clientSecret,
+    keepAlive: false,
+    debug: false,
+  });
+
+  const token = await Promise.race([
+    client.getAccessToken(),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("DingTalk access token request timed out.")), TEST_TIMEOUT_MS),
+    ),
+  ]);
+
+  if (typeof token !== "string" || token.length === 0) {
+    throw new Error("DingTalk did not return an access token.");
+  }
+
+  return "DingTalk credentials are valid.";
+}
+
+export async function testPlatformConfig(platform: string, config: Record<string, unknown>): Promise<string> {
+  const errors = validateConfigForPlatform(platform, config);
+  if (errors.length > 0) {
+    throw new Error(errors.join("; "));
+  }
+
+  switch (platform) {
+    case "telegram":
+      return probeTelegram(config);
+    case "feishu":
+      return probeFeishu(config);
+    case "qq":
+      return probeQQ(config);
+    case "wework":
+      return probeWeWork(config);
+    case "dingtalk":
+      return probeDingTalk(config);
+    default:
+      throw new Error(`Unknown platform: ${platform}`);
+  }
+}
+
 function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConfig {
   return {
     ...existing,
@@ -228,6 +398,7 @@ function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConf
         cliPath: clean(payload.ai.codexCliPath) ?? "codex",
         workDir: clean(payload.ai.claudeWorkDir) ?? process.cwd(),
         skipPermissions: existing.tools?.codex?.skipPermissions ?? payload.ai.claudeSkipPermissions,
+        timeoutMs: payload.ai.codexTimeoutMs,
         proxy: clean(payload.ai.codexProxy),
       },
     },
@@ -301,756 +472,6 @@ export function openWebConfigUrl(): void {
   openBrowser(getWebConfigUrl());
 }
 
-const LEGACY_PAGE_HTML = String.raw`<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>open-im local control</title>
-    <style>
-      :root{--bg:#e6dfd0;--panel:rgba(255,251,242,.94);--panel-strong:#fffdf7;--ink:#13231a;--muted:#56675f;--line:rgba(19,35,26,.12);--line-strong:rgba(19,35,26,.2);--green:#1a6a44;--green-deep:#10291d;--orange:#cf6f31;--red:#9d4236;--shadow:0 28px 70px rgba(19,35,26,.14);--shadow-soft:0 14px 30px rgba(19,35,26,.08)}
-      *{box-sizing:border-box}body{margin:0;font-family:Georgia,"Times New Roman",serif;color:var(--ink);background:radial-gradient(circle at top,#f4eddf 0,#e5ddce 42%,#ddd4c3 100%)}
-      .shell{padding:0}.frame{max-width:none;margin:0;background:var(--panel);border:0;box-shadow:none;display:grid;grid-template-columns:300px minmax(0,1fr);position:relative;overflow:visible;align-items:start;min-height:100vh}
-      .sidebar{grid-column:1;position:sticky;top:0;align-self:start;display:flex;flex-direction:column;background:linear-gradient(180deg,rgba(16,41,29,.995),rgba(19,35,26,.96));border-right:1px solid rgba(255,255,255,.08);height:100vh}
-      .main-column{grid-column:2;min-width:0}
-      .hero,.toolbar,.section,.footer,.nav-row{padding:24px;border-bottom:1px solid var(--line)}.hero{padding:30px 24px 28px;background:
-        radial-gradient(circle at top left,rgba(242,224,178,.16),transparent 38%),
-        linear-gradient(160deg,rgba(16,41,29,.99),rgba(26,106,68,.92));
-        color:#f7f0df;border-bottom:1px solid rgba(255,255,255,.08);min-height:0;position:relative}
-      .hero:after{content:"";position:absolute;inset:auto 22px 18px 22px;height:1px;background:linear-gradient(90deg,rgba(247,240,223,.35),transparent)}
-      .hero h1,.hero p{margin:0}.hero h1{font-size:clamp(2.4rem,4vw,3.5rem);line-height:.92;letter-spacing:-.05em;margin-top:10px}.hero p{margin-top:16px;max-width:720px;color:rgba(247,240,223,.78);line-height:1.65}
-      .pill{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.72);font-size:.9rem}#heroBadge{background:rgba(247,240,223,.08);border-color:rgba(247,240,223,.16);color:#f7f0df}
-      .toolbar,.grid,.two-col,.footer,.actions{display:grid;gap:14px}.status-row{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between}.status-group{display:flex;flex-wrap:wrap;gap:10px}.grid{grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
-      .panel{padding:18px;border:1px solid var(--line);background:rgba(255,255,255,.56);box-shadow:var(--shadow-soft);transition:opacity .18s ease,transform .18s ease,border-color .18s ease}.panel:hover{transform:translateY(-1px);border-color:var(--line-strong)}.panel.off{opacity:.58}.panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}.panel-head h3{color:#304338}
-      h2,h3{margin:0}h2{font-size:1.55rem;letter-spacing:-.03em}h3{font-size:1.1rem}label{display:grid;gap:6px;color:var(--muted);font-size:.92rem}input,select,textarea{width:100%;padding:11px 12px;border:1px solid rgba(19,35,26,.14);background:rgba(255,255,255,.9);font:inherit;color:var(--ink)}
-      .section > .panel-head:first-child h2,.footer > .panel-head:first-child h2{position:relative;padding-left:14px}
-      .section > .panel-head:first-child h2:before,.footer > .panel-head:first-child h2:before{content:"";position:absolute;left:0;top:4px;bottom:4px;width:4px;border-radius:999px;background:var(--green)}
-      textarea{min-height:74px;resize:vertical}.two-col{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}.toggle{display:inline-flex;align-items:center;gap:10px;color:var(--ink)}.toggle input{width:18px;height:18px}
-      .actions{display:flex;flex-wrap:wrap;gap:10px}button{border:0;padding:12px 16px;font:inherit;cursor:pointer;color:#fff7eb;background:var(--ink);transition:transform .16s ease,opacity .16s ease,box-shadow .16s ease}button:hover{transform:translateY(-1px);box-shadow:0 10px 18px rgba(19,35,26,.14)}button.secondary{background:var(--green)}button.warning{background:var(--orange)}button.danger{background:var(--red)}button.ghost{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.28);box-shadow:none}.overview-banner button{min-width:148px}.overview-banner button.secondary{box-shadow:0 12px 22px rgba(26,106,68,.2)}.overview-banner button:not(.secondary):not(.warning){background:rgba(19,35,26,.86)}.overview-banner button.warning{color:#fff7eb}button.nav-btn{width:100%;justify-content:flex-start;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);padding:13px 14px;color:rgba(247,240,223,.78);box-shadow:none;position:relative}button.nav-btn:before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:999px;background:transparent;transition:background .16s ease}button.nav-btn.active{background:rgba(247,240,223,.95);color:var(--ink);border-color:rgba(247,240,223,.95)}button.nav-btn.active:before{background:var(--green)}button:disabled{opacity:.5;cursor:wait;transform:none;box-shadow:none}
-      .message{min-height:24px;color:var(--muted)}.message.success{color:var(--green)}.message.error{color:var(--red)}.mono{font-family:Consolas,monospace}.summary{color:var(--muted)}.note{border-left:4px solid var(--orange)}.nav-row{background:transparent;border-bottom:0;padding-top:12px;position:relative;display:flex;flex-direction:column;flex:1;min-height:0}
-      .nav-row .actions{display:grid;gap:8px}
-      .nav-group-label{font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:rgba(247,240,223,.42);margin:0 0 12px 2px}
-      .sidebar-note{margin-top:18px;padding:14px;border:1px solid rgba(255,255,255,.08);background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.03));border-radius:14px;color:rgba(247,240,223,.86)}.sidebar-note strong{display:block;margin-bottom:8px;font-size:.96rem}.sidebar-note .summary{color:rgba(247,240,223,.66);line-height:1.58;font-size:.92rem}
-      .brand-kicker{font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:rgba(247,240,223,.52);margin-top:20px}
-      .brand-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:0}
-      .sidebar-spacer{flex:1}
-      .sidebar-footer{padding:0 24px 24px}
-      .link-chip{display:flex;align-items:center;justify-content:space-between;width:100%;padding:14px 16px;border:1px solid rgba(255,255,255,.1);border-radius:16px;color:#f7f0df;text-decoration:none;background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.02));transition:transform .16s ease,background .16s ease,border-color .16s ease}
-      .link-chip:hover{transform:translateY(-1px);background:linear-gradient(180deg,rgba(255,255,255,.1),rgba(255,255,255,.04));border-color:rgba(255,255,255,.18)}
-      .link-chip:after{content:">";font-size:1rem;color:rgba(247,240,223,.72)}
-      .overview-banner{padding:20px 22px;border:1px solid rgba(26,106,68,.16);background:linear-gradient(135deg,rgba(26,106,68,.14),rgba(255,255,255,.58));margin-bottom:18px;position:relative;overflow:hidden}.overview-banner:after{content:"";position:absolute;top:-40px;right:-10px;width:160px;height:160px;border-radius:50%;background:radial-gradient(circle,rgba(242,224,178,.28),transparent 65%)}.overview-banner h3{margin-bottom:8px;position:relative}.overview-banner .summary,.overview-banner .actions{position:relative}.overview-banner .actions{margin-top:14px}
-      .stats-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:16px}
-      .stat-card{padding:18px;border:1px solid var(--line);background:var(--panel-strong);box-shadow:var(--shadow-soft)}
-      .stat-label{font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
-      .stat-value{margin-top:10px;font-size:2rem;line-height:1;font-weight:700;letter-spacing:-.05em}
-      .stat-meta{margin-top:8px;color:var(--muted);font-size:.92rem}
-      #healthGrid .panel{background:rgba(255,255,255,.68)}
-      #healthGrid .panel.off{background:rgba(255,255,255,.38);border-style:dashed}
-      #healthGrid .pill{font-size:.82rem;font-weight:700}
-      #configSection .panel,#aiSection .panel,#serviceSection{background:rgba(255,253,247,.82)}
-      #configSection .panel-head,#aiSection .panel-head,#serviceSection .panel-head{margin-bottom:14px}
-      #configSection .panel .summary,#aiSection .panel .summary{line-height:1.58}
-      #serviceSection .actions{grid-template-columns:repeat(auto-fit,minmax(170px,1fr));align-items:stretch}
-      #startButton{background:var(--green);box-shadow:0 12px 22px rgba(26,106,68,.18)}
-      #saveButton{background:rgba(19,35,26,.88)}
-      #validateButton{background:rgba(207,111,49,.92)}
-      #stopButton{background:rgba(157,66,54,.92)}
-      #quickActionsSection,#configToolbar,#configSection,#aiSection,#serviceSection{border-top:1px solid var(--line)}
-      @media (max-width:980px){.frame{grid-template-columns:1fr}.sidebar,.main-column{grid-column:1;grid-row:auto}.sidebar{position:static;height:auto;border-right:0}.hero,.nav-row{border-right:0}.nav-row{padding-top:16px}.sidebar-footer{padding:0 24px 24px}.stats-grid{grid-template-columns:1fr}}
-    </style>
-  </head>
-  <body>
-    <div class="shell">
-      <div class="frame">
-        <aside class="sidebar">
-        <section class="hero">
-          <div class="status-row">
-            <div class="pill" id="heroBadge">open-im</div>
-            <button id="langButton" class="ghost" type="button">中文</button>
-          </div>
-          <div class="brand-kicker" id="heroKicker">Local AI bridge</div>
-          <h1 id="heroTitle">open-im</h1>
-          <p id="heroBody">Run one local bridge for Telegram, Feishu, QQ, WeWork, and DingTalk.</p>
-        </section>
-        <section class="nav-row">
-          <div class="nav-group-label">Control center</div>
-          <div class="actions">
-            <button id="navOverviewBtn" class="nav-btn" type="button">Overview</button>
-            <button id="navPlatformsBtn" class="nav-btn" type="button">Platforms</button>
-            <button id="navAiBtn" class="nav-btn" type="button">AI Tools</button>
-            <button id="navServiceBtn" class="nav-btn" type="button">Service</button>
-          </div>
-          <article class="sidebar-note">
-            <strong id="sidebarNoteTitle">Local workflow</strong>
-            <div class="summary" id="sidebarNoteBody">Configure one platform, save the config, then start the bridge.</div>
-          </article>
-        </section>
-        <div class="sidebar-spacer"></div>
-        <div class="sidebar-footer">
-          <div class="brand-actions">
-            <a id="heroRepo" class="link-chip" href="https://github.com/wu529778790/open-im" target="_blank" rel="noreferrer">GitHub</a>
-          </div>
-        </div>
-        </aside>
-        <main class="main-column">
-        <section class="section" id="dashboardSection">
-          <div class="panel-head"><h2 id="dashboardTitle">Dashboard</h2><div id="dashboardSubtitle">Platform health status</div></div>
-          <article class="panel overview-banner">
-            <h3 id="overviewTitle">Start here</h3>
-            <div class="summary" id="overviewBody">Configure at least one platform, save the configuration, then start the bridge from the service section.</div>
-            <div class="actions">
-              <button id="dashboardToPlatforms" class="secondary" type="button">Open Platforms</button>
-              <button id="dashboardToService" class="ghost" type="button">Open Service</button>
-              <button id="refreshHealth" class="warning" type="button">Refresh Health Status</button>
-            </div>
-          </article>
-          <div class="stats-grid">
-            <article class="stat-card">
-              <div class="stat-label" id="statConfiguredLabel">Configured</div>
-              <div class="stat-value" id="statConfiguredValue">0/5</div>
-              <div class="stat-meta" id="statConfiguredMeta">Platforms with saved credentials</div>
-            </article>
-            <article class="stat-card">
-              <div class="stat-label" id="statEnabledLabel">Enabled</div>
-              <div class="stat-value" id="statEnabledValue">0</div>
-              <div class="stat-meta" id="statEnabledMeta">Platforms selected for startup</div>
-            </article>
-            <article class="stat-card">
-              <div class="stat-label" id="statServiceLabel">Service</div>
-              <div class="stat-value" id="statServiceValue">Idle</div>
-              <div class="stat-meta" id="statServiceMeta">Bridge has not been started yet</div>
-            </article>
-          </div>
-          <div class="grid" id="healthGrid" style="margin-top:16px;">
-            <article class="panel" id="health-telegram">
-              <div class="panel-head"><h3>Telegram</h3><div class="pill" id="health-telegram-status">Checking...</div></div>
-              <div class="summary" id="health-telegram-message" style="margin-top:8px;"></div>
-            </article>
-            <article class="panel" id="health-feishu">
-              <div class="panel-head"><h3>Feishu</h3><div class="pill" id="health-feishu-status">Checking...</div></div>
-              <div class="summary" id="health-feishu-message" style="margin-top:8px;"></div>
-            </article>
-            <article class="panel" id="health-qq">
-              <div class="panel-head"><h3>QQ</h3><div class="pill" id="health-qq-status">Checking...</div></div>
-              <div class="summary" id="health-qq-message" style="margin-top:8px;"></div>
-            </article>
-            <article class="panel" id="health-wework">
-              <div class="panel-head"><h3>WeWork</h3><div class="pill" id="health-wework-status">Checking...</div></div>
-              <div class="summary" id="health-wework-message" style="margin-top:8px;"></div>
-            </article>
-            <article class="panel" id="health-dingtalk">
-              <div class="panel-head"><h3>DingTalk</h3><div class="pill" id="health-dingtalk-status">Checking...</div></div>
-              <div class="summary" id="health-dingtalk-message" style="margin-top:8px;"></div>
-            </article>
-          </div>
-        </section>
-        <section class="section" id="quickActionsSection" style="display:none;">
-          <div class="panel-head"><h2 id="quickActionsTitle">Quick Actions</h2></div>
-        </section>
-        <section class="toolbar" id="configToolbar">
-          <div class="status-group">
-            <div class="pill mono" id="configPath"></div>
-            <div class="pill" id="serviceState"></div>
-            <div class="pill" id="modeBadge"></div>
-          </div>
-          <div id="statusMeta"></div>
-          <div class="summary" id="liveSummary"></div>
-        </section>
-        <section class="section" id="configSection">
-          <div class="panel-head"><h2 id="platformsTitle">Platforms</h2><div id="platformsHint">Disabled platforms keep their saved values.</div></div>
-          <div class="grid">
-            <article class="panel" id="telegram-panel">
-              <div class="panel-head"><h3>Telegram</h3><label class="toggle"><input id="telegram-enabled" type="checkbox" /> Enabled</label></div>
-              <div class="summary" id="telegram-help" style="margin-bottom:12px;color:var(--muted);font-size:0.9em;">获取凭证：访问 <a href="https://t.me/BotFather" target="_blank" style="color:var(--green);text-decoration:underline;">@BotFather</a> 发送 /newbot 创建机器人，获取 Bot Token</div>
-              <label>Bot token<input id="telegram-botToken" placeholder="123456:ABC..." /></label>
-              <label>Proxy<input id="telegram-proxy" placeholder="http://127.0.0.1:7890" /></label>
-              <label>Allowed user IDs<textarea id="telegram-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
-              <div style="margin-top:12px;"><button id="test-telegram" class="secondary" type="button" style="width:100%;padding:8px;font-size:0.9em;">测试连接</button><div class="message" id="test-telegram-result" style="min-height:20px;margin-top:8px;"></div></div>
-            </article>
-            <article class="panel" id="feishu-panel">
-              <div class="panel-head"><h3>Feishu</h3><label class="toggle"><input id="feishu-enabled" type="checkbox" /> Enabled</label></div>
-              <div class="summary" id="feishu-help" style="margin-bottom:12px;color:var(--muted);font-size:0.9em;">获取凭证：访问 <a href="https://open.feishu.cn/" target="_blank" style="color:var(--green);text-decoration:underline;">飞书开放平台</a> 创建应用，启用机器人，获取 App ID 和 App Secret</div>
-              <label>App ID<input id="feishu-appId" /></label>
-              <label>App Secret<input id="feishu-appSecret" /></label>
-              <label>Allowed user IDs<textarea id="feishu-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
-              <div style="margin-top:12px;"><button id="test-feishu" class="secondary" type="button" style="width:100%;padding:8px;font-size:0.9em;">测试连接</button><div class="message" id="test-feishu-result" style="min-height:20px;margin-top:8px;"></div></div>
-            </article>
-            <article class="panel" id="qq-panel">
-              <div class="panel-head"><h3>QQ</h3><label class="toggle"><input id="qq-enabled" type="checkbox" /> Enabled</label></div>
-              <div class="summary" id="qq-help" style="margin-bottom:12px;color:var(--muted);font-size:0.9em;">获取凭证：访问 <a href="https://bot.q.qq.com" target="_blank" style="color:var(--green);text-decoration:underline;">QQ 开放平台</a> 创建机器人，获取 App ID 和 App Secret</div>
-              <label>App ID<input id="qq-appId" /></label>
-              <label>App Secret<input id="qq-secret" /></label>
-              <label>Allowed user IDs<textarea id="qq-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
-              <div style="margin-top:12px;"><button id="test-qq" class="secondary" type="button" style="width:100%;padding:8px;font-size:0.9em;">测试连接</button><div class="message" id="test-qq-result" style="min-height:20px;margin-top:8px;"></div></div>
-            </article>
-            <article class="panel" id="wework-panel">
-              <div class="panel-head"><h3>WeWork</h3><label class="toggle"><input id="wework-enabled" type="checkbox" /> Enabled</label></div>
-              <div class="summary" id="wework-help" style="margin-bottom:12px;color:var(--muted);font-size:0.9em;">获取凭证：访问 <a href="https://work.weixin.qq.com/" target="_blank" style="color:var(--green);text-decoration:underline;">企业微信管理后台</a> 创建应用，获取 Bot ID (Corp ID) 和 Secret</div>
-              <label>Corp ID / Bot ID<input id="wework-corpId" /></label>
-              <label>Secret<input id="wework-secret" /></label>
-              <label>Allowed user IDs<textarea id="wework-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
-              <div style="margin-top:12px;"><button id="test-wework" class="secondary" type="button" style="width:100%;padding:8px;font-size:0.9em;">测试连接</button><div class="message" id="test-wework-result" style="min-height:20px;margin-top:8px;"></div></div>
-            </article>
-            <article class="panel" id="dingtalk-panel">
-              <div class="panel-head"><h3>DingTalk</h3><label class="toggle"><input id="dingtalk-enabled" type="checkbox" /> Enabled</label></div>
-              <div class="summary" id="dingtalk-help" style="margin-bottom:12px;color:var(--muted);font-size:0.9em;">获取凭证：访问钉钉开放平台创建企业内部应用，启用机器人 Stream Mode，获取 Client ID 和 Client Secret</div>
-              <label>Client ID / AppKey<input id="dingtalk-clientId" /></label>
-              <label>Client Secret / AppSecret<input id="dingtalk-clientSecret" /></label>
-              <label>Card template ID<input id="dingtalk-cardTemplateId" placeholder="Optional" /></label>
-              <label>Allowed user IDs<textarea id="dingtalk-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
-              <div style="margin-top:12px;"><button id="test-dingtalk" class="secondary" type="button" style="width:100%;padding:8px;font-size:0.9em;">测试连接</button><div class="message" id="test-dingtalk-result" style="min-height:20px;margin-top:8px;"></div></div>
-            </article>
-          </div>
-        </section>
-        <section class="section" id="aiSection">
-          <div class="panel-head"><h2 id="aiTitle">AI Tooling</h2><div id="aiHint">WeChat is intentionally excluded from this first version.</div></div>
-          <article class="panel note" id="claudeNote">Claude credentials are still read from environment variables or ~/.claude/settings.json. This page manages local bridge config, not Claude account auth.</article>
-          <article class="panel">
-            <div class="two-col">
-              <label>Default AI tool<select id="ai-aiCommand"><option value="claude">claude</option><option value="codex">codex</option><option value="cursor">cursor</option></select></label>
-              <label>Default work directory<input id="ai-claudeWorkDir" class="mono" /></label>
-              <label>Claude CLI path<input id="ai-claudeCliPath" class="mono" /></label>
-              <label>Cursor CLI path<input id="ai-cursorCliPath" class="mono" /></label>
-              <label>Codex CLI path<input id="ai-codexCliPath" class="mono" /></label>
-              <label>Codex proxy<input id="ai-codexProxy" class="mono" placeholder="Optional" /></label>
-              <label>Claude timeout (ms)<input id="ai-claudeTimeoutMs" type="number" min="1" /></label>
-              <label>Claude model<input id="ai-claudeModel" placeholder="Optional" /></label>
-              <label>Hook port<input id="ai-hookPort" type="number" min="1" /></label>
-              <label>Log level<select id="ai-logLevel"><option value="default">default</option><option value="DEBUG">DEBUG</option><option value="INFO">INFO</option><option value="WARN">WARN</option><option value="ERROR">ERROR</option></select></label>
-            </div>
-            <div class="actions" style="margin-top:14px">
-              <label class="toggle"><input id="ai-claudeSkipPermissions" type="checkbox" /> Auto-approve tool permissions</label>
-              <label class="toggle"><input id="ai-useSdkMode" type="checkbox" /> Use Claude SDK mode</label>
-            </div>
-          </article>
-        </section>
-        <section class="footer" id="serviceSection">
-          <div class="panel-head"><h2 id="serviceTitle">Service Control</h2><div id="serviceHint">Validate, save, start, and stop the local bridge from one place.</div></div>
-          <div class="actions">
-            <button id="validateButton" class="warning">Validate</button>
-            <button id="saveButton" class="secondary">Save config</button>
-            <button id="startButton">Start bridge</button>
-            <button id="stopButton" class="danger">Stop bridge</button>
-          </div>
-          <div class="message" id="message"></div>
-        </section>
-        </main>
-      </div>
-    </div>
-    <script>
-      const ids = ["telegram-enabled","telegram-botToken","telegram-proxy","telegram-allowedUserIds","feishu-enabled","feishu-appId","feishu-appSecret","feishu-allowedUserIds","qq-enabled","qq-appId","qq-secret","qq-allowedUserIds","wework-enabled","wework-corpId","wework-secret","wework-allowedUserIds","dingtalk-enabled","dingtalk-clientId","dingtalk-clientSecret","dingtalk-cardTemplateId","dingtalk-allowedUserIds","ai-aiCommand","ai-claudeCliPath","ai-claudeWorkDir","ai-claudeSkipPermissions","ai-claudeTimeoutMs","ai-claudeModel","ai-cursorCliPath","ai-codexCliPath","ai-codexProxy","ai-hookPort","ai-logLevel","ai-useSdkMode"];
-      const el = (id) => document.getElementById(id);
-      const storageKey = "open-im-web-lang";
-      const texts = {
-        en: {
-          pageTitle: "open-im local control",
-          heroBadge: "open-im local control",
-          heroTitle: "Local bridge control.",
-          heroBody: "",
-          langButton: "中文",
-          mode: "Flow",
-          dashboardTitle: "Dashboard",
-          dashboardSubtitle: "Platform health status",
-          quickActionsTitle: "Quick Actions",
-          serviceTitle: "Service Control",
-          serviceHint: "Validate, save, start, and stop the local bridge from one place.",
-          refreshHealth: "Refresh Health Status",
-          viewConfig: "View Configuration",
-          healthChecking: "Checking...",
-          healthy: "Healthy",
-          unhealthy: "Issues Found",
-          notConfigured: "Not Configured",
-          disabled: "Disabled",
-          platformsTitle: "Platforms",
-          platformsHint: "Disabled platforms keep their saved values.",
-          enabled: "Enabled",
-          botToken: "Bot token",
-          proxy: "Proxy",
-          allowedUserIds: "Allowed user IDs",
-          telegramHelp: 'Get credentials: Visit <a href="https://t.me/BotFather" target="_blank">@BotFather</a> and send /newbot to create a bot and get Bot Token',
-          appId: "App ID",
-          appSecret: "App Secret",
-          feishuHelp: 'Get credentials: Visit <a href="https://open.feishu.cn/" target="_blank">Feishu Open Platform</a> to create an app, enable bot, and get App ID / App Secret',
-          qqAppId: "App ID",
-          qqAppSecret: "App Secret",
-          qqHelp: 'Get credentials: Visit <a href="https://bot.q.qq.com" target="_blank">QQ Open Platform</a> to create a bot and get App ID / App Secret',
-          corpId: "Corp ID / Bot ID",
-          weworkHelp: 'Get credentials: Visit <a href="https://work.weixin.qq.com/" target="_blank">WeWork Admin Console</a> to create an app and get Bot ID (Corp ID) / Secret',
-          clientId: "Client ID / AppKey",
-          clientSecret: "Client Secret / AppSecret",
-          dingtalkHelp: 'Get credentials: Create an enterprise internal app on DingTalk Open Platform, enable Stream Mode, and get Client ID / Client Secret',
-          secret: "Secret",
-          clientId: "Client ID / AppKey",
-          clientSecret: "Client Secret / AppSecret",
-          cardTemplateId: "Card template ID",
-          optional: "Optional",
-          commaSeparatedIds: "Comma-separated IDs",
-          aiTitle: "AI Tooling",
-          aiHint: "",
-          claudeNote: "Claude credentials are still read from environment variables or ~/.claude/settings.json. This page manages local bridge config, not Claude account auth.",
-          aiTool: "Default AI tool",
-          workDir: "Default work directory",
-          claudeCli: "Claude CLI path",
-          cursorCli: "Cursor CLI path",
-          codexCli: "Codex CLI path",
-          codexProxy: "Codex proxy",
-          claudeTimeout: "Claude timeout (ms)",
-          claudeModel: "Claude model",
-          hookPort: "Hook port",
-          logLevel: "Log level",
-          logLevelDefault: "default (app default)",
-          autoApprove: "Auto-approve tool permissions",
-          sdkMode: "Use Claude SDK mode",
-          validate: "Validate",
-          test: "Test",
-          testing: "Testing...",
-          testSuccess: "Configuration is valid!",
-          testFailed: "Configuration error: {error}",
-          save: "Save config",
-          start: "Start bridge",
-          stop: "Stop bridge",
-          bridgeRunning: "Bridge running (pid {pid})",
-          bridgeStopped: "Bridge stopped",
-          bridgeActive: "Bridge worker is active.",
-          bridgeInactive: "Bridge worker is currently stopped.",
-          summaryEnabled: "Enabled platforms: {platforms} | AI tool: {tool}",
-          summaryEmpty: "No platform enabled yet | AI tool: {tool}",
-          ready: "Control surface ready.",
-          validationOk: "Configuration looks internally consistent.",
-          saveOk: "Configuration saved.",
-          startOk: "Bridge started.",
-          stopOk: "Bridge stopped.",
-        },
-        zh: {
-          pageTitle: "open-im 本地控制台",
-          heroBadge: "open-im",
-          heroTitle: "本地桥接控制台",
-          heroBody: "",
-          langButton: "EN",
-          mode: "流程",
-          dashboardTitle: "仪表盘",
-          dashboardSubtitle: "平台健康状态",
-          quickActionsTitle: "快速操作",
-          refreshHealth: "刷新健康状态",
-          viewConfig: "查看配置",
-          healthChecking: "检查中...",
-          healthy: "健康",
-          unhealthy: "发现问题",
-          notConfigured: "未配置",
-          disabled: "已禁用",
-          platformsTitle: "平台配置",
-          platformsHint: "关闭的平台会保留已保存的值。",
-          enabled: "启用",
-          botToken: "Bot Token",
-          proxy: "代理",
-          allowedUserIds: "允许的用户 ID",
-          telegramHelp: '获取凭证：访问 <a href="https://t.me/BotFather" target="_blank">@BotFather</a> 发送 /newbot 创建机器人，获取 Bot Token',
-          appId: "App ID",
-          appSecret: "App Secret",
-          feishuHelp: '获取凭证：访问 <a href="https://open.feishu.cn/" target="_blank">飞书开放平台</a> 创建应用，启用机器人，获取 App ID 和 App Secret',
-          qqAppId: "App ID",
-          qqAppSecret: "App Secret",
-          qqHelp: '获取凭证：访问 <a href="https://bot.q.qq.com" target="_blank">QQ 开放平台</a> 创建机器人，获取 App ID 和 App Secret',
-          corpId: "Corp ID / Bot ID",
-          weworkHelp: '获取凭证：访问 <a href="https://work.weixin.qq.com/" target="_blank">企业微信管理后台</a> 创建应用，获取 Bot ID (Corp ID) 和 Secret',
-          clientId: "Client ID / AppKey",
-          clientSecret: "Client Secret / AppSecret",
-          dingtalkHelp: '获取凭证：访问钉钉开放平台创建企业内部应用，启用机器人 Stream Mode，获取 Client ID 和 Client Secret',
-          cardTemplateId: "卡片模板 ID",
-          optional: "可选",
-          commaSeparatedIds: "用逗号分隔多个 ID",
-          aiTitle: "AI 工具配置",
-          aiHint: "",
-          claudeNote: "Claude 凭证仍然从环境变量或 ~/.claude/settings.json 读取。这个页面只管理本地桥接配置，不负责 Claude 账号登录。",
-          aiTool: "默认 AI 工具",
-          workDir: "默认工作目录",
-          claudeCli: "Claude CLI 路径",
-          cursorCli: "Cursor CLI 路径",
-          codexCli: "Codex CLI 路径",
-          codexProxy: "Codex 代理",
-          claudeTimeout: "Claude 超时（毫秒）",
-          claudeModel: "Claude 模型",
-          hookPort: "Hook 端口",
-          logLevel: "日志级别",
-          logLevelDefault: "default（程序默认）",
-          autoApprove: "自动允许工具权限",
-          sdkMode: "使用 Claude SDK 模式",
-          validate: "校验配置",
-          test: "测试",
-          testing: "测试中...",
-          testSuccess: "配置验证通过！",
-          testFailed: "配置错误：{error}",
-          save: "保存配置",
-          start: "启动桥接",
-          stop: "停止桥接",
-          bridgeRunning: "桥接运行中（pid {pid}）",
-          bridgeStopped: "桥接已停止",
-          bridgeActive: "桥接 worker 正在运行。",
-          bridgeInactive: "桥接 worker 当前已停止。",
-          summaryEnabled: "已启用平台：{platforms} | AI 工具：{tool}",
-          summaryEmpty: "暂未启用平台 | AI 工具：{tool}",
-          ready: "控制台已就绪。",
-          validationOk: "配置校验通过。",
-          saveOk: "配置已保存。",
-          startOk: "桥接已启动。",
-          stopOk: "桥接已停止。",
-        }
-      };
-      let currentMeta = null;
-      let currentLang = (localStorage.getItem(storageKey) || "").startsWith("zh") ? "zh" : ((navigator.language || "").startsWith("zh") ? "zh" : "en");
-      const t = (key, params={}) => {
-        const source = texts[currentLang] || texts.en;
-        const template = source[key] || texts.en[key] || key;
-        return Object.keys(params).reduce((result, name) => result.replaceAll("{" + name + "}", String(params[name])), template);
-      };
-      const setMessage = (text, type="") => { const node = el("message"); node.textContent = text; node.className = ("message " + type).trim(); };
-      const setBusy = (busy) => ["validateButton","saveButton","startButton","stopButton","langButton"].forEach((id) => { el(id).disabled = busy; });
-      function applyLanguage(meta) {
-        if (meta) currentMeta = meta;
-        const isZh = currentLang === "zh";
-        document.documentElement.lang = isZh ? "zh-CN" : "en";
-        document.title = t("pageTitle");
-        el("heroBadge").textContent = "open-im";
-        el("heroTitle").textContent = currentLang === "zh" ? "本地桥接控制台" : "Local bridge control";
-        el("heroBody").textContent = currentLang === "zh"
-          ? "先完成平台配置，再保存并启动本地桥接服务。"
-          : "Configure platforms first, then save and start the local bridge service.";
-        el("heroBody").style.display = "block";
-        el("heroKicker").textContent = isZh ? "本地 AI 桥接" : "Local AI bridge";
-        el("heroTitle").textContent = "open-im";
-        el("heroBody").textContent = isZh
-          ? "一个本地桥接入口，统一连接 Telegram、Feishu、QQ、WeWork 和 DingTalk。"
-          : "One local bridge for Telegram, Feishu, QQ, WeWork, and DingTalk.";
-        el("heroBody").style.display = "block";
-        el("heroRepo").textContent = "GitHub";
-        el("langButton").textContent = t("langButton");
-        document.querySelector(".nav-group-label").textContent = currentLang === "zh" ? "控制中心" : "Control center";
-        el("sidebarNoteTitle").textContent = currentLang === "zh" ? "本地工作流" : "Local workflow";
-        el("sidebarNoteBody").textContent = currentLang === "zh"
-          ? "至少配置一个平台，保存配置，然后到服务控制区启动桥接。"
-          : "Configure at least one platform, save the config, then start the bridge from Service.";
-        el("platformsTitle").textContent = t("platformsTitle");
-        el("platformsHint").textContent = t("platformsHint");
-        el("aiTitle").textContent = t("aiTitle");
-        el("aiHint").textContent = t("aiHint");
-        el("aiHint").style.display = t("aiHint") ? "block" : "none";
-        el("claudeNote").childNodes[0].textContent = t("claudeNote");
-        el("telegram-panel").querySelector(".toggle").lastChild.textContent = " " + t("enabled");
-        el("feishu-panel").querySelector(".toggle").lastChild.textContent = " " + t("enabled");
-        el("qq-panel").querySelector(".toggle").lastChild.textContent = " " + t("enabled");
-        el("wework-panel").querySelector(".toggle").lastChild.textContent = " " + t("enabled");
-        el("dingtalk-panel").querySelector(".toggle").lastChild.textContent = " " + t("enabled");
-        const telegramLabels = el("telegram-panel").querySelectorAll(":scope > label");
-        telegramLabels[0].childNodes[0].textContent = t("botToken");
-        telegramLabels[1].childNodes[0].textContent = t("proxy");
-        telegramLabels[2].childNodes[0].textContent = t("allowedUserIds");
-        el("telegram-help").innerHTML = t("telegramHelp");
-        const feishuLabels = el("feishu-panel").querySelectorAll(":scope > label");
-        feishuLabels[0].childNodes[0].textContent = t("appId");
-        feishuLabels[1].childNodes[0].textContent = t("appSecret");
-        feishuLabels[2].childNodes[0].textContent = t("allowedUserIds");
-        el("feishu-help").innerHTML = t("feishuHelp");
-        const qqLabels = el("qq-panel").querySelectorAll(":scope > label");
-        qqLabels[0].childNodes[0].textContent = t("qqAppId");
-        qqLabels[1].childNodes[0].textContent = t("qqAppSecret");
-        qqLabels[2].childNodes[0].textContent = t("allowedUserIds");
-        el("qq-help").innerHTML = t("qqHelp");
-        const weworkLabels = el("wework-panel").querySelectorAll(":scope > label");
-        weworkLabels[0].childNodes[0].textContent = t("corpId");
-        weworkLabels[1].childNodes[0].textContent = t("secret");
-        weworkLabels[2].childNodes[0].textContent = t("allowedUserIds");
-        el("wework-help").innerHTML = t("weworkHelp");
-        const dingtalkLabels = el("dingtalk-panel").querySelectorAll(":scope > label");
-        dingtalkLabels[0].childNodes[0].textContent = t("clientId");
-        dingtalkLabels[1].childNodes[0].textContent = t("clientSecret");
-        dingtalkLabels[2].childNodes[0].textContent = t("cardTemplateId");
-        dingtalkLabels[3].childNodes[0].textContent = t("allowedUserIds");
-        el("dingtalk-help").innerHTML = t("dingtalkHelp");
-        el("telegram-allowedUserIds").placeholder = t("commaSeparatedIds");
-        el("feishu-allowedUserIds").placeholder = t("commaSeparatedIds");
-        el("qq-allowedUserIds").placeholder = t("commaSeparatedIds");
-        el("wework-allowedUserIds").placeholder = t("commaSeparatedIds");
-        el("dingtalk-allowedUserIds").placeholder = t("commaSeparatedIds");
-        el("dingtalk-cardTemplateId").placeholder = t("optional");
-        const aiLabels = document.querySelectorAll(".two-col > label");
-        aiLabels[0].childNodes[0].textContent = t("aiTool");
-        aiLabels[1].childNodes[0].textContent = t("workDir");
-        aiLabels[2].childNodes[0].textContent = t("claudeCli");
-        aiLabels[3].childNodes[0].textContent = t("cursorCli");
-        aiLabels[4].childNodes[0].textContent = t("codexCli");
-        aiLabels[5].childNodes[0].textContent = t("codexProxy");
-        aiLabels[6].childNodes[0].textContent = t("claudeTimeout");
-        aiLabels[7].childNodes[0].textContent = t("claudeModel");
-        aiLabels[8].childNodes[0].textContent = t("hookPort");
-        aiLabels[9].childNodes[0].textContent = t("logLevel");
-        const logLevelOptions = el("ai-logLevel").options;
-        logLevelOptions[0].text = t("logLevelDefault");
-        logLevelOptions[1].text = "DEBUG";
-        logLevelOptions[2].text = "INFO";
-        logLevelOptions[3].text = "WARN";
-        logLevelOptions[4].text = "ERROR";
-        if (!el("ai-logLevel").value) {
-          el("ai-logLevel").value = "default";
-        }
-        el("ai-codexProxy").placeholder = t("optional");
-        el("ai-claudeModel").placeholder = t("optional");
-        const aiToggles = document.querySelectorAll(".actions .toggle");
-        aiToggles[0].lastChild.textContent = " " + t("autoApprove");
-        aiToggles[1].lastChild.textContent = " " + t("sdkMode");
-        el("validateButton").textContent = t("validate");
-        el("saveButton").textContent = t("save");
-        el("startButton").textContent = t("start");
-        el("stopButton").textContent = t("stop");
-        ["telegram","feishu","qq","wework","dingtalk"].forEach((platform) => {
-          const testBtn = el("test-" + platform);
-          if (testBtn) {
-            testBtn.textContent = t("test");
-          }
-        });
-        if (currentMeta) {
-          el("modeBadge").textContent = t("mode") + ": " + currentMeta.mode;
-        }
-        el("dashboardTitle").textContent = currentLang === "zh" ? "总览" : "Overview";
-        el("dashboardSubtitle").textContent = currentLang === "zh" ? "平台状态与接入进度" : "Platform status and setup progress";
-        el("quickActionsTitle").textContent = t("quickActionsTitle");
-        el("serviceTitle").textContent = t("serviceTitle");
-        el("serviceHint").textContent = t("serviceHint");
-        el("overviewTitle").textContent = currentLang === "zh" ? "先完成基础配置" : "Start here";
-        el("overviewBody").textContent = currentLang === "zh"
-          ? "先配置至少一个平台，保存本地配置，然后到服务控制区启动桥接。"
-          : "Configure at least one platform, save the configuration, then start the bridge from the service section.";
-        el("dashboardToPlatforms").textContent = currentLang === "zh" ? "打开平台配置" : "Open Platforms";
-        el("dashboardToService").textContent = currentLang === "zh" ? "打开服务控制" : "Open Service";
-        el("refreshHealth").textContent = t("refreshHealth");
-        el("statConfiguredLabel").textContent = currentLang === "zh" ? "已配置" : "Configured";
-        el("statConfiguredMeta").textContent = currentLang === "zh" ? "已填写凭据的平台数量" : "Platforms with saved credentials";
-        el("statEnabledLabel").textContent = currentLang === "zh" ? "已启用" : "Enabled";
-        el("statEnabledMeta").textContent = currentLang === "zh" ? "将随服务启动的平台数量" : "Platforms selected for startup";
-        el("statServiceLabel").textContent = currentLang === "zh" ? "服务" : "Service";
-        el("navOverviewBtn").textContent = t("dashboardTitle");
-        el("navPlatformsBtn").textContent = t("platformsTitle");
-        el("navAiBtn").textContent = t("aiTitle");
-        el("navServiceBtn").textContent = t("serviceTitle");
-      }
-      function updateVisualState() {
-        const enabled = [];
-        [["telegram","Telegram"],["feishu","Feishu"],["qq","QQ"],["wework","WeWork"],["dingtalk","DingTalk"]].forEach(([key,label]) => {
-          const active = el(key + "-enabled").checked;
-          el(key + "-panel").classList.toggle("off", !active);
-          if (active) enabled.push(label);
-        });
-        const aiTool = el("ai-aiCommand").value;
-        el("liveSummary").textContent = enabled.length
-          ? t("summaryEnabled", { platforms: enabled.join(currentLang === "zh" ? "、" : ", "), tool: aiTool })
-          : t("summaryEmpty", { tool: aiTool });
-      }
-      async function updateDashboard() {
-        try {
-          const data = await request("/api/health");
-          const platforms = data.platforms || {};
-          const serviceStatus = data.serviceStatus || {};
-          const platformKeys = ["telegram","feishu","qq","wework","dingtalk"];
-          let configuredCount = 0;
-          let enabledCount = 0;
-
-          platformKeys.forEach((platform) => {
-            const statusDiv = el("health-" + platform + "-status");
-            const messageDiv = el("health-" + platform + "-message");
-            const panelDiv = el("health-" + platform);
-
-            if (!statusDiv || !messageDiv || !panelDiv) return;
-
-            const platformData = platforms[platform] || {};
-            if (platformData.configured) configuredCount += 1;
-            if (platformData.enabled) enabledCount += 1;
-            let statusText = "";
-            let statusClass = "";
-            let messageText = platformData.message || "";
-
-            if (!platformData.configured) {
-              statusText = t("notConfigured");
-              statusClass = "off";
-              panelDiv.classList.add("off");
-            } else if (!platformData.enabled) {
-              statusText = t("disabled");
-              statusClass = "off";
-              panelDiv.classList.add("off");
-            } else if (platformData.healthy) {
-              statusText = t("healthy");
-              statusClass = "success";
-              panelDiv.classList.remove("off");
-            } else {
-              statusText = t("unhealthy");
-              statusClass = "error";
-              panelDiv.classList.remove("off");
-            }
-
-            statusDiv.textContent = statusText;
-            if (statusClass === "success") {
-              statusDiv.style.backgroundColor = "var(--green)";
-            } else if (statusClass === "error") {
-              statusDiv.style.backgroundColor = "var(--red)";
-            } else if (statusClass === "off") {
-              statusDiv.style.backgroundColor = "var(--muted)";
-            } else {
-              statusDiv.style.backgroundColor = "var(--orange)";
-            }
-            messageDiv.textContent = messageText;
-          });
-
-          // 更新服务状态
-          el("statConfiguredValue").textContent = configuredCount + "/" + platformKeys.length;
-          el("statEnabledValue").textContent = String(enabledCount);
-          el("statServiceValue").textContent = serviceStatus.running
-            ? (currentLang === "zh" ? "运行中" : "Running")
-            : (currentLang === "zh" ? "未启动" : "Idle");
-          el("statServiceMeta").textContent = serviceStatus.running
-            ? (currentLang === "zh" ? "本地桥接进程正在运行" : "Local bridge process is active")
-            : (currentLang === "zh" ? "桥接服务尚未启动" : "Bridge has not been started yet");
-        } catch (error) {
-          console.error("Failed to update dashboard:", error);
-        }
-      }
-      function setActiveNav(target) {
-        ["navOverviewBtn","navPlatformsBtn","navAiBtn","navServiceBtn"].forEach((id) => {
-          el(id)?.classList.toggle("active", id === target);
-        });
-      }
-      function scrollToSection(id, navId) {
-        document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-        setActiveNav(navId);
-      }
-      function showDashboard() {
-        scrollToSection("dashboardSection", "navOverviewBtn");
-        updateDashboard();
-      }
-      function showConfig() {
-        scrollToSection("configSection", "navPlatformsBtn");
-      }
-      const payload = () => ({ platforms: { telegram: { enabled: el("telegram-enabled").checked, botToken: el("telegram-botToken").value, proxy: el("telegram-proxy").value, allowedUserIds: el("telegram-allowedUserIds").value }, feishu: { enabled: el("feishu-enabled").checked, appId: el("feishu-appId").value, appSecret: el("feishu-appSecret").value, allowedUserIds: el("feishu-allowedUserIds").value }, qq: { enabled: el("qq-enabled").checked, appId: el("qq-appId").value, secret: el("qq-secret").value, allowedUserIds: el("qq-allowedUserIds").value }, wework: { enabled: el("wework-enabled").checked, corpId: el("wework-corpId").value, secret: el("wework-secret").value, allowedUserIds: el("wework-allowedUserIds").value }, dingtalk: { enabled: el("dingtalk-enabled").checked, clientId: el("dingtalk-clientId").value, clientSecret: el("dingtalk-clientSecret").value, cardTemplateId: el("dingtalk-cardTemplateId").value, allowedUserIds: el("dingtalk-allowedUserIds").value } }, ai: { aiCommand: el("ai-aiCommand").value, claudeCliPath: el("ai-claudeCliPath").value, claudeWorkDir: el("ai-claudeWorkDir").value, claudeSkipPermissions: el("ai-claudeSkipPermissions").checked, claudeTimeoutMs: Number(el("ai-claudeTimeoutMs").value || "0"), claudeModel: el("ai-claudeModel").value, cursorCliPath: el("ai-cursorCliPath").value, codexCliPath: el("ai-codexCliPath").value, codexProxy: el("ai-codexProxy").value, hookPort: Number(el("ai-hookPort").value || "0"), logLevel: el("ai-logLevel").value, useSdkMode: el("ai-useSdkMode").checked } });
-      async function request(path, options={}) { const response = await fetch(path, { headers: { "content-type": "application/json" }, ...options }); const body = await response.json(); if (!response.ok) throw new Error(body.error || "Request failed"); return body; }
-      function fill(data, meta) { el("configPath").textContent = meta.configPath; applyLanguage(meta); el("telegram-enabled").checked = data.platforms.telegram.enabled; el("telegram-botToken").value = data.platforms.telegram.botToken; el("telegram-proxy").value = data.platforms.telegram.proxy; el("telegram-allowedUserIds").value = data.platforms.telegram.allowedUserIds; el("feishu-enabled").checked = data.platforms.feishu.enabled; el("feishu-appId").value = data.platforms.feishu.appId; el("feishu-appSecret").value = data.platforms.feishu.appSecret; el("feishu-allowedUserIds").value = data.platforms.feishu.allowedUserIds; el("qq-enabled").checked = data.platforms.qq.enabled; el("qq-appId").value = data.platforms.qq.appId; el("qq-secret").value = data.platforms.qq.secret; el("qq-allowedUserIds").value = data.platforms.qq.allowedUserIds; el("wework-enabled").checked = data.platforms.wework.enabled; el("wework-corpId").value = data.platforms.wework.corpId; el("wework-secret").value = data.platforms.wework.secret; el("wework-allowedUserIds").value = data.platforms.wework.allowedUserIds; el("dingtalk-enabled").checked = data.platforms.dingtalk.enabled; el("dingtalk-clientId").value = data.platforms.dingtalk.clientId; el("dingtalk-clientSecret").value = data.platforms.dingtalk.clientSecret; el("dingtalk-cardTemplateId").value = data.platforms.dingtalk.cardTemplateId; el("dingtalk-allowedUserIds").value = data.platforms.dingtalk.allowedUserIds; el("ai-aiCommand").value = data.ai.aiCommand; el("ai-claudeCliPath").value = data.ai.claudeCliPath; el("ai-claudeWorkDir").value = data.ai.claudeWorkDir; el("ai-claudeSkipPermissions").checked = data.ai.claudeSkipPermissions; el("ai-claudeTimeoutMs").value = String(data.ai.claudeTimeoutMs); el("ai-claudeModel").value = data.ai.claudeModel; el("ai-cursorCliPath").value = data.ai.cursorCliPath; el("ai-codexCliPath").value = data.ai.codexCliPath; el("ai-codexProxy").value = data.ai.codexProxy; el("ai-hookPort").value = String(data.ai.hookPort); el("ai-logLevel").value = data.ai.logLevel || "default"; el("ai-useSdkMode").checked = data.ai.useSdkMode; updateVisualState(); }
-      async function refreshStatus() { const data = await request("/api/service/status"); el("serviceState").textContent = data.running ? t("bridgeRunning", { pid: data.pid }) : t("bridgeStopped"); el("statusMeta").textContent = data.running ? t("bridgeActive") : t("bridgeInactive"); }
-      async function boot() {
-        setBusy(true);
-        try {
-          applyLanguage();
-          const data = await request("/api/config");
-          fill(data.payload, data.meta);
-          await refreshStatus();
-          setActiveNav("navOverviewBtn");
-          await updateDashboard();
-          setMessage(t("ready"), "success");
-        } catch (error) {
-          setMessage(error.message || String(error), "error");
-        } finally {
-          setBusy(false);
-        }
-        setInterval(() => {
-          refreshStatus().catch((err) => console.warn("[config-web] Failed to refresh status:", err));
-          updateDashboard().catch((err) => console.warn("[config-web] Failed to update dashboard:", err));
-        }, 10000);
-        ids.forEach((id) => {
-          const node = el(id);
-          if (node) {
-            node.addEventListener("input", updateVisualState);
-            node.addEventListener("change", updateVisualState);
-          }
-        });
-      }
-      async function validate() { setBusy(true); try { await request("/api/config/validate", { method: "POST", body: JSON.stringify(payload()) }); setMessage(t("validationOk"), "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
-      async function save() { setBusy(true); try { await request("/api/config/save?final=1", { method: "POST", body: JSON.stringify(payload()) }); setMessage(t("saveOk"), "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
-      async function startService() { setBusy(true); try { await request("/api/config/save", { method: "POST", body: JSON.stringify(payload()) }); await request("/api/service/start", { method: "POST" }); await refreshStatus(); setMessage(t("startOk"), "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
-      async function stopService() { setBusy(true); try { await request("/api/service/stop", { method: "POST" }); await refreshStatus(); setMessage(t("stopOk"), "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
-      async function testPlatform(platform) {
-        const resultDiv = el("test-" + platform + "-result");
-        const testBtn = el("test-" + platform);
-
-        if (!resultDiv || !testBtn) return;
-
-        const originalText = testBtn.textContent;
-        testBtn.textContent = t("testing");
-        testBtn.disabled = true;
-        resultDiv.textContent = "";
-        resultDiv.className = "message";
-
-        try {
-          let platformConfig = {};
-
-          switch (platform) {
-            case "telegram":
-              platformConfig = {
-                botToken: el("telegram-botToken").value,
-                proxy: el("telegram-proxy").value
-              };
-              break;
-            case "feishu":
-              platformConfig = {
-                appId: el("feishu-appId").value,
-                appSecret: el("feishu-appSecret").value
-              };
-              break;
-            case "qq":
-              platformConfig = {
-                appId: el("qq-appId").value,
-                secret: el("qq-secret").value
-              };
-              break;
-            case "wework":
-              platformConfig = {
-                corpId: el("wework-corpId").value,
-                secret: el("wework-secret").value
-              };
-              break;
-            case "dingtalk":
-              platformConfig = {
-                clientId: el("dingtalk-clientId").value,
-                clientSecret: el("dingtalk-clientSecret").value
-              };
-              break;
-          }
-
-          const result = await request("/api/config/test", {
-            method: "POST",
-            body: JSON.stringify({ platform, config: platformConfig })
-          });
-
-          if (result.success) {
-            resultDiv.textContent = t("testSuccess");
-            resultDiv.className = "message success";
-          } else {
-            resultDiv.textContent = t("testFailed", { error: result.error || "Unknown error" });
-            resultDiv.className = "message error";
-          }
-        } catch (error) {
-          resultDiv.textContent = t("testFailed", { error: error.message || String(error) });
-          resultDiv.className = "message error";
-        } finally {
-          testBtn.textContent = originalText;
-          testBtn.disabled = false;
-        }
-      }
-      el("langButton").onclick = () => { currentLang = currentLang === "zh" ? "en" : "zh"; localStorage.setItem(storageKey, currentLang); applyLanguage(); updateVisualState(); refreshStatus().catch((err) => console.warn("[config-web] Failed to refresh status after language change:", err)); };
-      el("validateButton").onclick = validate; el("saveButton").onclick = save; el("startButton").onclick = startService; el("stopButton").onclick = stopService;
-      ["telegram","feishu","qq","wework","dingtalk"].forEach((platform) => {
-        const testBtn = el("test-" + platform);
-        if (testBtn) {
-          testBtn.onclick = () => testPlatform(platform);
-        }
-      });
-      el("refreshHealth").onclick = () => { updateDashboard(); };
-      el("dashboardToPlatforms").onclick = () => { showConfig(); };
-      el("dashboardToService").onclick = () => { scrollToSection("serviceSection", "navServiceBtn"); };
-      el("navOverviewBtn").onclick = () => showDashboard();
-      el("navPlatformsBtn").onclick = () => showConfig();
-      el("navAiBtn").onclick = () => scrollToSection("aiSection", "navAiBtn");
-      el("navServiceBtn").onclick = () => scrollToSection("serviceSection", "navServiceBtn");
-      boot();
-    </script>
-  </body>
-</html>`;
-
-const PAGE_HTML = LEGACY_PAGE_HTML;
 
 export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: string; persistent?: boolean }): Promise<StartedWebConfigServer> {
   let timer: NodeJS.Timeout | null = null;
@@ -1216,14 +637,10 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
         try {
           const body = await readJson<{ platform: string; config: Record<string, unknown> }>(request);
           const { platform, config } = body;
-          const errors = validateConfigForPlatform(platform, config);
-          if (errors.length > 0) {
-            json(response, 400, { error: errors.join("; "), success: false });
-            return;
-          }
-          json(response, 200, { message: "Configuration looks valid.", success: true });
+          const message = await testPlatformConfig(platform, config);
+          json(response, 200, { message, success: true });
         } catch (error) {
-          json(response, 400, { error: error instanceof Error ? error.message : String(error), success: false });
+          json(response, 400, { error: toErrorMessage(error), success: false });
         }
         return;
       }

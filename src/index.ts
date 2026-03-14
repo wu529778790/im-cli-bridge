@@ -37,6 +37,7 @@ import { APP_HOME, SHUTDOWN_PORT } from "./constants.js";
 import { startPermissionServer, stopPermissionServer } from "./hook/permission-server.js";
 import { initPermissionModes } from "./permission-mode/session-mode.js";
 import { createRequire } from "node:module";
+import { escapePathForMarkdown } from "./shared/utils.js";
 
 const require = createRequire(import.meta.url);
 const { version: APP_VERSION } = require("../package.json") as {
@@ -126,19 +127,30 @@ function buildStartupMessage(
     }
   }
 
+  const platformList = successfulPlatforms.map((item) => `\`${item}\``).join("、");
   const lines = [
-    `🟢 open-im v${appVersion} 服务已启动`,
+    `**服务已启动**`,
     "",
-    `AI 工具: ${aiCommand}`,
-    `成功启动平台: ${successfulPlatforms.join(", ")}`,
+    `- 版本: \`open-im v${appVersion}\``,
+    `- AI 工具: \`${aiCommand}\``,
+    `- 成功启动平台: ${platformList}`,
   ];
 
   if (sessionDir) {
-    lines.push(`会话目录: ${sessionDir}`);
+    lines.push(`- 会话目录: ${escapePathForMarkdown(sessionDir)}`);
   } else {
-    lines.push(`会话目录: 请发送 /pwd 查看`);
+    lines.push(`- 会话目录: 发送 \`/pwd\` 查看`);
   }
   return lines.join("\n");
+}
+
+function buildShutdownMessage(uptimeMinutes: number): string {
+  return [
+    `**服务正在关闭**`,
+    "",
+    `- 服务: \`open-im\``,
+    `- 运行时长: \`${uptimeMinutes} 分钟\``,
+  ].join("\n");
 }
 
 export async function main() {
@@ -301,7 +313,7 @@ export async function main() {
     log.info("Shutting down...");
     const uptimeSec = Math.floor((Date.now() - startedAt) / 1000);
     const m = Math.floor(uptimeSec / 60);
-    const shutdownMsg = `🔴 open-im 服务正在关闭...\n运行时长: ${m}分钟`;
+    const shutdownMsg = buildShutdownMessage(m);
 
     // Send notification only to successfully initialized platforms
     for (const platform of successfulPlatforms) {
