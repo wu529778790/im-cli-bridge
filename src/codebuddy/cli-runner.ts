@@ -148,6 +148,46 @@ function extractSseFrames(state: { buffer: string }): Array<{ event: string; dat
   return frames;
 }
 
+function extractNdjsonPayloads(state: { buffer: string }): string[] {
+  const payloads: string[] = [];
+
+  while (true) {
+    const newlineIndex = state.buffer.indexOf('\n');
+    if (newlineIndex < 0) break;
+
+    const line = state.buffer.slice(0, newlineIndex).trim();
+    state.buffer = state.buffer.slice(newlineIndex + 1);
+    if (line) payloads.push(line);
+  }
+
+  return payloads;
+}
+
+export function extractBufferedPayloads(state: { buffer: string }): string[] {
+  const payloads: string[] = [];
+
+  if (state.buffer.includes('event:') || state.buffer.includes('data:')) {
+    for (const frame of extractSseFrames(state)) {
+      if (frame.event === 'done') continue;
+      payloads.push(frame.data);
+    }
+    return payloads;
+  }
+
+  payloads.push(...extractNdjsonPayloads(state));
+  return payloads;
+}
+
+export function flushBufferedPayloads(state: { buffer: string }): string[] {
+  const payloads = extractBufferedPayloads(state);
+  const trailing = state.buffer.trim();
+  if (trailing) {
+    payloads.push(trailing);
+    state.buffer = '';
+  }
+  return payloads;
+}
+
 function extractTextBlocks(content: unknown): { text: string; thinking: string } {
   if (!Array.isArray(content)) return { text: '', thinking: '' };
 
@@ -373,13 +413,12 @@ export function runCodeBuddy(
   child.stdout?.on('data', (chunk: Buffer) => {
     resetIdleTimeout();
     stdoutState.buffer += chunk.toString();
-    const frames = extractSseFrames(stdoutState);
-    for (const frame of frames) {
-      if (frame.event === 'done') continue;
+    const payloads = extractBufferedPayloads(stdoutState);
+    for (const payload of payloads) {
       try {
-        handlePayload(JSON.parse(frame.data) as Record<string, unknown>);
+        handlePayload(JSON.parse(payload) as Record<string, unknown>);
       } catch {
-        log.debug(`Failed to parse CodeBuddy stream payload: ${frame.data.slice(0, 200)}`);
+        log.debug(`Failed to parse CodeBuddy stream payload: ${payload.slice(0, 200)}`);
       }
     }
   });
@@ -397,15 +436,13 @@ export function runCodeBuddy(
     if (completed) return;
 
     if (stdoutState.buffer.trim()) {
-      for (const frame of parseSseChunk(stdoutState.buffer)) {
-        if (frame.event === 'done') continue;
+      for (const payload of flushBufferedPayloads(stdoutState)) {
         try {
-          handlePayload(JSON.parse(frame.data) as Record<string, unknown>);
+          handlePayload(JSON.parse(payload) as Record<string, unknown>);
         } catch {
           // Ignore trailing partial payloads.
         }
       }
-      stdoutState.buffer = '';
       if (completed) return;
     }
 
