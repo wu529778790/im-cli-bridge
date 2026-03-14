@@ -190,16 +190,22 @@ export async function sendFinalMessages(
   toolId = "claude",
 ): Promise<void> {
   const state = getOrCreateStreamState(messageId, chatId);
-  await sendIncrementalContent(state, toolId, fullContent, undefined, true);
 
-  const completionText = note
-    ? `${buildMessageTitle(toolId, "done")}\n${note}`
-    : state.sentStreamChunk
-      ? buildMessageTitle(toolId, "done")
+  if (state.sentStreamChunk && fullContent.length === state.lastSentLength) {
+    streamStates.delete(messageId);
+    return;
+  }
+
+  await sendIncrementalContent(state, toolId, fullContent, note || undefined, true);
+
+  if (!state.sentStreamChunk) {
+    const completionText = note
+      ? buildStreamChunk(toolId, fullContent, note, true)
       : `${buildMessageTitle(toolId, "done")}\n${fullContent}`;
 
-  for (const part of splitLongContent(completionText, MAX_QQ_MESSAGE_LENGTH)) {
-    await sendRaw(chatId, part, state.replyToMessageId);
+    for (const part of splitLongContent(completionText, MAX_QQ_MESSAGE_LENGTH)) {
+      await sendRaw(chatId, part, state.replyToMessageId);
+    }
   }
 
   streamStates.delete(messageId);

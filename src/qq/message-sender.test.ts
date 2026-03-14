@@ -31,17 +31,16 @@ describe("QQ message sender", () => {
     expect(sendGroupMessageMock.mock.calls[0][1]).toContain("C:\\images\\out.png");
   });
 
-  it("streams short replies before completion and does not resend the body on done", async () => {
+  it("does not send a second completion message after streaming the full reply", async () => {
     const sender = await import("./message-sender.js");
 
     const messageId = await sender.sendThinkingMessage("private:user-1", "reply-1", "codex");
     await sender.updateMessage("private:user-1", messageId, "第一段回复", "streaming", undefined, "codex");
     await sender.sendFinalMessages("private:user-1", messageId, "第一段回复", "耗时 1.2s", "codex");
 
-    expect(sendPrivateMessageMock).toHaveBeenCalledTimes(2);
+    expect(sendPrivateMessageMock).toHaveBeenCalledTimes(1);
     expect(sendPrivateMessageMock.mock.calls[0][1]).toContain("第一段回复");
-    expect(sendPrivateMessageMock.mock.calls[1][1]).toContain("耗时 1.2s");
-    expect(sendPrivateMessageMock.mock.calls[1][1]).not.toContain("第一段回复");
+    expect(sendPrivateMessageMock.mock.calls[0][1]).not.toContain("耗时 1.2s");
   });
 
   it("resets the stream when content switches from a longer draft to a shorter answer", async () => {
