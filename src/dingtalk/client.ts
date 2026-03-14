@@ -23,6 +23,12 @@ export interface DingTalkStreamingTarget {
   robotCode?: string;
 }
 
+export interface DingTalkDownloadedMessageFile {
+  buffer: Buffer;
+  contentType?: string;
+  filename?: string;
+}
+
 type NodeLikeError = Error & {
   code?: string;
   host?: string;
@@ -105,6 +111,81 @@ export async function sendText(chatId: string, content: string): Promise<unknown
     msgtype: 'text',
     text: { content },
   });
+}
+
+export async function downloadRobotMessageFile(
+  downloadCode: string,
+  robotCode: string,
+): Promise<DingTalkDownloadedMessageFile> {
+  const accessToken = await getClient().getAccessToken();
+  const response = await fetch(`${DINGTALK_OPENAPI_BASE}/v1.0/robot/messageFiles/download`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-acs-dingtalk-access-token': String(accessToken),
+    },
+    body: JSON.stringify({ downloadCode, robotCode }),
+    signal: AbortSignal.timeout(30000),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`DingTalk message file download failed: ${response.status} ${text}`);
+  }
+
+  const contentType = response.headers.get('content-type') ?? undefined;
+  const contentDisposition = response.headers.get('content-disposition') ?? '';
+  const filenameMatch = /filename\*=UTF-8''([^;]+)|filename="?([^\";]+)"?/i.exec(contentDisposition);
+  const filename = filenameMatch?.[1] ?? filenameMatch?.[2];
+  const buffer = Buffer.from(await response.arrayBuffer());
+
+  if (contentType?.includes('application/json')) {
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(buffer.toString('utf8')) as Record<string, unknown>;
+    } catch {
+      throw new Error(`DingTalk message file download returned JSON payload that could not be parsed`);
+    }
+
+    const errorCode = parsed.code ?? parsed.errcode ?? parsed.errorcode;
+    if (errorCode !== undefined && errorCode !== 0 && errorCode !== '0') {
+      const message =
+        typeof parsed.message === 'string'
+          ? parsed.message
+          : typeof parsed.errmsg === 'string'
+            ? parsed.errmsg
+            : JSON.stringify(parsed);
+      throw new Error(`DingTalk message file download business error: ${String(errorCode)} ${message}`);
+    }
+
+    const downloadUrl =
+      typeof parsed.downloadUrl === 'string'
+        ? parsed.downloadUrl
+        : typeof parsed.download_url === 'string'
+          ? parsed.download_url
+          : typeof parsed.url === 'string'
+            ? parsed.url
+            : undefined;
+    if (!downloadUrl) {
+      throw new Error(`DingTalk message file download returned JSON without binary payload or download URL`);
+    }
+
+    const redirected = await fetch(downloadUrl, {
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!redirected.ok) {
+      const text = await redirected.text();
+      throw new Error(`DingTalk redirected file download failed: ${redirected.status} ${text}`);
+    }
+
+    return {
+      buffer: Buffer.from(await redirected.arrayBuffer()),
+      contentType: redirected.headers.get('content-type') ?? undefined,
+      filename,
+    };
+  }
+
+  return { buffer, contentType, filename };
 }
 
 export async function sendMarkdown(chatId: string, title: string, text: string): Promise<unknown> {
