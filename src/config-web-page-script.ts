@@ -1,9 +1,9 @@
 export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
-        { key: "telegram", label: "Telegram", fields: ["aiCommand", "botToken", "proxy", "allowedUserIds"], testFields: ["botToken", "proxy"] },
-        { key: "feishu", label: "Feishu", fields: ["aiCommand", "appId", "appSecret", "allowedUserIds"], testFields: ["appId", "appSecret"] },
-        { key: "qq", label: "QQ", fields: ["aiCommand", "appId", "secret", "allowedUserIds"], testFields: ["appId", "secret"] },
-        { key: "wework", label: "WeWork", fields: ["aiCommand", "corpId", "secret", "allowedUserIds"], testFields: ["corpId", "secret"] },
-        { key: "dingtalk", label: "DingTalk", fields: ["aiCommand", "clientId", "clientSecret", "cardTemplateId", "allowedUserIds"], testFields: ["clientId", "clientSecret"] },
+        { key: "telegram", label: "Telegram", fields: ["aiCommand", "botToken", "proxy", "allowedUserIds"], testFields: ["botToken", "proxy"], requiredFields: ["botToken"] },
+        { key: "feishu", label: "Feishu", fields: ["aiCommand", "appId", "appSecret", "allowedUserIds"], testFields: ["appId", "appSecret"], requiredFields: ["appId", "appSecret"] },
+        { key: "qq", label: "QQ", fields: ["aiCommand", "appId", "secret", "allowedUserIds"], testFields: ["appId", "secret"], requiredFields: ["appId", "secret"] },
+        { key: "wework", label: "WeWork", fields: ["aiCommand", "corpId", "secret", "allowedUserIds"], testFields: ["corpId", "secret"], requiredFields: ["corpId", "secret"] },
+        { key: "dingtalk", label: "DingTalk", fields: ["aiCommand", "clientId", "clientSecret", "cardTemplateId", "allowedUserIds"], testFields: ["clientId", "clientSecret"], requiredFields: ["clientId", "clientSecret"] },
       ];
       const platformKeys = platformDefinitions.map((platform) => platform.key);
       const aiTools = ["claude", "codex", "cursor", "codebuddy"];
@@ -31,10 +31,35 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         config[field] = getValue(platform.key + "-" + field);
         return config;
       }, {});
+      const countCompletedFields = (platform, fields) => fields.reduce((count, field) => count + (getValue(platform.key + "-" + field).trim() ? 1 : 0), 0);
       const fillPlatform = (platform, values) => {
         setChecked(platform.key + "-enabled", values.enabled);
         platform.fields.forEach((field) => setValue(platform.key + "-" + field, values[field]));
       };
+      function updatePlatformCardState(platform) {
+        const active = el(platform.key + "-enabled").checked;
+        const requiredCount = platform.requiredFields.length;
+        const completedCount = countCompletedFields(platform, platform.requiredFields);
+        const stateNode = el(platform.key + "-state");
+        const progressNode = el(platform.key + "-progress");
+        const panelNode = el(platform.key + "-panel");
+        if (progressNode) {
+          progressNode.textContent = t("credentialProgress", { done: completedCount, total: requiredCount });
+        }
+        if (!stateNode || !panelNode) return;
+        stateNode.classList.remove("is-ready", "is-off");
+        if (!active) {
+          stateNode.textContent = t("disabled");
+          stateNode.classList.add("is-off");
+          return;
+        }
+        if (completedCount >= requiredCount) {
+          stateNode.textContent = t("readyState");
+          stateNode.classList.add("is-ready");
+          return;
+        }
+        stateNode.textContent = t("setupRequired");
+      }
       function applyLanguage(meta) {
         if (meta) currentMeta = meta;
         const isZh = currentLang === "zh";
@@ -69,6 +94,14 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         setText("qq-enabled-label", t("enabled"));
         setText("wework-enabled-label", t("enabled"));
         setText("dingtalk-enabled-label", t("enabled"));
+        setText("telegram-summary", t("telegramSummary"));
+        setText("feishu-summary", t("feishuSummary"));
+        setText("qq-summary", t("qqSummary"));
+        setText("wework-summary", t("weworkSummary"));
+        setText("dingtalk-summary", t("dingtalkSummary"));
+        setText("platformCredentialsTitle", t("platformCredentialsTitle"));
+        setText("platformAccessTitle", t("platformAccessTitle"));
+        setText("platformTestNote", t("platformTestNote"));
         setText("telegram-aiCommand-label", t("platformAiTool"));
         setText("feishu-aiCommand-label", t("platformAiTool"));
         setText("qq-aiCommand-label", t("platformAiTool"));
@@ -188,6 +221,7 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         platformDefinitions.forEach((platform) => {
           const active = el(platform.key + "-enabled").checked;
           el(platform.key + "-panel").classList.toggle("off", !active);
+          updatePlatformCardState(platform);
           if (active) enabled.push(platform.label);
         });
         const aiTool = el("ai-aiCommand").value;
@@ -249,7 +283,7 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
             messageDiv.textContent = messageText;
           });
 
-          // 更新服务状态
+          // 鏇存柊鏈嶅姟鐘舵€?
           el("statConfiguredValue").textContent = configuredCount + "/" + platformKeys.length;
           el("statEnabledValue").textContent = String(enabledCount);
           el("statServiceValue").textContent = serviceStatus.running

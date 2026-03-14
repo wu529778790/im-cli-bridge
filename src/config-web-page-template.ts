@@ -18,7 +18,7 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
       .hero h1,.hero p{margin:0}.hero h1{font-size:clamp(2.4rem,4vw,3.5rem);line-height:.92;letter-spacing:-.05em;margin-top:10px}.hero p{margin-top:16px;max-width:720px;color:rgba(247,240,223,.78);line-height:1.65}
       .pill{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.72);font-size:.9rem}#heroBadge{background:rgba(247,240,223,.08);border-color:rgba(247,240,223,.16);color:#f7f0df}
       .toolbar,.grid,.two-col,.footer,.actions{display:grid;gap:14px}.status-row{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between}.status-group{display:flex;flex-wrap:wrap;gap:10px}.grid{grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
-      .panel{padding:18px;border:1px solid var(--line);background:rgba(255,255,255,.56);box-shadow:var(--shadow-soft);transition:opacity .18s ease,transform .18s ease,border-color .18s ease}.panel:hover{transform:translateY(-1px);border-color:var(--line-strong)}.panel.off{opacity:.58}.panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}.panel-head h3{color:#304338}
+      .panel{padding:18px;border:1px solid var(--line);background:rgba(255,255,255,.56);box-shadow:var(--shadow-soft);transition:opacity .18s ease,transform .18s ease,border-color .18s ease,background .18s ease}.panel:hover{transform:translateY(-1px);border-color:var(--line-strong)}.panel.off{opacity:.62}.panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}.panel-head h3{color:#304338}
       h2,h3{margin:0}h2{font-size:1.55rem;letter-spacing:-.03em}h3{font-size:1.1rem}label{display:grid;gap:6px;color:var(--muted);font-size:.92rem}input,select,textarea{width:100%;padding:11px 12px;border:1px solid rgba(19,35,26,.14);background:rgba(255,255,255,.9);font:inherit;color:var(--ink)}
       .section > .panel-head:first-child h2,.footer > .panel-head:first-child h2{position:relative;padding-left:14px}
       .section > .panel-head:first-child h2:before,.footer > .panel-head:first-child h2:before{content:"";position:absolute;left:0;top:4px;bottom:4px;width:4px;border-radius:999px;background:var(--green)}
@@ -47,6 +47,30 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
       #configSection .panel,#aiSection .panel,#serviceSection{background:rgba(255,253,247,.82)}
       #configSection .panel-head,#aiSection .panel-head,#serviceSection .panel-head{margin-bottom:14px}
       #configSection .panel .summary,#aiSection .panel .summary{line-height:1.58}
+      .platform-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:18px}
+      .platform-card{display:grid;gap:18px;padding:0;overflow:hidden;border-radius:22px;background:linear-gradient(180deg,rgba(255,253,247,.96),rgba(255,250,241,.8))}
+      .platform-card.off{background:linear-gradient(180deg,rgba(255,253,247,.78),rgba(247,241,229,.6))}
+      .platform-shell{padding:20px 20px 0}
+      .platform-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+      .platform-title-wrap{display:grid;gap:8px}
+      .platform-top h3{font-size:1.28rem;letter-spacing:-.04em}
+      .platform-state{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border-radius:999px;background:rgba(19,35,26,.06);color:var(--ink);font-size:.82rem;font-weight:700}
+      .platform-state:before{content:"";width:8px;height:8px;border-radius:50%;background:var(--orange);box-shadow:0 0 0 4px rgba(207,111,49,.14)}
+      .platform-state.is-ready{background:rgba(26,106,68,.12);color:var(--green-deep)}
+      .platform-state.is-ready:before{background:var(--green);box-shadow:0 0 0 4px rgba(26,106,68,.12)}
+      .platform-state.is-off{background:rgba(86,103,95,.12);color:var(--muted)}
+      .platform-state.is-off:before{background:var(--muted);box-shadow:0 0 0 4px rgba(86,103,95,.12)}
+      .platform-summary{color:var(--muted);line-height:1.6}
+      .platform-meta{display:flex;flex-wrap:wrap;gap:10px}
+      .mini-pill{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;background:rgba(19,35,26,.05);border:1px solid rgba(19,35,26,.08);font-size:.8rem;color:var(--muted)}
+      .platform-fields{padding:0 20px 20px;display:grid;gap:14px}
+      .field-cluster{display:grid;gap:12px;padding:14px;border:1px solid rgba(19,35,26,.08);background:rgba(255,255,255,.58)}
+      .field-cluster-title{font-size:.76rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+      .help-block{padding:14px 16px;border-left:3px solid rgba(26,106,68,.45);background:rgba(26,106,68,.05);font-size:.92rem;line-height:1.58}
+      .help-block a{color:var(--green);text-decoration:underline;text-underline-offset:2px}
+      .platform-actions{display:grid;gap:8px}
+      .platform-test{width:100%;padding:10px 14px;font-size:.94rem}
+      .platform-test-note{font-size:.84rem;color:var(--muted)}
       .ai-layout{display:grid;gap:16px}
       .ai-switcher{display:flex;flex-wrap:wrap;gap:10px}
       .tool-switch{padding:10px 14px;background:rgba(19,35,26,.06);color:var(--ink);border:1px solid var(--line);box-shadow:none}
@@ -63,7 +87,7 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
       #validateButton{background:rgba(207,111,49,.92)}
       #stopButton{background:rgba(157,66,54,.92)}
       #quickActionsSection,#configToolbar,#configSection,#aiSection,#serviceSection{border-top:1px solid var(--line)}
-      @media (max-width:980px){.frame{grid-template-columns:1fr}.sidebar,.main-column{grid-column:1;grid-row:auto}.sidebar{position:static;height:auto;border-right:0}.hero,.nav-row{border-right:0}.nav-row{padding-top:16px}.sidebar-footer{padding:0 24px 24px}.stats-grid{grid-template-columns:1fr}}
+      @media (max-width:980px){.frame{grid-template-columns:1fr}.sidebar,.main-column{grid-column:1;grid-row:auto}.sidebar{position:static;height:auto;border-right:0}.hero,.nav-row{border-right:0}.nav-row{padding-top:16px}.sidebar-footer{padding:0 24px 24px}.stats-grid{grid-template-columns:1fr}.platform-grid{grid-template-columns:1fr}}
     </style>
   </head>
   <body>
@@ -165,55 +189,170 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
         </section>
         <section class="section" id="configSection">
           <div class="panel-head"><h2 id="platformsTitle">Platforms</h2><div id="platformsHint">Disabled platforms keep their saved values.</div></div>
-          <div class="grid">
-            <article class="panel" id="telegram-panel">
-              <div class="panel-head"><h3>Telegram</h3><label class="toggle"><input id="telegram-enabled" type="checkbox" /> <span id="telegram-enabled-label">Enabled</span></label></div>
-              <div class="summary" id="telegram-help" style="margin-bottom:12px;color:var(--muted);font-size:0.9em;">Get credentials: visit <a href="https://t.me/BotFather" target="_blank" style="color:var(--green);text-decoration:underline;">@BotFather</a>, send /newbot, then copy the Bot Token</div>
-              <label><span id="telegram-aiCommand-label">AI tool override</span><select id="telegram-aiCommand"><option value="">Use default AI tool</option><option value="claude">claude</option><option value="codex">codex</option><option value="cursor">cursor</option><option value="codebuddy">codebuddy</option></select></label>
-              <label><span id="telegram-botToken-label">Bot token</span><input id="telegram-botToken" type="password" autocomplete="off" placeholder="123456:ABC..." /></label>
-              <label><span id="telegram-proxy-label">Proxy</span><input id="telegram-proxy" placeholder="http://127.0.0.1:7890" /></label>
-              <label><span id="telegram-allowedUserIds-label">Allowed user IDs</span><textarea id="telegram-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
-              <div style="margin-top:12px;"><button id="test-telegram" class="secondary" type="button" style="width:100%;padding:8px;font-size:0.9em;">校验配置</button><div class="message" id="test-telegram-result" aria-live="polite" style="min-height:20px;margin-top:8px;"></div></div>
+          <div class="platform-grid">
+            <article class="panel platform-card" id="telegram-panel">
+              <div class="platform-shell">
+                <div class="platform-top">
+                  <div class="platform-title-wrap">
+                    <h3>Telegram</h3>
+                    <div class="platform-summary" id="telegram-summary">Bot token and optional proxy.</div>
+                  </div>
+                  <div class="platform-state" id="telegram-state">Setup required</div>
+                </div>
+                <div class="platform-meta">
+                  <label class="toggle"><input id="telegram-enabled" type="checkbox" /> <span id="telegram-enabled-label">Enabled</span></label>
+                  <div class="mini-pill" id="telegram-progress">0/1 credentials</div>
+                </div>
+              </div>
+              <div class="platform-fields">
+                <div class="help-block summary" id="telegram-help">Get credentials: visit <a href="https://t.me/BotFather" target="_blank">@BotFather</a>, send /newbot, then copy the Bot Token</div>
+                <div class="field-cluster">
+                  <div class="field-cluster-title" id="platformCredentialsTitle">Credentials</div>
+                  <label><span id="telegram-botToken-label">Bot token</span><input id="telegram-botToken" type="password" autocomplete="off" placeholder="123456:ABC..." /></label>
+                  <label><span id="telegram-proxy-label">Proxy</span><input id="telegram-proxy" placeholder="http://127.0.0.1:7890" /></label>
+                </div>
+                <div class="field-cluster">
+                  <div class="field-cluster-title" id="platformAccessTitle">Routing and access</div>
+                  <label><span id="telegram-aiCommand-label">AI tool override</span><select id="telegram-aiCommand"><option value="">Use default AI tool</option><option value="claude">claude</option><option value="codex">codex</option><option value="cursor">cursor</option><option value="codebuddy">codebuddy</option></select></label>
+                  <label><span id="telegram-allowedUserIds-label">Allowed user IDs</span><textarea id="telegram-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
+                </div>
+                <div class="platform-actions">
+                  <button id="test-telegram" class="secondary platform-test" type="button">Check config</button>
+                  <div class="platform-test-note" id="platformTestNote">Checks required credentials against the platform.</div>
+                  <div class="message" id="test-telegram-result" aria-live="polite"></div>
+                </div>
+              </div>
             </article>
-            <article class="panel" id="feishu-panel">
-              <div class="panel-head"><h3>Feishu</h3><label class="toggle"><input id="feishu-enabled" type="checkbox" /> <span id="feishu-enabled-label">Enabled</span></label></div>
-              <div class="summary" id="feishu-help" style="margin-bottom:12px;color:var(--muted);font-size:0.9em;">Get credentials: visit <a href="https://open.feishu.cn/" target="_blank" style="color:var(--green);text-decoration:underline;">Feishu Open Platform</a>, create an app, enable the bot, and copy the App ID / App Secret</div>
-              <label><span id="feishu-aiCommand-label">AI tool override</span><select id="feishu-aiCommand"><option value="">Use default AI tool</option><option value="claude">claude</option><option value="codex">codex</option><option value="cursor">cursor</option><option value="codebuddy">codebuddy</option></select></label>
-              <label><span id="feishu-appId-label">App ID</span><input id="feishu-appId" /></label>
-              <label><span id="feishu-appSecret-label">App Secret</span><input id="feishu-appSecret" type="password" autocomplete="off" /></label>
-              <label><span id="feishu-allowedUserIds-label">Allowed user IDs</span><textarea id="feishu-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
-              <div style="margin-top:12px;"><button id="test-feishu" class="secondary" type="button" style="width:100%;padding:8px;font-size:0.9em;">校验配置</button><div class="message" id="test-feishu-result" aria-live="polite" style="min-height:20px;margin-top:8px;"></div></div>
+            <article class="panel platform-card" id="feishu-panel">
+              <div class="platform-shell">
+                <div class="platform-top">
+                  <div class="platform-title-wrap">
+                    <h3>Feishu</h3>
+                    <div class="platform-summary" id="feishu-summary">App ID, App Secret, and allowed user scope.</div>
+                  </div>
+                  <div class="platform-state" id="feishu-state">Setup required</div>
+                </div>
+                <div class="platform-meta">
+                  <label class="toggle"><input id="feishu-enabled" type="checkbox" /> <span id="feishu-enabled-label">Enabled</span></label>
+                  <div class="mini-pill" id="feishu-progress">0/2 credentials</div>
+                </div>
+              </div>
+              <div class="platform-fields">
+                <div class="help-block summary" id="feishu-help">Get credentials: visit <a href="https://open.feishu.cn/" target="_blank">Feishu Open Platform</a>, create an app, enable the bot, and copy the App ID / App Secret</div>
+                <div class="field-cluster">
+                  <div class="field-cluster-title">Credentials</div>
+                  <label><span id="feishu-appId-label">App ID</span><input id="feishu-appId" /></label>
+                  <label><span id="feishu-appSecret-label">App Secret</span><input id="feishu-appSecret" type="password" autocomplete="off" /></label>
+                </div>
+                <div class="field-cluster">
+                  <div class="field-cluster-title">Routing and access</div>
+                  <label><span id="feishu-aiCommand-label">AI tool override</span><select id="feishu-aiCommand"><option value="">Use default AI tool</option><option value="claude">claude</option><option value="codex">codex</option><option value="cursor">cursor</option><option value="codebuddy">codebuddy</option></select></label>
+                  <label><span id="feishu-allowedUserIds-label">Allowed user IDs</span><textarea id="feishu-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
+                </div>
+                <div class="platform-actions">
+                  <button id="test-feishu" class="secondary platform-test" type="button">Check config</button>
+                  <div class="message" id="test-feishu-result" aria-live="polite"></div>
+                </div>
+              </div>
             </article>
-            <article class="panel" id="qq-panel">
-              <div class="panel-head"><h3>QQ</h3><label class="toggle"><input id="qq-enabled" type="checkbox" /> <span id="qq-enabled-label">Enabled</span></label></div>
-              <div class="summary" id="qq-help" style="margin-bottom:12px;color:var(--muted);font-size:0.9em;">Get credentials: visit <a href="https://bot.q.qq.com" target="_blank" style="color:var(--green);text-decoration:underline;">QQ Open Platform</a>, create a bot, and copy the App ID / App Secret</div>
-              <label><span id="qq-aiCommand-label">AI tool override</span><select id="qq-aiCommand"><option value="">Use default AI tool</option><option value="claude">claude</option><option value="codex">codex</option><option value="cursor">cursor</option><option value="codebuddy">codebuddy</option></select></label>
-              <label><span id="qq-appId-label">App ID</span><input id="qq-appId" /></label>
-              <label><span id="qq-secret-label">App Secret</span><input id="qq-secret" type="password" autocomplete="off" /></label>
-              <label><span id="qq-allowedUserIds-label">Allowed user IDs</span><textarea id="qq-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
-              <div style="margin-top:12px;"><button id="test-qq" class="secondary" type="button" style="width:100%;padding:8px;font-size:0.9em;">校验配置</button><div class="message" id="test-qq-result" aria-live="polite" style="min-height:20px;margin-top:8px;"></div></div>
+            <article class="panel platform-card" id="qq-panel">
+              <div class="platform-shell">
+                <div class="platform-top">
+                  <div class="platform-title-wrap">
+                    <h3>QQ</h3>
+                    <div class="platform-summary" id="qq-summary">App ID and secret for bot access.</div>
+                  </div>
+                  <div class="platform-state" id="qq-state">Setup required</div>
+                </div>
+                <div class="platform-meta">
+                  <label class="toggle"><input id="qq-enabled" type="checkbox" /> <span id="qq-enabled-label">Enabled</span></label>
+                  <div class="mini-pill" id="qq-progress">0/2 credentials</div>
+                </div>
+              </div>
+              <div class="platform-fields">
+                <div class="help-block summary" id="qq-help">Get credentials: visit <a href="https://bot.q.qq.com" target="_blank">QQ Open Platform</a>, create a bot, and copy the App ID / App Secret</div>
+                <div class="field-cluster">
+                  <div class="field-cluster-title">Credentials</div>
+                  <label><span id="qq-appId-label">App ID</span><input id="qq-appId" /></label>
+                  <label><span id="qq-secret-label">App Secret</span><input id="qq-secret" type="password" autocomplete="off" /></label>
+                </div>
+                <div class="field-cluster">
+                  <div class="field-cluster-title">Routing and access</div>
+                  <label><span id="qq-aiCommand-label">AI tool override</span><select id="qq-aiCommand"><option value="">Use default AI tool</option><option value="claude">claude</option><option value="codex">codex</option><option value="cursor">cursor</option><option value="codebuddy">codebuddy</option></select></label>
+                  <label><span id="qq-allowedUserIds-label">Allowed user IDs</span><textarea id="qq-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
+                </div>
+                <div class="platform-actions">
+                  <button id="test-qq" class="secondary platform-test" type="button">Check config</button>
+                  <div class="message" id="test-qq-result" aria-live="polite"></div>
+                </div>
+              </div>
             </article>
-            <article class="panel" id="wework-panel">
-              <div class="panel-head"><h3>WeWork</h3><label class="toggle"><input id="wework-enabled" type="checkbox" /> <span id="wework-enabled-label">Enabled</span></label></div>
-              <div class="summary" id="wework-help" style="margin-bottom:12px;color:var(--muted);font-size:0.9em;">Get credentials: visit <a href="https://work.weixin.qq.com/" target="_blank" style="color:var(--green);text-decoration:underline;">WeWork Admin Console</a>, create an app, and copy the Bot ID (Corp ID) / Secret</div>
-              <label><span id="wework-aiCommand-label">AI tool override</span><select id="wework-aiCommand"><option value="">Use default AI tool</option><option value="claude">claude</option><option value="codex">codex</option><option value="cursor">cursor</option><option value="codebuddy">codebuddy</option></select></label>
-              <label><span id="wework-corpId-label">Corp ID / Bot ID</span><input id="wework-corpId" /></label>
-              <label><span id="wework-secret-label">Secret</span><input id="wework-secret" type="password" autocomplete="off" /></label>
-              <label><span id="wework-allowedUserIds-label">Allowed user IDs</span><textarea id="wework-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
-              <div style="margin-top:12px;"><button id="test-wework" class="secondary" type="button" style="width:100%;padding:8px;font-size:0.9em;">校验配置</button><div class="message" id="test-wework-result" aria-live="polite" style="min-height:20px;margin-top:8px;"></div></div>
+            <article class="panel platform-card" id="wework-panel">
+              <div class="platform-shell">
+                <div class="platform-top">
+                  <div class="platform-title-wrap">
+                    <h3>WeWork</h3>
+                    <div class="platform-summary" id="wework-summary">Corp ID and secret for enterprise delivery.</div>
+                  </div>
+                  <div class="platform-state" id="wework-state">Setup required</div>
+                </div>
+                <div class="platform-meta">
+                  <label class="toggle"><input id="wework-enabled" type="checkbox" /> <span id="wework-enabled-label">Enabled</span></label>
+                  <div class="mini-pill" id="wework-progress">0/2 credentials</div>
+                </div>
+              </div>
+              <div class="platform-fields">
+                <div class="help-block summary" id="wework-help">Get credentials: visit <a href="https://work.weixin.qq.com/" target="_blank">WeWork Admin Console</a>, create an app, and copy the Bot ID (Corp ID) / Secret</div>
+                <div class="field-cluster">
+                  <div class="field-cluster-title">Credentials</div>
+                  <label><span id="wework-corpId-label">Corp ID / Bot ID</span><input id="wework-corpId" /></label>
+                  <label><span id="wework-secret-label">Secret</span><input id="wework-secret" type="password" autocomplete="off" /></label>
+                </div>
+                <div class="field-cluster">
+                  <div class="field-cluster-title">Routing and access</div>
+                  <label><span id="wework-aiCommand-label">AI tool override</span><select id="wework-aiCommand"><option value="">Use default AI tool</option><option value="claude">claude</option><option value="codex">codex</option><option value="cursor">cursor</option><option value="codebuddy">codebuddy</option></select></label>
+                  <label><span id="wework-allowedUserIds-label">Allowed user IDs</span><textarea id="wework-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
+                </div>
+                <div class="platform-actions">
+                  <button id="test-wework" class="secondary platform-test" type="button">Check config</button>
+                  <div class="message" id="test-wework-result" aria-live="polite"></div>
+                </div>
+              </div>
             </article>
-            <article class="panel" id="dingtalk-panel">
-              <div class="panel-head"><h3>DingTalk</h3><label class="toggle"><input id="dingtalk-enabled" type="checkbox" /> <span id="dingtalk-enabled-label">Enabled</span></label></div>
-              <div class="summary" id="dingtalk-help" style="margin-bottom:12px;color:var(--muted);font-size:0.9em;">Get credentials: create an enterprise internal app on DingTalk Open Platform, enable Stream Mode, and copy the Client ID / Client Secret</div>
-              <label><span id="dingtalk-aiCommand-label">AI tool override</span><select id="dingtalk-aiCommand"><option value="">Use default AI tool</option><option value="claude">claude</option><option value="codex">codex</option><option value="cursor">cursor</option><option value="codebuddy">codebuddy</option></select></label>
-              <label><span id="dingtalk-clientId-label">Client ID / AppKey</span><input id="dingtalk-clientId" /></label>
-              <label><span id="dingtalk-clientSecret-label">Client Secret / AppSecret</span><input id="dingtalk-clientSecret" type="password" autocomplete="off" /></label>
-              <label><span id="dingtalk-cardTemplateId-label">Card template ID</span><input id="dingtalk-cardTemplateId" placeholder="Optional" /></label>
-              <label><span id="dingtalk-allowedUserIds-label">Allowed user IDs</span><textarea id="dingtalk-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
-              <div style="margin-top:12px;"><button id="test-dingtalk" class="secondary" type="button" style="width:100%;padding:8px;font-size:0.9em;">校验配置</button><div class="message" id="test-dingtalk-result" aria-live="polite" style="min-height:20px;margin-top:8px;"></div></div>
+            <article class="panel platform-card" id="dingtalk-panel">
+              <div class="platform-shell">
+                <div class="platform-top">
+                  <div class="platform-title-wrap">
+                    <h3>DingTalk</h3>
+                    <div class="platform-summary" id="dingtalk-summary">Client credentials plus optional card template.</div>
+                  </div>
+                  <div class="platform-state" id="dingtalk-state">Setup required</div>
+                </div>
+                <div class="platform-meta">
+                  <label class="toggle"><input id="dingtalk-enabled" type="checkbox" /> <span id="dingtalk-enabled-label">Enabled</span></label>
+                  <div class="mini-pill" id="dingtalk-progress">0/2 credentials</div>
+                </div>
+              </div>
+              <div class="platform-fields">
+                <div class="help-block summary" id="dingtalk-help">Get credentials: create an enterprise internal app on DingTalk Open Platform, enable Stream Mode, and copy the Client ID / Client Secret</div>
+                <div class="field-cluster">
+                  <div class="field-cluster-title">Credentials</div>
+                  <label><span id="dingtalk-clientId-label">Client ID / AppKey</span><input id="dingtalk-clientId" /></label>
+                  <label><span id="dingtalk-clientSecret-label">Client Secret / AppSecret</span><input id="dingtalk-clientSecret" type="password" autocomplete="off" /></label>
+                  <label><span id="dingtalk-cardTemplateId-label">Card template ID</span><input id="dingtalk-cardTemplateId" placeholder="Optional" /></label>
+                </div>
+                <div class="field-cluster">
+                  <div class="field-cluster-title">Routing and access</div>
+                  <label><span id="dingtalk-aiCommand-label">AI tool override</span><select id="dingtalk-aiCommand"><option value="">Use default AI tool</option><option value="claude">claude</option><option value="codex">codex</option><option value="cursor">cursor</option><option value="codebuddy">codebuddy</option></select></label>
+                  <label><span id="dingtalk-allowedUserIds-label">Allowed user IDs</span><textarea id="dingtalk-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
+                </div>
+                <div class="platform-actions">
+                  <button id="test-dingtalk" class="secondary platform-test" type="button">Check config</button>
+                  <div class="message" id="test-dingtalk-result" aria-live="polite"></div>
+                </div>
+              </div>
             </article>
           </div>
-        </section>
         <section class="section" id="aiSection">
           <div class="panel-head"><h2 id="aiTitle">AI Tooling</h2><div id="aiHint">WeChat is intentionally excluded from this first version.</div></div>
           <div class="ai-layout">
