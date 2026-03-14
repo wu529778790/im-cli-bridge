@@ -58,7 +58,9 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         });
       };
 
-      const getActiveAiTool = () => el("ai-aiCommand")?.value || "claude";
+      // Track current AI tool panel separately from default AI tool selection
+      let currentAiToolPanel = "claude";
+      const getActiveAiTool = () => currentAiToolPanel;
 
       // Platform config helpers
       const readPlatformConfig = (platform) => platform.testFields.reduce((config, field) => {
@@ -148,9 +150,6 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           { id: "ai-claudeWorkDir-label", key: "workDir" },
           { id: "ai-claudeCliPath-label", key: "claudeCli" },
           { id: "ai-claudeTimeoutMs-label", key: "claudeTimeout" },
-          { id: "ai-claudeModel-label", key: "claudeModel" },
-          { id: "ai-claudeSkipPermissions-label", key: "autoApprove" },
-          { id: "ai-useSdkMode-label", key: "sdkMode" },
           { id: "ai-codexCliPath-label", key: "codexCli" },
           { id: "ai-codexTimeoutMs-label", key: "codexTimeout" },
           { id: "ai-codexProxy-label", key: "codexProxy" },
@@ -354,7 +353,6 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         { id: "ai-claudeWorkDir", key: "claudeWorkDir" },
         { id: "ai-claudeCliPath", key: "claudeCliPath" },
         { id: "ai-claudeTimeoutMs", key: "claudeTimeoutMs" },
-        { id: "ai-claudeModel", key: "claudeModel" },
         { id: "ai-codexCliPath", key: "codexCliPath" },
         { id: "ai-codexTimeoutMs", key: "codexTimeoutMs" },
         { id: "ai-codexProxy", key: "codexProxy" },
@@ -379,8 +377,6 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           }
         });
 
-        setChecked("ai-claudeSkipPermissions", data.ai.claudeSkipPermissions);
-        setChecked("ai-useSdkMode", data.ai.useSdkMode);
         updateVisualState();
       }
 
@@ -403,6 +399,8 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           applyLanguage();
           const data = await request("/api/config");
           fill(data.payload, data.meta);
+          // Initialize current AI tool panel from dropdown value
+          currentAiToolPanel = el("ai-aiCommand")?.value || "claude";
           await refreshStatus();
           setActiveNav("navOverviewBtn");
           await updateDashboard();
@@ -440,15 +438,12 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           }
         });
 
-        el("ai-claudeSkipPermissions")?.addEventListener("change", updateVisualState);
-        el("ai-useSdkMode")?.addEventListener("change", updateVisualState);
-
         // AI tool switcher
         document.querySelectorAll(".tab[data-tool]").forEach((tab) => {
           tab.addEventListener("click", () => {
             const tool = tab.getAttribute("data-tool");
             if (tool) {
-              setValue("ai-aiCommand", tool);
+              currentAiToolPanel = tool;
               updateVisualState();
             }
           });
@@ -591,18 +586,17 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           aiCommand: getValue("ai-aiCommand"),
           claudeCliPath: getValue("ai-claudeCliPath"),
           claudeWorkDir: getValue("ai-claudeWorkDir"),
-          claudeSkipPermissions: getChecked("ai-claudeSkipPermissions"),
+          claudeSkipPermissions: true,
           claudeTimeoutMs: getNumber("ai-claudeTimeoutMs"),
           codexTimeoutMs: getNumber("ai-codexTimeoutMs"),
           codebuddyTimeoutMs: getNumber("ai-codebuddyTimeoutMs"),
-          claudeModel: getValue("ai-claudeModel"),
           cursorCliPath: getValue("ai-cursorCliPath"),
           codexCliPath: getValue("ai-codexCliPath"),
           codebuddyCliPath: getValue("ai-codebuddyCliPath"),
           codexProxy: getValue("ai-codexProxy"),
           hookPort: getNumber("ai-hookPort"),
           logLevel: getValue("ai-logLevel"),
-          useSdkMode: getChecked("ai-useSdkMode"),
+          useSdkMode: true,
         },
       });
 

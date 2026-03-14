@@ -1062,24 +1062,6 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                       <label class="form-label" id="ai-claudeTimeoutMs-label">Timeout (ms)</label>
                       <input id="ai-claudeTimeoutMs" class="form-input" type="number" min="1" />
                     </div>
-                    <div class="form-group">
-                      <label class="form-label" id="ai-claudeModel-label">Model (optional)</label>
-                      <input id="ai-claudeModel" class="form-input" type="text" />
-                    </div>
-                    <div class="form-group">
-                      <label class="toggle">
-                        <input type="checkbox" id="ai-claudeSkipPermissions" class="toggle-input">
-                        <span class="toggle-switch"></span>
-                        <span class="toggle-label" id="ai-claudeSkipPermissions-label">Auto-approve permissions</span>
-                      </label>
-                    </div>
-                    <div class="form-group">
-                      <label class="toggle">
-                        <input type="checkbox" id="ai-useSdkMode" class="toggle-input">
-                        <span class="toggle-switch"></span>
-                        <span class="toggle-label" id="ai-useSdkMode-label">Use SDK mode</span>
-                      </label>
-                    </div>
                   </div>
 
                   <div id="ai-tool-codex" class="ai-tool-panel" data-tool-panel="codex">

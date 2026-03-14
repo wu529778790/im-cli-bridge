@@ -101,11 +101,13 @@ export function getHealthPlatformSnapshot(
   };
 }
 
-function splitCsv(value: string): string[] {
+function splitCsv(value: string | undefined): string[] {
+  if (!value) return [];
   return value.split(",").map((item) => item.trim()).filter(Boolean);
 }
 
-function clean(value: string): string | undefined {
+function clean(value: string | undefined): string | undefined {
+  if (!value) return undefined;
   const trimmed = value.trim();
   return trimmed ? trimmed : undefined;
 }
