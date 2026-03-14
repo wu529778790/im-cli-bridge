@@ -19,6 +19,7 @@
     "start": "node dist/cli.js start",
     "stop": "node dist/cli.js stop",
     "restart": "node dist/cli.js restart",
+    "dashboard": "node dist/cli.js dashboard",
     "test": "vitest run",
     "test:watch": "vitest watch",
     "prepublishOnly": "npm run build"

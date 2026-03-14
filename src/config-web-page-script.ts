@@ -7,12 +7,16 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
       ];
       const platformKeys = platformDefinitions.map((platform) => platform.key);
       const aiTools = ["claude", "codex", "cursor", "codebuddy"];
+      const STORAGE_KEY_LANG = "open-im-web-lang";
+      const POLLING_INTERVAL = 10000;
+      const toolLabels = { claude: "Claude", codex: "Codex", cursor: "Cursor", codebuddy: "CodeBuddy" };
       const ids = platformDefinitions.flatMap((platform) => ["enabled", ...platform.fields].map((field) => platform.key + "-" + field)).concat(["ai-aiCommand","ai-claudeCliPath","ai-claudeWorkDir","ai-claudeSkipPermissions","ai-claudeTimeoutMs","ai-codexTimeoutMs","ai-codebuddyTimeoutMs","ai-claudeModel","ai-cursorCliPath","ai-codexCliPath","ai-codebuddyCliPath","ai-codexProxy","ai-hookPort","ai-logLevel","ai-useSdkMode"]);
       const el = (id) => document.getElementById(id);
-      const storageKey = "open-im-web-lang";
       const texts = __PAGE_TEXTS__;
       let currentMeta = null;
-      let currentLang = (localStorage.getItem(storageKey) || "").startsWith("zh") ? "zh" : ((navigator.language || "").startsWith("zh") ? "zh" : "en");
+      let cachedDashboardData = null;
+      let cachedServiceData = null;
+      let currentLang = (localStorage.getItem(STORAGE_KEY_LANG) || "").startsWith("zh") ? "zh" : ((navigator.language || "").startsWith("zh") ? "zh" : "en");
       const t = (key, params={}) => {
         const source = texts[currentLang] || texts.en;
         const template = source[key] || texts.en[key] || key;
@@ -60,147 +64,234 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         }
         stateNode.textContent = t("setupRequired");
       }
+      // Data-driven language update mapping
+      const LANGUAGE_UPDATES = {
+        simpleText: [
+          { id: "heroBadge", value: "open-im" },
+          { id: "heroTitle", value: "open-im" },
+          { id: "heroKicker", key: "heroKicker" },
+          { id: "heroRepo", value: "GitHub" },
+          { id: "langButton", key: "langButton" },
+          { id: "sidebarNoteTitle", key: "sidebarNoteTitle" },
+          { id: "sidebarNoteBody", key: "sidebarNoteBody" },
+          { id: "platformsTitle", key: "platformsTitle" },
+          { id: "platformsHint", key: "platformsHint" },
+          { id: "aiTitle", key: "aiTitle" },
+          { id: "serviceTitle", key: "serviceTitle" },
+          { id: "serviceHint", key: "serviceHint" },
+          { id: "overviewTitle", key: "overviewTitle" },
+          { id: "overviewBody", key: "overviewBody" },
+          { id: "dashboardTitle", key: "dashboardTitle" },
+          { id: "dashboardSubtitle", key: "dashboardSubtitleFull" },
+          { id: "quickActionsTitle", key: "quickActionsTitle" },
+          { id: "statConfiguredLabel", key: "statConfiguredLabel" },
+          { id: "statConfiguredMeta", key: "statConfiguredMeta" },
+          { id: "statEnabledLabel", key: "statEnabledLabel" },
+          { id: "statEnabledMeta", key: "statEnabledMeta" },
+          { id: "statServiceLabel", key: "statServiceLabel" },
+          { id: "dashboardToPlatforms", key: "openPlatforms" },
+          { id: "dashboardToService", key: "openService" },
+          { id: "refreshHealth", key: "refreshHealth" },
+        ],
+        querySelectorText: [
+          { query: ".nav-group-label", key: "controlCenter" },
+        ],
+        innerHtml: [
+          { id: "claudeNote", key: "claudeNote" },
+        ],
+        platformLabels: [
+          { suffix: "enabled-label", key: "enabled" },
+          { suffix: "summary", keys: { telegram: "telegramSummary", feishu: "feishuSummary", qq: "qqSummary", wework: "weworkSummary", dingtalk: "dingtalkSummary" } },
+          { suffix: "aiCommand-label", key: "platformAiTool" },
+        ],
+        platformHelp: [
+          { platform: "telegram", key: "telegramHelp" },
+          { platform: "feishu", key: "feishuHelp" },
+          { platform: "qq", key: "qqHelp" },
+          { platform: "wework", key: "weworkHelp" },
+          { platform: "dingtalk", key: "dingtalkHelp" },
+        ],
+        aiLabels: [
+          { id: "aiCommonTitle", key: "aiCommonTitle" },
+          { id: "aiCommonHint", key: "aiCommonHint" },
+          { id: "aiToolConfigTitle", key: "aiToolConfigTitle" },
+          { id: "aiToolConfigHint", key: "aiToolConfigHint" },
+          { id: "ai-aiCommand-label", key: "aiTool" },
+          { id: "ai-claudeWorkDir-label", key: "workDir" },
+          { id: "ai-claudeCliPath-label", key: "claudeCli" },
+          { id: "ai-cursorCliPath-label", key: "cursorCli" },
+          { id: "ai-codexCliPath-label", key: "codexCli" },
+          { id: "ai-codebuddyCliPath-label", key: "codebuddyCli" },
+          { id: "ai-codexProxy-label", key: "codexProxy" },
+          { id: "ai-claudeTimeoutMs-label", key: "claudeTimeout" },
+          { id: "ai-codexTimeoutMs-label", key: "codexTimeout" },
+          { id: "ai-codebuddyTimeoutMs-label", key: "codebuddyTimeout" },
+          { id: "ai-claudeModel-label", key: "claudeModel" },
+          { id: "ai-hookPort-label", key: "hookPort" },
+          { id: "ai-logLevel-label", key: "logLevel" },
+          { id: "ai-claudeSkipPermissions-label", key: "autoApprove" },
+          { id: "ai-useSdkMode-label", key: "sdkMode" },
+        ],
+        aiSectionLabels: [
+          { id: "ai-claudeSectionLabel", value: "Claude" },
+          { id: "ai-codexSectionLabel", value: "Codex" },
+          { id: "ai-cursorSectionLabel", value: "Cursor" },
+          { id: "ai-codebuddySectionLabel", value: "CodeBuddy" },
+        ],
+        buttons: [
+          { id: "validateButton", key: "validate" },
+          { id: "saveButton", key: "save" },
+          { id: "startButton", key: "start" },
+          { id: "stopButton", key: "stop" },
+        ],
+        platformFieldLabels: [
+          { platform: "telegram", fields: [{ field: "botToken", key: "botToken" }, { field: "proxy", key: "proxy" }, { field: "allowedUserIds", key: "allowedUserIds" }] },
+          { platform: "feishu", fields: [{ field: "appId", key: "appId" }, { field: "appSecret", key: "appSecret" }, { field: "allowedUserIds", key: "allowedUserIds" }] },
+          { platform: "qq", fields: [{ field: "appId", key: "qqAppId" }, { field: "secret", key: "qqAppSecret" }, { field: "allowedUserIds", key: "allowedUserIds" }] },
+          { platform: "wework", fields: [{ field: "corpId", key: "corpId" }, { field: "secret", key: "secret" }, { field: "allowedUserIds", key: "allowedUserIds" }] },
+          { platform: "dingtalk", fields: [{ field: "clientId", key: "clientId" }, { field: "clientSecret", key: "clientSecret" }, { field: "cardTemplateId", key: "cardTemplateId" }, { field: "allowedUserIds", key: "allowedUserIds" }] },
+        ],
+        placeholders: [
+          { ids: ["telegram-allowedUserIds", "feishu-allowedUserIds", "qq-allowedUserIds", "wework-allowedUserIds", "dingtalk-allowedUserIds"], key: "commaSeparatedIds" },
+          { ids: ["dingtalk-cardTemplateId", "ai-codexProxy", "ai-claudeModel"], key: "optional" },
+        ],
+        sharedLabels: [
+          { id: "platformCredentialsTitle", key: "platformCredentialsTitle" },
+          { id: "platformAccessTitle", key: "platformAccessTitle" },
+          { id: "platformTestNote", key: "platformTestNote" },
+        ],
+        navButtons: [
+          { id: "navOverviewBtn", key: "dashboardTitle" },
+          { id: "navPlatformsBtn", key: "platformsTitle" },
+          { id: "navAiBtn", key: "aiTitle" },
+          { id: "navServiceBtn", key: "serviceTitle" },
+        ],
+      };
+
       function applyLanguage(meta) {
         if (meta) currentMeta = meta;
         const isZh = currentLang === "zh";
         document.documentElement.lang = isZh ? "zh-CN" : "en";
         document.title = t("pageTitle");
-        el("heroBadge").textContent = "open-im";
-        el("heroTitle").textContent = "open-im";
         el("heroBody").textContent = t("heroBodyFull");
         el("heroBody").style.display = "block";
-        el("heroKicker").textContent = t("heroKicker");
-        el("heroRepo").textContent = "GitHub";
-        el("langButton").textContent = t("langButton");
-        document.querySelector(".nav-group-label").textContent = t("controlCenter");
-        el("sidebarNoteTitle").textContent = t("sidebarNoteTitle");
-        el("sidebarNoteBody").textContent = t("sidebarNoteBody");
-        el("platformsTitle").textContent = t("platformsTitle");
-        el("platformsHint").textContent = t("platformsHint");
-        el("aiTitle").textContent = t("aiTitle");
-        el("aiHint").textContent = t("aiHint");
-        el("aiHint").style.display = t("aiHint") ? "block" : "none";
-        el("claudeNote").textContent = t("claudeNote");
-        setText("aiCommonTitle", t("aiCommonTitle"));
-        setText("aiCommonHint", t("aiCommonHint"));
-        setText("aiToolConfigTitle", t("aiToolConfigTitle"));
-        setText("aiToolConfigHint", t("aiToolConfigHint"));
-        setText("ai-claudeSectionLabel", "Claude");
-        setText("ai-codexSectionLabel", "Codex");
-        setText("ai-cursorSectionLabel", "Cursor");
-        setText("ai-codebuddySectionLabel", "CodeBuddy");
-        setText("telegram-enabled-label", t("enabled"));
-        setText("feishu-enabled-label", t("enabled"));
-        setText("qq-enabled-label", t("enabled"));
-        setText("wework-enabled-label", t("enabled"));
-        setText("dingtalk-enabled-label", t("enabled"));
-        setText("telegram-summary", t("telegramSummary"));
-        setText("feishu-summary", t("feishuSummary"));
-        setText("qq-summary", t("qqSummary"));
-        setText("wework-summary", t("weworkSummary"));
-        setText("dingtalk-summary", t("dingtalkSummary"));
-        setText("platformCredentialsTitle", t("platformCredentialsTitle"));
-        setText("platformAccessTitle", t("platformAccessTitle"));
-        setText("platformTestNote", t("platformTestNote"));
-        setText("telegram-aiCommand-label", t("platformAiTool"));
-        setText("feishu-aiCommand-label", t("platformAiTool"));
-        setText("qq-aiCommand-label", t("platformAiTool"));
-        setText("wework-aiCommand-label", t("platformAiTool"));
-        setText("dingtalk-aiCommand-label", t("platformAiTool"));
-        setText("telegram-botToken-label", t("botToken"));
-        setText("telegram-proxy-label", t("proxy"));
-        setText("telegram-allowedUserIds-label", t("allowedUserIds"));
-        el("telegram-help").innerHTML = t("telegramHelp");
-        setText("feishu-appId-label", t("appId"));
-        setText("feishu-appSecret-label", t("appSecret"));
-        setText("feishu-allowedUserIds-label", t("allowedUserIds"));
-        el("feishu-help").innerHTML = t("feishuHelp");
-        setText("qq-appId-label", t("qqAppId"));
-        setText("qq-secret-label", t("qqAppSecret"));
-        setText("qq-allowedUserIds-label", t("allowedUserIds"));
-        el("qq-help").innerHTML = t("qqHelp");
-        setText("wework-corpId-label", t("corpId"));
-        setText("wework-secret-label", t("secret"));
-        setText("wework-allowedUserIds-label", t("allowedUserIds"));
-        el("wework-help").innerHTML = t("weworkHelp");
-        setText("dingtalk-clientId-label", t("clientId"));
-        setText("dingtalk-clientSecret-label", t("clientSecret"));
-        setText("dingtalk-cardTemplateId-label", t("cardTemplateId"));
-        setText("dingtalk-allowedUserIds-label", t("allowedUserIds"));
-        el("dingtalk-help").innerHTML = t("dingtalkHelp");
-        el("telegram-allowedUserIds").placeholder = t("commaSeparatedIds");
-        el("feishu-allowedUserIds").placeholder = t("commaSeparatedIds");
-        el("qq-allowedUserIds").placeholder = t("commaSeparatedIds");
-        el("wework-allowedUserIds").placeholder = t("commaSeparatedIds");
-        el("dingtalk-allowedUserIds").placeholder = t("commaSeparatedIds");
-        el("dingtalk-cardTemplateId").placeholder = t("optional");
-        ["telegram","feishu","qq","wework","dingtalk"].forEach((platform) => {
+
+        // Simple text updates
+        LANGUAGE_UPDATES.simpleText.forEach(({ id, value, key }) => {
+          const node = el(id);
+          if (node) node.textContent = value ?? t(key);
+        });
+
+        // QuerySelector text updates
+        LANGUAGE_UPDATES.querySelectorText.forEach(({ query, key }) => {
+          const node = document.querySelector(query);
+          if (node) node.textContent = t(key);
+        });
+
+        // InnerHTML updates
+        LANGUAGE_UPDATES.innerHtml.forEach(({ id, key }) => {
+          const node = el(id);
+          if (node) node.innerHTML = t(key);
+        });
+
+        // Platform labels
+        LANGUAGE_UPDATES.platformLabels.forEach(({ suffix, key, keys }) => {
+          platformKeys.forEach((platform) => {
+            const node = el(platform + "-" + suffix);
+            if (node) node.textContent = keys ? t(keys[platform]) : t(key);
+          });
+        });
+
+        // Platform help
+        LANGUAGE_UPDATES.platformHelp.forEach(({ platform, key }) => {
+          const node = el(platform + "-help");
+          if (node) node.innerHTML = t(key);
+        });
+
+        // AI labels
+        LANGUAGE_UPDATES.aiLabels.forEach(({ id, key }) => {
+          const node = el(id);
+          if (node) node.textContent = t(key);
+        });
+
+        // AI section labels
+        LANGUAGE_UPDATES.aiSectionLabels.forEach(({ id, value }) => {
+          const node = el(id);
+          if (node) node.textContent = value;
+        });
+
+        // Platform field labels
+        LANGUAGE_UPDATES.platformFieldLabels.forEach(({ platform, fields }) => {
+          fields.forEach(({ field, key }) => {
+            const node = el(platform + "-" + field + "-label");
+            if (node) node.textContent = t(key);
+          });
+        });
+
+        // Shared labels
+        LANGUAGE_UPDATES.sharedLabels.forEach(({ id, key }) => {
+          const node = el(id);
+          if (node) node.textContent = t(key);
+        });
+
+        // Placeholders
+        LANGUAGE_UPDATES.placeholders.forEach(({ ids, key }) => {
+          ids.forEach((id) => {
+            const node = el(id);
+            if (node) node.placeholder = t(key);
+          });
+        });
+
+        // AI select option
+        const aiHint = t("aiHint");
+        const aiHintNode = el("aiHint");
+        if (aiHintNode) {
+          aiHintNode.textContent = aiHint;
+          aiHintNode.style.display = aiHint ? "block" : "none";
+        }
+
+        // Platform AI command select options
+        platformKeys.forEach((platform) => {
           const select = el(platform + "-aiCommand");
           if (select?.options?.length) {
             select.options[0].text = t("inheritDefaultAi");
           }
         });
-        setText("ai-aiCommand-label", t("aiTool"));
-        setText("ai-claudeWorkDir-label", t("workDir"));
-        setText("ai-claudeCliPath-label", t("claudeCli"));
-        setText("ai-cursorCliPath-label", t("cursorCli"));
-        setText("ai-codexCliPath-label", t("codexCli"));
-        setText("ai-codebuddyCliPath-label", t("codebuddyCli"));
-        setText("ai-codexProxy-label", t("codexProxy"));
-        setText("ai-claudeTimeoutMs-label", t("claudeTimeout"));
-        setText("ai-codexTimeoutMs-label", t("codexTimeout"));
-        setText("ai-codebuddyTimeoutMs-label", t("codebuddyTimeout"));
-        setText("ai-claudeModel-label", t("claudeModel"));
-        setText("ai-hookPort-label", t("hookPort"));
-        setText("ai-logLevel-label", t("logLevel"));
-        const logLevelOptions = el("ai-logLevel").options;
-        logLevelOptions[0].text = t("logLevelDefault");
-        logLevelOptions[1].text = "DEBUG";
-        logLevelOptions[2].text = "INFO";
-        logLevelOptions[3].text = "WARN";
-        logLevelOptions[4].text = "ERROR";
-        if (!el("ai-logLevel").value) {
-          el("ai-logLevel").value = "default";
+
+        // Log level options
+        const logLevelSelect = el("ai-logLevel");
+        if (logLevelSelect?.options) {
+          logLevelSelect.options[0].text = t("logLevelDefault");
+          if (!logLevelSelect.value) logLevelSelect.value = "default";
         }
-        el("ai-codexProxy").placeholder = t("optional");
-        el("ai-claudeModel").placeholder = t("optional");
-        setText("ai-claudeSkipPermissions-label", t("autoApprove"));
-        setText("ai-useSdkMode-label", t("sdkMode"));
+
+        // Tool switcher buttons
         document.querySelectorAll("[data-tool]").forEach((button) => {
           button.textContent = button.getAttribute("data-tool");
         });
-        el("validateButton").textContent = t("validate");
-        el("saveButton").textContent = t("save");
-        el("startButton").textContent = t("start");
-        el("stopButton").textContent = t("stop");
-        ["telegram","feishu","qq","wework","dingtalk"].forEach((platform) => {
-          const testBtn = el("test-" + platform);
-          if (testBtn) {
-            testBtn.textContent = t("test");
-          }
+
+        // Service buttons
+        LANGUAGE_UPDATES.buttons.forEach(({ id, key }) => {
+          const node = el(id);
+          if (node) node.textContent = t(key);
         });
+
+        // Test buttons
+        platformKeys.forEach((platform) => {
+          const testBtn = el("test-" + platform);
+          if (testBtn) testBtn.textContent = t("test");
+        });
+
+        // Nav buttons
+        LANGUAGE_UPDATES.navButtons.forEach(({ id, key }) => {
+          const node = el(id);
+          if (node) node.textContent = t(key);
+        });
+
+        // Mode badge
         if (currentMeta) {
           el("modeBadge").textContent = t("mode") + ": " + currentMeta.mode;
         }
-        el("dashboardTitle").textContent = t("dashboardTitle");
-        el("dashboardSubtitle").textContent = t("dashboardSubtitleFull");
-        el("quickActionsTitle").textContent = t("quickActionsTitle");
-        el("serviceTitle").textContent = t("serviceTitle");
-        el("serviceHint").textContent = t("serviceHint");
-        el("overviewTitle").textContent = t("overviewTitle");
-        el("overviewBody").textContent = t("overviewBody");
-        el("dashboardToPlatforms").textContent = t("openPlatforms");
-        el("dashboardToService").textContent = t("openService");
-        el("refreshHealth").textContent = t("refreshHealth");
-        el("statConfiguredLabel").textContent = t("statConfiguredLabel");
-        el("statConfiguredMeta").textContent = t("statConfiguredMeta");
-        el("statEnabledLabel").textContent = t("statEnabledLabel");
-        el("statEnabledMeta").textContent = t("statEnabledMeta");
-        el("statServiceLabel").textContent = t("statServiceLabel");
-        el("navOverviewBtn").textContent = t("dashboardTitle");
-        el("navPlatformsBtn").textContent = t("platformsTitle");
-        el("navAiBtn").textContent = t("aiTitle");
-        el("navServiceBtn").textContent = t("serviceTitle");
       }
       function updateAiToolVisibility() {
         const activeTool = getActiveAiTool();
@@ -238,6 +329,9 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           let configuredCount = 0;
           let enabledCount = 0;
 
+          // Hash for change detection
+          const currentStateHash = JSON.stringify({ platforms, serviceStatus });
+
           platformKeys.forEach((platform) => {
             const statusDiv = el("health-" + platform + "-status");
             const messageDiv = el("health-" + platform + "-message");
@@ -270,7 +364,10 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
               panelDiv.classList.remove("off");
             }
 
-            statusDiv.textContent = statusText;
+            // Only update if text changed
+            if (statusDiv.textContent !== statusText) {
+              statusDiv.textContent = statusText;
+            }
             if (statusClass === "success") {
               statusDiv.style.backgroundColor = "var(--green)";
             } else if (statusClass === "error") {
@@ -280,18 +377,31 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
             } else {
               statusDiv.style.backgroundColor = "var(--orange)";
             }
-            messageDiv.textContent = messageText;
+            if (messageDiv.textContent !== messageText) {
+              messageDiv.textContent = messageText;
+            }
           });
 
-          // 鏇存柊鏈嶅姟鐘舵€?
-          el("statConfiguredValue").textContent = configuredCount + "/" + platformKeys.length;
-          el("statEnabledValue").textContent = String(enabledCount);
-          el("statServiceValue").textContent = serviceStatus.running
-            ? t("serviceRunningShort")
-            : t("serviceIdleShort");
-          el("statServiceMeta").textContent = serviceStatus.running
-            ? t("serviceRunningMeta")
-            : t("serviceIdleMeta");
+          // Update stats with change detection
+          const configuredText = configuredCount + "/" + platformKeys.length;
+          const enabledText = String(enabledCount);
+          const serviceText = serviceStatus.running ? t("serviceRunningShort") : t("serviceIdleShort");
+          const serviceMetaText = serviceStatus.running ? t("serviceRunningMeta") : t("serviceIdleMeta");
+
+          if (el("statConfiguredValue").textContent !== configuredText) {
+            el("statConfiguredValue").textContent = configuredText;
+          }
+          if (el("statEnabledValue").textContent !== enabledText) {
+            el("statEnabledValue").textContent = enabledText;
+          }
+          if (el("statServiceValue").textContent !== serviceText) {
+            el("statServiceValue").textContent = serviceText;
+          }
+          if (el("statServiceMeta").textContent !== serviceMetaText) {
+            el("statServiceMeta").textContent = serviceMetaText;
+          }
+
+          return data;
         } catch (error) {
           console.error("Failed to update dashboard:", error);
         }
@@ -342,28 +452,53 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         },
       });
       async function request(path, options={}) { const response = await fetch(path, { headers: { "content-type": "application/json" }, ...options }); const body = await response.json(); if (!response.ok) throw new Error(body.error || "Request failed"); return body; }
+      // AI field mappings for data-driven fill
+      const AI_FIELD_MAPPINGS = [
+        { id: "ai-aiCommand", key: "aiCommand", isCheckbox: false },
+        { id: "ai-claudeCliPath", key: "claudeCliPath", isCheckbox: false },
+        { id: "ai-claudeWorkDir", key: "claudeWorkDir", isCheckbox: false },
+        { id: "ai-claudeTimeoutMs", key: "claudeTimeoutMs", isCheckbox: false, toString: true },
+        { id: "ai-codexTimeoutMs", key: "codexTimeoutMs", isCheckbox: false, toString: true },
+        { id: "ai-codebuddyTimeoutMs", key: "codebuddyTimeoutMs", isCheckbox: false, toString: true },
+        { id: "ai-claudeModel", key: "claudeModel", isCheckbox: false },
+        { id: "ai-cursorCliPath", key: "cursorCliPath", isCheckbox: false },
+        { id: "ai-codexCliPath", key: "codexCliPath", isCheckbox: false },
+        { id: "ai-codebuddyCliPath", key: "codebuddyCliPath", isCheckbox: false },
+        { id: "ai-codexProxy", key: "codexProxy", isCheckbox: false },
+        { id: "ai-hookPort", key: "hookPort", isCheckbox: false, toString: true },
+        { id: "ai-claudeSkipPermissions", key: "claudeSkipPermissions", isCheckbox: true },
+        { id: "ai-useSdkMode", key: "useSdkMode", isCheckbox: true },
+      ];
+
       function fill(data, meta) {
         el("configPath").textContent = meta.configPath;
         applyLanguage(meta);
         platformDefinitions.forEach((platform) => fillPlatform(platform, data.platforms[platform.key]));
-        setValue("ai-aiCommand", data.ai.aiCommand);
-        setValue("ai-claudeCliPath", data.ai.claudeCliPath);
-        setValue("ai-claudeWorkDir", data.ai.claudeWorkDir);
-        setChecked("ai-claudeSkipPermissions", data.ai.claudeSkipPermissions);
-        setValue("ai-claudeTimeoutMs", String(data.ai.claudeTimeoutMs));
-        setValue("ai-codexTimeoutMs", String(data.ai.codexTimeoutMs));
-        setValue("ai-codebuddyTimeoutMs", String(data.ai.codebuddyTimeoutMs));
-        setValue("ai-claudeModel", data.ai.claudeModel);
-        setValue("ai-cursorCliPath", data.ai.cursorCliPath);
-        setValue("ai-codexCliPath", data.ai.codexCliPath);
-        setValue("ai-codebuddyCliPath", data.ai.codebuddyCliPath);
-        setValue("ai-codexProxy", data.ai.codexProxy);
-        setValue("ai-hookPort", String(data.ai.hookPort));
+        // Data-driven AI field fill
+        AI_FIELD_MAPPINGS.forEach(({ id, key, isCheckbox, toString }) => {
+          const value = data.ai[key];
+          if (isCheckbox) {
+            setChecked(id, value);
+          } else {
+            setValue(id, toString ? String(value ?? "") : value ?? "");
+          }
+        });
         setValue("ai-logLevel", data.ai.logLevel || "default");
-        setChecked("ai-useSdkMode", data.ai.useSdkMode);
         updateVisualState();
       }
-      async function refreshStatus() { const data = await request("/api/service/status"); el("serviceState").textContent = data.running ? t("bridgeRunning", { pid: data.pid }) : t("bridgeStopped"); el("statusMeta").textContent = data.running ? t("bridgeActive") : t("bridgeInactive"); }
+      async function refreshStatus() {
+        const data = await request("/api/service/status");
+        // Change detection - only update if state changed
+        const serviceStateText = data.running ? t("bridgeRunning", { pid: data.pid }) : t("bridgeStopped");
+        const statusMetaText = data.running ? t("bridgeActive") : t("bridgeInactive");
+        if (el("serviceState").textContent !== serviceStateText) {
+          el("serviceState").textContent = serviceStateText;
+        }
+        if (el("statusMeta").textContent !== statusMetaText) {
+          el("statusMeta").textContent = statusMetaText;
+        }
+        return data;
+      }
       async function boot() {
         setBusy(true);
         try {
@@ -380,9 +515,12 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           setBusy(false);
         }
         setInterval(() => {
-          refreshStatus().catch((err) => console.warn("[config-web] Failed to refresh status:", err));
-          updateDashboard().catch((err) => console.warn("[config-web] Failed to update dashboard:", err));
-        }, 10000);
+          // Run API calls in parallel for efficiency
+          Promise.all([
+            refreshStatus().catch((err) => console.warn("[config-web] Failed to refresh status:", err)),
+            updateDashboard().catch((err) => console.warn("[config-web] Failed to update dashboard:", err)),
+          ]);
+        }, POLLING_INTERVAL);
         ids.forEach((id) => {
           const node = el(id);
           if (node) {
@@ -441,7 +579,7 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           testBtn.disabled = false;
         }
       }
-      el("langButton").onclick = () => { currentLang = currentLang === "zh" ? "en" : "zh"; localStorage.setItem(storageKey, currentLang); applyLanguage(); updateVisualState(); refreshStatus().catch((err) => console.warn("[config-web] Failed to refresh status after language change:", err)); };
+      el("langButton").onclick = () => { currentLang = currentLang === "zh" ? "en" : "zh"; localStorage.setItem(STORAGE_KEY_LANG, currentLang); applyLanguage(); updateVisualState(); refreshStatus().catch((err) => console.warn("[config-web] Failed to refresh status after language change:", err)); };
       el("validateButton").onclick = validate; el("saveButton").onclick = save; el("startButton").onclick = startService; el("stopButton").onclick = stopService;
       platformKeys.forEach((platform) => {
         const testBtn = el("test-" + platform);

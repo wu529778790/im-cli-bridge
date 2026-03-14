@@ -127,20 +127,33 @@ async function cmdDev(): Promise<void> {
   await main();
 }
 
+async function cmdDashboard(): Promise<void> {
+  // Start web config server in persistent mode (no timeout)
+  const { startWebConfigServer, openWebConfigUrl } = await import("./config-web.js");
+  const server = await startWebConfigServer({ mode: "dev", cwd: process.cwd(), persistent: true });
+  console.log(`\nDashboard: ${server.url}`);
+  console.log("Press Ctrl+C to close.\n");
+  openWebConfigUrl();
+  await server.waitForResult;
+}
+
 function showHelp(exitCode = 0): void {
   console.log(`
 Usage: open-im <command>
 
 Commands:
-  start    Run the full app in the background and serve the local config page
-  stop     Stop the full app
-  restart  Restart the full app in the background
-  init     Run CLI setup
-  dev      Run in the foreground for debugging
+  start     Run the full app in the background and serve the dashboard
+  stop      Stop the full app
+  restart   Restart the full app in the background
+  init      Run CLI setup
+  dev       Run in the foreground for debugging
+  dashboard Open the web dashboard (keeps running until Ctrl+C)
 
-Local config page:
+Local dashboard:
   http://127.0.0.1:39282
-  start keeps it available; dev opens it only during initial setup
+  - "start" keeps it available while the service runs
+  - "dashboard" opens it standalone (use to modify existing config)
+  - "dev" opens it only during initial setup
 
 Options:
   -h, --help    Show this help message
@@ -156,6 +169,7 @@ const commands: Record<string, () => Promise<void>> = {
   restart: cmdRestart,
   init: cmdInit,
   dev: cmdDev,
+  dashboard: cmdDashboard,
 };
 
 if (cmd === "--help" || cmd === "-h") {
