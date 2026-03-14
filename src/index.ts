@@ -114,7 +114,6 @@ function buildStartupMessage(
   appVersion: string,
   aiCommand: string,
   defaultWorkDir: string,
-  successfulPlatforms: string[],
   sessionManager: SessionManager,
 ): string {
   let sessionDir: string | undefined;
@@ -127,13 +126,12 @@ function buildStartupMessage(
     }
   }
 
-  const platformList = successfulPlatforms.map((item) => `\`${item}\``).join("、");
   const lines = [
     `**服务已启动**`,
     "",
     `- 版本: \`open-im v${appVersion}\``,
-    `- AI 工具: \`${aiCommand}\``,
-    `- 成功启动平台: ${platformList}`,
+    `- 当前渠道: \`${platform}\``,
+    `- 当前渠道 CLI: \`${aiCommand}\``,
   ];
 
   if (sessionDir) {
@@ -294,7 +292,6 @@ export async function main() {
       APP_VERSION,
       resolvePlatformAiCommand(config, platform as "telegram" | "feishu" | "qq" | "wechat" | "wework" | "dingtalk"),
       config.claudeWorkDir,
-      successfulPlatforms,
       sessionManager,
     );
     await sendLifecycleNotification(platform, startupMsg).catch((err) => {
