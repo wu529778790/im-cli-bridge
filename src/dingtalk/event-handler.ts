@@ -1,5 +1,5 @@
 import type { DWClientDownStream, RobotMessage } from 'dingtalk-stream';
-import type { Config } from '../config.js';
+import { resolvePlatformAiCommand, type Config } from '../config.js';
 import { AccessControl } from '../access/access-control.js';
 import type { SessionManager } from '../session/session-manager.js';
 import { RequestQueue } from '../queue/request-queue.js';
@@ -241,18 +241,19 @@ export function setupDingTalkHandlers(
   ) {
     log.info(`[AI_REQUEST] userId=${userId}, chatId=${chatId}, promptLength=${prompt.length}`);
 
-    const toolAdapter = getAdapter(config.aiCommand);
+    const aiCommand = resolvePlatformAiCommand(config, 'dingtalk');
+    const toolAdapter = getAdapter(aiCommand);
     if (!toolAdapter) {
-      await sendTextReply(chatId, `AI tool is not configured: ${config.aiCommand}`);
+      await sendTextReply(chatId, `AI tool is not configured: ${aiCommand}`);
       return;
     }
 
     const sessionId = convId
-      ? sessionManager.getSessionIdForConv(userId, convId, config.aiCommand)
+      ? sessionManager.getSessionIdForConv(userId, convId, aiCommand)
       : undefined;
-    log.info(`[AI_REQUEST] Running ${config.aiCommand} for user ${userId}, sessionId=${sessionId ?? 'new'}`);
+    log.info(`[AI_REQUEST] Running ${aiCommand} for user ${userId}, sessionId=${sessionId ?? 'new'}`);
 
-    const toolId = config.aiCommand;
+    const toolId = aiCommand;
     const msgId = await sendThinkingMessage(chatId, replyToMessageId, toolId, dingtalkTarget);
     const stopTyping = startTypingLoop(chatId);
     const taskKey = `${userId}:${msgId}`;

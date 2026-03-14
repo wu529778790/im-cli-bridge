@@ -1,9 +1,9 @@
 export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
-        { key: "telegram", label: "Telegram", fields: ["botToken", "proxy", "allowedUserIds"], testFields: ["botToken", "proxy"] },
-        { key: "feishu", label: "Feishu", fields: ["appId", "appSecret", "allowedUserIds"], testFields: ["appId", "appSecret"] },
-        { key: "qq", label: "QQ", fields: ["appId", "secret", "allowedUserIds"], testFields: ["appId", "secret"] },
-        { key: "wework", label: "WeWork", fields: ["corpId", "secret", "allowedUserIds"], testFields: ["corpId", "secret"] },
-        { key: "dingtalk", label: "DingTalk", fields: ["clientId", "clientSecret", "cardTemplateId", "allowedUserIds"], testFields: ["clientId", "clientSecret"] },
+        { key: "telegram", label: "Telegram", fields: ["aiCommand", "botToken", "proxy", "allowedUserIds"], testFields: ["botToken", "proxy"] },
+        { key: "feishu", label: "Feishu", fields: ["aiCommand", "appId", "appSecret", "allowedUserIds"], testFields: ["appId", "appSecret"] },
+        { key: "qq", label: "QQ", fields: ["aiCommand", "appId", "secret", "allowedUserIds"], testFields: ["appId", "secret"] },
+        { key: "wework", label: "WeWork", fields: ["aiCommand", "corpId", "secret", "allowedUserIds"], testFields: ["corpId", "secret"] },
+        { key: "dingtalk", label: "DingTalk", fields: ["aiCommand", "clientId", "clientSecret", "cardTemplateId", "allowedUserIds"], testFields: ["clientId", "clientSecret"] },
       ];
       const platformKeys = platformDefinitions.map((platform) => platform.key);
       const ids = platformDefinitions.flatMap((platform) => ["enabled", ...platform.fields].map((field) => platform.key + "-" + field)).concat(["ai-aiCommand","ai-claudeCliPath","ai-claudeWorkDir","ai-claudeSkipPermissions","ai-claudeTimeoutMs","ai-codexTimeoutMs","ai-claudeModel","ai-cursorCliPath","ai-codexCliPath","ai-codexProxy","ai-hookPort","ai-logLevel","ai-useSdkMode"]);
@@ -59,6 +59,11 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         setText("qq-enabled-label", t("enabled"));
         setText("wework-enabled-label", t("enabled"));
         setText("dingtalk-enabled-label", t("enabled"));
+        setText("telegram-aiCommand-label", t("platformAiTool"));
+        setText("feishu-aiCommand-label", t("platformAiTool"));
+        setText("qq-aiCommand-label", t("platformAiTool"));
+        setText("wework-aiCommand-label", t("platformAiTool"));
+        setText("dingtalk-aiCommand-label", t("platformAiTool"));
         setText("telegram-botToken-label", t("botToken"));
         setText("telegram-proxy-label", t("proxy"));
         setText("telegram-allowedUserIds-label", t("allowedUserIds"));
@@ -86,6 +91,12 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         el("wework-allowedUserIds").placeholder = t("commaSeparatedIds");
         el("dingtalk-allowedUserIds").placeholder = t("commaSeparatedIds");
         el("dingtalk-cardTemplateId").placeholder = t("optional");
+        ["telegram","feishu","qq","wework","dingtalk"].forEach((platform) => {
+          const select = el(platform + "-aiCommand");
+          if (select?.options?.length) {
+            select.options[0].text = t("inheritDefaultAi");
+          }
+        });
         setText("ai-aiCommand-label", t("aiTool"));
         setText("ai-claudeWorkDir-label", t("workDir"));
         setText("ai-claudeCliPath-label", t("claudeCli"));

@@ -1,5 +1,5 @@
 import { Client } from '@larksuiteoapi/node-sdk';
-import type { Config } from '../config.js';
+import { resolvePlatformAiCommand, type Config } from '../config.js';
 import { AccessControl } from '../access/access-control.js';
 import type { SessionManager } from '../session/session-manager.js';
 import { RequestQueue } from '../queue/request-queue.js';
@@ -153,18 +153,19 @@ export function setupFeishuHandlers(
   ) {
     log.info(`[AI_REQUEST] userId=${userId}, chatId=${chatId}, promptLength=${prompt.length}`);
     log.info(`[AI_REQUEST] Full prompt: "${prompt}"`);
-    const toolAdapter = getAdapter(config.aiCommand);
+    const aiCommand = resolvePlatformAiCommand(config, 'feishu');
+    const toolAdapter = getAdapter(aiCommand);
     if (!toolAdapter) {
-      log.error(`[handleAIRequest] No adapter found for: ${config.aiCommand}`);
-      await sendTextReply(chatId, `未配置 AI 工具: ${config.aiCommand}`);
+      log.error(`[handleAIRequest] No adapter found for: ${aiCommand}`);
+      await sendTextReply(chatId, `未配置 AI 工具: ${aiCommand}`);
       return;
     }
 
     log.info(`[handleAIRequest] Adapter found, getting session...`);
-    const sessionId = convId ? sessionManager.getSessionIdForConv(userId, convId, config.aiCommand) : undefined;
-    log.info(`[handleAIRequest] Running ${config.aiCommand} for user ${userId}, sessionId=${sessionId ?? 'new'}`);
+    const sessionId = convId ? sessionManager.getSessionIdForConv(userId, convId, aiCommand) : undefined;
+    log.info(`[handleAIRequest] Running ${aiCommand} for user ${userId}, sessionId=${sessionId ?? 'new'}`);
 
-    const toolId = config.aiCommand;
+    const toolId = aiCommand;
 
     // 使用 CardKit 打字机效果（80ms 节流，约 12 次/秒，比 patch 5 QPS 更流畅）
     let cardHandle: { messageId: string; cardId: string };

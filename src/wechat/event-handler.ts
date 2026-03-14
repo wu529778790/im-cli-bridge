@@ -2,7 +2,7 @@
  * WeChat Event Handler - Handle WeChat message events from AGP WebSocket
  */
 
-import type { Config } from '../config.js';
+import { resolvePlatformAiCommand, type Config } from '../config.js';
 import { AccessControl } from '../access/access-control.js';
 import type { SessionManager } from '../session/session-manager.js';
 import { RequestQueue } from '../queue/request-queue.js';
@@ -159,19 +159,20 @@ export function setupWeChatHandlers(
   ) {
     log.info(`[AI_REQUEST] userId=${userId}, chatId=${chatId}, promptLength=${prompt.length}`);
 
-    const toolAdapter = getAdapter(config.aiCommand);
+    const aiCommand = resolvePlatformAiCommand(config, 'wechat');
+    const toolAdapter = getAdapter(aiCommand);
     if (!toolAdapter) {
-      log.error(`[handleAIRequest] No adapter found for: ${config.aiCommand}`);
-      await sendTextReply(chatId, `AI tool is not configured: ${config.aiCommand}`);
+      log.error(`[handleAIRequest] No adapter found for: ${aiCommand}`);
+      await sendTextReply(chatId, `AI tool is not configured: ${aiCommand}`);
       return;
     }
 
     const sessionId = convId
-      ? sessionManager.getSessionIdForConv(userId, convId, config.aiCommand)
+      ? sessionManager.getSessionIdForConv(userId, convId, aiCommand)
       : undefined;
-    log.info(`[handleAIRequest] Running ${config.aiCommand} for user ${userId}, sessionId=${sessionId ?? 'new'}`);
+    log.info(`[handleAIRequest] Running ${aiCommand} for user ${userId}, sessionId=${sessionId ?? 'new'}`);
 
-    const toolId = config.aiCommand;
+    const toolId = aiCommand;
     let msgId: string;
     try {
       msgId = await sendThinkingMessage(chatId, replyToMessageId, toolId);
