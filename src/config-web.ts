@@ -33,6 +33,7 @@ interface WebConfigPayload {
     claudeWorkDir: string;
     claudeSkipPermissions: boolean;
     claudeTimeoutMs: number;
+    codexTimeoutMs: number;
     claudeModel: string;
     cursorCliPath: string;
     codexCliPath: string;
@@ -116,6 +117,7 @@ function buildInitialPayload(file: FileConfig): WebConfigPayload {
       claudeWorkDir: file.tools?.claude?.workDir ?? process.cwd(),
       claudeSkipPermissions: file.tools?.claude?.skipPermissions ?? true,
       claudeTimeoutMs: file.tools?.claude?.timeoutMs ?? 600000,
+      codexTimeoutMs: file.tools?.codex?.timeoutMs ?? 600000,
       claudeModel: file.tools?.claude?.model ?? "",
       cursorCliPath: file.tools?.cursor?.cliPath ?? "agent",
       codexCliPath: file.tools?.codex?.cliPath ?? "codex",
@@ -144,6 +146,7 @@ function validatePayload(payload: WebConfigPayload): string[] {
   if (payload.platforms.dingtalk.enabled && !clean(payload.platforms.dingtalk.clientSecret)) errors.push("DingTalk client secret is required.");
   if (!clean(payload.ai.claudeWorkDir)) errors.push("Default work directory is required.");
   if (!Number.isFinite(payload.ai.claudeTimeoutMs) || payload.ai.claudeTimeoutMs <= 0) errors.push("Claude timeout must be positive.");
+  if (!Number.isFinite(payload.ai.codexTimeoutMs) || payload.ai.codexTimeoutMs <= 0) errors.push("Codex timeout must be positive.");
   if (!Number.isFinite(payload.ai.hookPort) || payload.ai.hookPort <= 0) errors.push("Hook port must be positive.");
   return errors;
 }
@@ -238,6 +241,7 @@ function createProbeConfig(values: Partial<Config>): Config {
     claudeSkipPermissions: true,
     defaultPermissionMode: "ask",
     claudeTimeoutMs: 600000,
+    codexTimeoutMs: 600000,
     hookPort: 35801,
     logDir: "",
     logLevel: "INFO",
@@ -394,6 +398,7 @@ function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConf
         cliPath: clean(payload.ai.codexCliPath) ?? "codex",
         workDir: clean(payload.ai.claudeWorkDir) ?? process.cwd(),
         skipPermissions: existing.tools?.codex?.skipPermissions ?? payload.ai.claudeSkipPermissions,
+        timeoutMs: payload.ai.codexTimeoutMs,
         proxy: clean(payload.ai.codexProxy),
       },
     },

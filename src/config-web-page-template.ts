@@ -211,6 +211,7 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
               <label><span id="ai-codexCliPath-label">Codex CLI path</span><input id="ai-codexCliPath" class="mono" /></label>
               <label><span id="ai-codexProxy-label">Codex proxy</span><input id="ai-codexProxy" class="mono" placeholder="Optional" /></label>
               <label><span id="ai-claudeTimeoutMs-label">Claude timeout (ms)</span><input id="ai-claudeTimeoutMs" type="number" min="1" /></label>
+              <label><span id="ai-codexTimeoutMs-label">Codex timeout (ms)</span><input id="ai-codexTimeoutMs" type="number" min="1" /></label>
               <label><span id="ai-claudeModel-label">Claude model</span><input id="ai-claudeModel" placeholder="Optional" /></label>
               <label><span id="ai-hookPort-label">Hook port</span><input id="ai-hookPort" type="number" min="1" /></label>
               <label><span id="ai-logLevel-label">Log level</span><select id="ai-logLevel"><option value="default">default</option><option value="DEBUG">DEBUG</option><option value="INFO">INFO</option><option value="WARN">WARN</option><option value="ERROR">ERROR</option></select></label>

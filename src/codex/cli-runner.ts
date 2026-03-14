@@ -10,7 +10,21 @@ import { createLogger } from '../logger.js';
 
 const log = createLogger('CodexCli');
 const windowsCodexLaunchCache = new Map<string, { command: string; args: string[] } | null>();
-const DEFAULT_IDLE_TIMEOUT_MS = 90_000;
+const MAX_TIMEOUT_MS = 2_147_483_647;
+const DEFAULT_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+
+function getIdleTimeoutMs(totalTimeoutMs: number): number {
+  const raw = process.env.CODEX_IDLE_TIMEOUT_MS;
+  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  const configuredIdleTimeoutMs =
+    Number.isFinite(parsed) && parsed > 0
+      ? Math.min(parsed, MAX_TIMEOUT_MS)
+      : DEFAULT_IDLE_TIMEOUT_MS;
+
+  return totalTimeoutMs > 0
+    ? Math.min(configuredIdleTimeoutMs, totalTimeoutMs)
+    : configuredIdleTimeoutMs;
+}
 
 export interface CodexRunCallbacks {
   onText: (accumulated: string) => void;
@@ -231,15 +245,11 @@ export function runCodex(
   const toolStats: Record<string, number> = {};
   const startTime = Date.now();
 
-  const MAX_TIMEOUT = 2_147_483_647;
   const timeoutMs =
     options?.timeoutMs && options.timeoutMs > 0
-      ? Math.min(options.timeoutMs, MAX_TIMEOUT)
+      ? Math.min(options.timeoutMs, MAX_TIMEOUT_MS)
       : 0;
-  const idleTimeoutMs =
-    timeoutMs > 0
-      ? Math.min(DEFAULT_IDLE_TIMEOUT_MS, timeoutMs)
-      : DEFAULT_IDLE_TIMEOUT_MS;
+  const idleTimeoutMs = getIdleTimeoutMs(timeoutMs);
 
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
   let idleTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
