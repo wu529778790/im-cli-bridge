@@ -32,6 +32,7 @@ const log = createLogger("QQHandler");
 const QQ_THROTTLE_MS = 1200;
 const QQ_MIN_STREAM_DELTA_CHARS = 80;
 const QQ_EVENT_DEDUP_TTL_MS = 5 * 60 * 1000;
+const QQ_EVENT_FINGERPRINT_TTL_MS = 8 * 1000;
 type QQAttachmentKind = "image" | "file" | "voice" | "video";
 
 function toChatId(event: QQMessageEvent): string {
@@ -144,6 +145,7 @@ export function setupQQHandlers(
   const requestQueue = new RequestQueue();
   const runningTasks = new Map<string, TaskRunState>();
   const recentEventIds = new Map<string, number>();
+  const recentEventFingerprints = new Map<string, number>();
   const stopTaskCleanup = startTaskCleanup(runningTasks);
 
   const commandHandler = new CommandHandler({
@@ -223,13 +225,42 @@ export function setupQQHandlers(
     );
   }
 
-  async function handleEvent(event: QQMessageEvent): Promise<void> {
-    const now = Date.now();
+  function cleanupRecentEvents(now: number): void {
     for (const [eventId, timestamp] of recentEventIds) {
       if (now - timestamp > QQ_EVENT_DEDUP_TTL_MS) {
         recentEventIds.delete(eventId);
       }
     }
+
+    for (const [fingerprint, timestamp] of recentEventFingerprints) {
+      if (now - timestamp > QQ_EVENT_FINGERPRINT_TTL_MS) {
+        recentEventFingerprints.delete(fingerprint);
+      }
+    }
+  }
+
+  function buildEventFingerprint(event: QQMessageEvent, chatId: string): string {
+    const attachmentKey = (event.attachments ?? [])
+      .map((attachment) => [
+        attachment.url ?? "",
+        attachment.filename ?? "",
+        attachment.contentType ?? "",
+        attachment.size ?? "",
+      ].join("|"))
+      .join(";");
+
+    return [
+      event.type,
+      chatId,
+      event.userOpenid,
+      (event.content ?? "").trim(),
+      attachmentKey,
+    ].join("::");
+  }
+
+  async function handleEvent(event: QQMessageEvent): Promise<void> {
+    const now = Date.now();
+    cleanupRecentEvents(now);
 
     if (event.id) {
       if (recentEventIds.has(event.id)) {
@@ -241,8 +272,15 @@ export function setupQQHandlers(
 
     const userId = event.userOpenid;
     const chatId = toChatId(event);
+    const eventFingerprint = buildEventFingerprint(event, chatId);
     const text = event.content?.trim() ?? "";
     const attachmentPrompt = await buildAttachmentPrompt(event);
+
+    if (recentEventFingerprints.has(eventFingerprint)) {
+      log.info(`Skipping duplicate QQ event fingerprint: ${eventFingerprint}`);
+      return;
+    }
+    recentEventFingerprints.set(eventFingerprint, now);
 
     if (!accessControl.isAllowed(userId)) {
       await sendTextReply(chatId, `Access denied. Your QQ user ID: ${userId}`);
