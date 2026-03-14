@@ -1,201 +1,331 @@
 export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
-        { key: "telegram", label: "Telegram", fields: ["aiCommand", "botToken", "proxy", "allowedUserIds"], testFields: ["botToken", "proxy"] },
-        { key: "feishu", label: "Feishu", fields: ["aiCommand", "appId", "appSecret", "allowedUserIds"], testFields: ["appId", "appSecret"] },
-        { key: "qq", label: "QQ", fields: ["aiCommand", "appId", "secret", "allowedUserIds"], testFields: ["appId", "secret"] },
-        { key: "wework", label: "WeWork", fields: ["aiCommand", "corpId", "secret", "allowedUserIds"], testFields: ["corpId", "secret"] },
-        { key: "dingtalk", label: "DingTalk", fields: ["aiCommand", "clientId", "clientSecret", "cardTemplateId", "allowedUserIds"], testFields: ["clientId", "clientSecret"] },
+        { key: "telegram", label: "Telegram", fields: ["aiCommand", "botToken", "proxy", "allowedUserIds"], testFields: ["botToken", "proxy"], requiredFields: ["botToken"] },
+        { key: "feishu", label: "Feishu", fields: ["aiCommand", "appId", "appSecret", "allowedUserIds"], testFields: ["appId", "appSecret"], requiredFields: ["appId", "appSecret"] },
+        { key: "qq", label: "QQ", fields: ["aiCommand", "appId", "secret", "allowedUserIds"], testFields: ["appId", "secret"], requiredFields: ["appId", "secret"] },
+        { key: "wework", label: "WeWork", fields: ["aiCommand", "corpId", "secret", "allowedUserIds"], testFields: ["corpId", "secret"], requiredFields: ["corpId", "secret"] },
+        { key: "dingtalk", label: "DingTalk", fields: ["aiCommand", "clientId", "clientSecret", "cardTemplateId", "allowedUserIds"], testFields: ["clientId", "clientSecret"], requiredFields: ["clientId", "clientSecret"] },
       ];
       const platformKeys = platformDefinitions.map((platform) => platform.key);
       const aiTools = ["claude", "codex", "cursor", "codebuddy"];
-      const ids = platformDefinitions.flatMap((platform) => ["enabled", ...platform.fields].map((field) => platform.key + "-" + field)).concat(["ai-aiCommand","ai-claudeCliPath","ai-claudeWorkDir","ai-claudeSkipPermissions","ai-claudeTimeoutMs","ai-codexTimeoutMs","ai-codebuddyTimeoutMs","ai-claudeModel","ai-cursorCliPath","ai-codexCliPath","ai-codebuddyCliPath","ai-codexProxy","ai-hookPort","ai-logLevel","ai-useSdkMode"]);
+      const STORAGE_KEY_LANG = "open-im-web-lang";
+      const STORAGE_KEY_DARK_MODE = "open-im-web-dark-mode";
+      const POLLING_INTERVAL = 10000;
+      const toolLabels = { claude: "Claude", codex: "Codex", cursor: "Cursor", codebuddy: "CodeBuddy" };
+
+      // Dark mode handling
+      const getSystemDarkMode = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
+      const getSavedDarkMode = () => {
+        const saved = localStorage.getItem(STORAGE_KEY_DARK_MODE);
+        if (saved === "true") return true;
+        if (saved === "false") return false;
+        return null; // auto mode
+      };
+      const setDarkMode = (isDark) => {
+        if (isDark) {
+          document.documentElement.classList.add("dark");
+        } else {
+          document.documentElement.classList.remove("dark");
+        }
+        const sunIcon = el("darkModeToggle")?.querySelector(".sun-icon");
+        const moonIcon = el("darkModeToggle")?.querySelector(".moon-icon");
+        if (sunIcon && moonIcon) {
+          sunIcon.style.display = isDark ? "none" : "block";
+          moonIcon.style.display = isDark ? "block" : "none";
+        }
+      };
+      const updateDarkMode = () => {
+        const saved = getSavedDarkMode();
+        const isDark = saved !== null ? saved : getSystemDarkMode();
+        setDarkMode(isDark);
+      };
+      const toggleDarkMode = () => {
+        const currentDark = document.documentElement.classList.contains("dark");
+        const systemDark = getSystemDarkMode();
+        // Toggle: auto -> off -> on -> auto
+        let nextMode;
+        const saved = getSavedDarkMode();
+        if (saved === null) {
+          nextMode = !systemDark; // auto -> force opposite of system
+        } else if (saved === true) {
+          nextMode = null; // on -> auto
+        } else {
+          nextMode = true; // off -> on
+        }
+        localStorage.setItem(STORAGE_KEY_DARK_MODE, nextMode === null ? "auto" : String(nextMode));
+        updateDarkMode();
+      };
+
+      // Listen for system theme changes
+      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+        if (getSavedDarkMode() === null) {
+          updateDarkMode();
+        }
+      });
+
       const el = (id) => document.getElementById(id);
-      const storageKey = "open-im-web-lang";
       const texts = __PAGE_TEXTS__;
       let currentMeta = null;
-      let currentLang = (localStorage.getItem(storageKey) || "").startsWith("zh") ? "zh" : ((navigator.language || "").startsWith("zh") ? "zh" : "en");
+      let cachedServiceData = null;
+      let currentLang = (localStorage.getItem(STORAGE_KEY_LANG) || "").startsWith("zh") ? "zh" : ((navigator.language || "").startsWith("zh") ? "zh" : "en");
+
+      // Translation helper
       const t = (key, params={}) => {
         const source = texts[currentLang] || texts.en;
         const template = source[key] || texts.en[key] || key;
         return Object.keys(params).reduce((result, name) => result.replaceAll("{" + name + "}", String(params[name])), template);
       };
+
+      // DOM helpers
       const setText = (id, value) => { const node = el(id); if (node) node.textContent = value; };
-      const getValue = (id) => el(id).value;
-      const getChecked = (id) => el(id).checked;
+      const getValue = (id) => el(id)?.value ?? "";
+      const getChecked = (id) => el(id)?.checked ?? false;
       const getNumber = (id) => Number(getValue(id) || "0");
       const setValue = (id, value) => { const node = el(id); if (node) node.value = value ?? ""; };
       const setChecked = (id, value) => { const node = el(id); if (node) node.checked = Boolean(value); };
-      const setMessage = (text, type="") => { const node = el("message"); node.textContent = text; node.className = ("message " + type).trim(); };
-      const setBusy = (busy) => ["validateButton","saveButton","startButton","stopButton","langButton"].forEach((id) => { el(id).disabled = busy; });
-      const getActiveAiTool = () => el("ai-aiCommand").value || "claude";
+
+      // Message display
+      const setMessage = (text, type="") => {
+        const node = el("message");
+        if (!node) return;
+        node.textContent = text;
+        node.className = "message";
+        if (type) node.classList.add("message-" + type);
+        node.classList.remove("hidden");
+      };
+
+      const clearMessage = () => {
+        const node = el("message");
+        if (node) {
+          node.textContent = "";
+          node.classList.add("hidden");
+        }
+      };
+
+      // Button state
+      const setBusy = (busy) => {
+        ["validateButton","saveButton","startButton","stopButton","langButton"].forEach((id) => {
+          const node = el(id);
+          if (node) node.disabled = busy;
+        });
+      };
+
+      // Track current AI tool panel separately from default AI tool selection
+      let currentAiToolPanel = "claude";
+      const getActiveAiTool = () => currentAiToolPanel;
+
+      // Platform config helpers
       const readPlatformConfig = (platform) => platform.testFields.reduce((config, field) => {
         config[field] = getValue(platform.key + "-" + field);
         return config;
       }, {});
+
+      const countCompletedFields = (platform, fields) => fields.reduce((count, field) => count + (getValue(platform.key + "-" + field).trim() ? 1 : 0), 0);
+
       const fillPlatform = (platform, values) => {
         setChecked(platform.key + "-enabled", values.enabled);
         platform.fields.forEach((field) => setValue(platform.key + "-" + field, values[field]));
       };
+
+      // Update platform card state (disabled/enabled visual)
+      function updatePlatformCardState(platform) {
+        const active = getChecked(platform.key + "-enabled");
+        const requiredCount = platform.requiredFields.length;
+        const completedCount = countCompletedFields(platform, platform.requiredFields);
+        const panelNode = el(platform.key + "-panel");
+
+        if (panelNode) {
+          panelNode.classList.toggle("disabled", !active);
+        }
+      }
+
+      // Language update mapping for new HTML structure
+      const LANGUAGE_UPDATES = {
+        simpleText: [
+          { id: "mainTitle", key: "dashboardTitle" },
+          { id: "mainSubtitle", key: "dashboardSubtitleFull" },
+          { id: "navOverviewText", key: "dashboardTitle" },
+          { id: "navPlatformsText", key: "platformsTitle" },
+          { id: "navAiText", key: "aiTitle" },
+          { id: "navServiceText", key: "serviceTitle" },
+          { id: "footerGithubText", value: "GitHub" },
+          { id: "platformsTitle", key: "platformsTitle" },
+          { id: "platformsHint", key: "platformsHint" },
+          { id: "aiTitle", key: "aiTitle" },
+          { id: "aiHint", key: "aiHint" },
+          { id: "serviceTitle", key: "serviceTitle" },
+          { id: "serviceHint", key: "serviceHint" },
+          { id: "overviewTitle", key: "overviewTitle" },
+          { id: "overviewBody", key: "overviewBody" },
+          { id: "statConfiguredLabel", key: "statConfiguredLabel" },
+          { id: "statEnabledLabel", key: "statEnabledLabel" },
+          { id: "statServiceLabel", key: "statServiceLabel" },
+        ],
+        platformLabels: {
+          enabled: { suffix: "-label", key: "enabled" },
+          description: { suffix: "-description", keys: { telegram: "telegramSummary", feishu: "feishuSummary", qq: "qqSummary", wework: "weworkSummary", dingtalk: "dingtalkSummary" } },
+          fieldLabel: {
+            "telegram-botToken": { key: "botToken" },
+            "telegram-proxy": { key: "proxy" },
+            "telegram-aiCommand": { key: "platformAiTool" },
+            "telegram-allowedUserIds": { key: "allowedUserIds" },
+            "telegram-allowedUserIds-hint": { key: "leaveEmptyAllUsers" },
+            "feishu-appId": { key: "appId" },
+            "feishu-appSecret": { key: "appSecret" },
+            "feishu-aiCommand": { key: "platformAiTool" },
+            "feishu-allowedUserIds": { key: "allowedUserIds" },
+            "qq-appId": { key: "qqAppId" },
+            "qq-secret": { key: "qqAppSecret" },
+            "qq-aiCommand": { key: "platformAiTool" },
+            "qq-allowedUserIds": { key: "allowedUserIds" },
+            "wework-corpId": { key: "corpId" },
+            "wework-secret": { key: "secret" },
+            "wework-aiCommand": { key: "platformAiTool" },
+            "wework-allowedUserIds": { key: "allowedUserIds" },
+            "dingtalk-clientId": { key: "clientId" },
+            "dingtalk-clientSecret": { key: "clientSecret" },
+            "dingtalk-cardTemplateId": { key: "cardTemplateId" },
+            "dingtalk-aiCommand": { key: "platformAiTool" },
+            "dingtalk-allowedUserIds": { key: "allowedUserIds" },
+          }
+        },
+        platformHelp: [
+          { platform: "telegram", key: "telegramHelp" },
+          { platform: "feishu", key: "feishuHelp" },
+          { platform: "qq", key: "qqHelp" },
+          { platform: "wework", key: "weworkHelp" },
+          { platform: "dingtalk", key: "dingtalkHelp" },
+        ],
+        aiLabels: [
+          { id: "aiCommonTitle", key: "aiCommonTitle" },
+          { id: "ai-aiCommand-label", key: "aiTool" },
+          { id: "ai-claudeWorkDir-label", key: "workDir" },
+          { id: "ai-claudeCliPath-label", key: "claudeCli" },
+          { id: "ai-claudeTimeoutMs-label", key: "claudeTimeout" },
+          { id: "ai-claudeConfigPath-label", key: "claudeConfigPath" },
+          { id: "ai-claudeAuthToken-label", key: "claudeAuthToken" },
+          { id: "ai-claudeBaseUrl-label", key: "claudeBaseUrl" },
+          { id: "ai-claudeModel-label", key: "claudeModel" },
+          { id: "ai-claudeProxy-label", key: "claudeProxy" },
+          { id: "ai-codexCliPath-label", key: "codexCli" },
+          { id: "ai-codexTimeoutMs-label", key: "codexTimeout" },
+          { id: "ai-codexProxy-label", key: "codexProxy" },
+          { id: "ai-cursorCliPath-label", key: "cursorCli" },
+          { id: "ai-cursorProxy-label", key: "cursorProxy" },
+          { id: "ai-codebuddyCliPath-label", key: "codebuddyCli" },
+          { id: "ai-codebuddyTimeoutMs-label", key: "codebuddyTimeout" },
+          { id: "ai-hookPort-label", key: "hookPort" },
+          { id: "ai-logLevel-label", key: "logLevel" },
+        ],
+        buttons: [
+          { id: "validateButton", key: "validate" },
+          { id: "saveButton", key: "save" },
+          { id: "startButton", key: "start" },
+          { id: "stopButton", key: "stop" },
+        ],
+        testButtons: [
+          { prefix: "test-", key: "test" },
+        ]
+      };
+
       function applyLanguage(meta) {
         if (meta) currentMeta = meta;
         const isZh = currentLang === "zh";
         document.documentElement.lang = isZh ? "zh-CN" : "en";
         document.title = t("pageTitle");
-        el("heroBadge").textContent = "open-im";
-        el("heroTitle").textContent = "open-im";
-        el("heroBody").textContent = t("heroBodyFull");
-        el("heroBody").style.display = "block";
-        el("heroKicker").textContent = t("heroKicker");
-        el("heroRepo").textContent = "GitHub";
-        el("langButton").textContent = t("langButton");
-        document.querySelector(".nav-group-label").textContent = t("controlCenter");
-        el("sidebarNoteTitle").textContent = t("sidebarNoteTitle");
-        el("sidebarNoteBody").textContent = t("sidebarNoteBody");
-        el("platformsTitle").textContent = t("platformsTitle");
-        el("platformsHint").textContent = t("platformsHint");
-        el("aiTitle").textContent = t("aiTitle");
-        el("aiHint").textContent = t("aiHint");
-        el("aiHint").style.display = t("aiHint") ? "block" : "none";
-        el("claudeNote").textContent = t("claudeNote");
-        setText("aiCommonTitle", t("aiCommonTitle"));
-        setText("aiCommonHint", t("aiCommonHint"));
-        setText("aiToolConfigTitle", t("aiToolConfigTitle"));
-        setText("aiToolConfigHint", t("aiToolConfigHint"));
-        setText("ai-claudeSectionLabel", "Claude");
-        setText("ai-codexSectionLabel", "Codex");
-        setText("ai-cursorSectionLabel", "Cursor");
-        setText("ai-codebuddySectionLabel", "CodeBuddy");
-        setText("telegram-enabled-label", t("enabled"));
-        setText("feishu-enabled-label", t("enabled"));
-        setText("qq-enabled-label", t("enabled"));
-        setText("wework-enabled-label", t("enabled"));
-        setText("dingtalk-enabled-label", t("enabled"));
-        setText("telegram-aiCommand-label", t("platformAiTool"));
-        setText("feishu-aiCommand-label", t("platformAiTool"));
-        setText("qq-aiCommand-label", t("platformAiTool"));
-        setText("wework-aiCommand-label", t("platformAiTool"));
-        setText("dingtalk-aiCommand-label", t("platformAiTool"));
-        setText("telegram-botToken-label", t("botToken"));
-        setText("telegram-proxy-label", t("proxy"));
-        setText("telegram-allowedUserIds-label", t("allowedUserIds"));
-        el("telegram-help").innerHTML = t("telegramHelp");
-        setText("feishu-appId-label", t("appId"));
-        setText("feishu-appSecret-label", t("appSecret"));
-        setText("feishu-allowedUserIds-label", t("allowedUserIds"));
-        el("feishu-help").innerHTML = t("feishuHelp");
-        setText("qq-appId-label", t("qqAppId"));
-        setText("qq-secret-label", t("qqAppSecret"));
-        setText("qq-allowedUserIds-label", t("allowedUserIds"));
-        el("qq-help").innerHTML = t("qqHelp");
-        setText("wework-corpId-label", t("corpId"));
-        setText("wework-secret-label", t("secret"));
-        setText("wework-allowedUserIds-label", t("allowedUserIds"));
-        el("wework-help").innerHTML = t("weworkHelp");
-        setText("dingtalk-clientId-label", t("clientId"));
-        setText("dingtalk-clientSecret-label", t("clientSecret"));
-        setText("dingtalk-cardTemplateId-label", t("cardTemplateId"));
-        setText("dingtalk-allowedUserIds-label", t("allowedUserIds"));
-        el("dingtalk-help").innerHTML = t("dingtalkHelp");
-        el("telegram-allowedUserIds").placeholder = t("commaSeparatedIds");
-        el("feishu-allowedUserIds").placeholder = t("commaSeparatedIds");
-        el("qq-allowedUserIds").placeholder = t("commaSeparatedIds");
-        el("wework-allowedUserIds").placeholder = t("commaSeparatedIds");
-        el("dingtalk-allowedUserIds").placeholder = t("commaSeparatedIds");
-        el("dingtalk-cardTemplateId").placeholder = t("optional");
-        ["telegram","feishu","qq","wework","dingtalk"].forEach((platform) => {
-          const select = el(platform + "-aiCommand");
-          if (select?.options?.length) {
-            select.options[0].text = t("inheritDefaultAi");
-          }
+
+        // Simple text updates
+        LANGUAGE_UPDATES.simpleText.forEach(({ id, value, key }) => {
+          setText(id, value ?? t(key));
         });
-        setText("ai-aiCommand-label", t("aiTool"));
-        setText("ai-claudeWorkDir-label", t("workDir"));
-        setText("ai-claudeCliPath-label", t("claudeCli"));
-        setText("ai-cursorCliPath-label", t("cursorCli"));
-        setText("ai-codexCliPath-label", t("codexCli"));
-        setText("ai-codebuddyCliPath-label", t("codebuddyCli"));
-        setText("ai-codexProxy-label", t("codexProxy"));
-        setText("ai-claudeTimeoutMs-label", t("claudeTimeout"));
-        setText("ai-codexTimeoutMs-label", t("codexTimeout"));
-        setText("ai-codebuddyTimeoutMs-label", t("codebuddyTimeout"));
-        setText("ai-claudeModel-label", t("claudeModel"));
-        setText("ai-hookPort-label", t("hookPort"));
-        setText("ai-logLevel-label", t("logLevel"));
-        const logLevelOptions = el("ai-logLevel").options;
-        logLevelOptions[0].text = t("logLevelDefault");
-        logLevelOptions[1].text = "DEBUG";
-        logLevelOptions[2].text = "INFO";
-        logLevelOptions[3].text = "WARN";
-        logLevelOptions[4].text = "ERROR";
-        if (!el("ai-logLevel").value) {
-          el("ai-logLevel").value = "default";
-        }
-        el("ai-codexProxy").placeholder = t("optional");
-        el("ai-claudeModel").placeholder = t("optional");
-        setText("ai-claudeSkipPermissions-label", t("autoApprove"));
-        setText("ai-useSdkMode-label", t("sdkMode"));
-        document.querySelectorAll("[data-tool]").forEach((button) => {
-          button.textContent = button.getAttribute("data-tool");
+
+        // Platform enabled labels
+        platformKeys.forEach((platform) => {
+          const label = el(platform + LANGUAGE_UPDATES.platformLabels.enabled.suffix);
+          if (label) label.textContent = t(LANGUAGE_UPDATES.platformLabels.enabled.key);
+
+          const desc = el(platform + LANGUAGE_UPDATES.platformLabels.description.suffix);
+          const descKey = LANGUAGE_UPDATES.platformLabels.description.keys[platform];
+          if (desc && descKey) desc.textContent = t(descKey);
         });
-        el("validateButton").textContent = t("validate");
-        el("saveButton").textContent = t("save");
-        el("startButton").textContent = t("start");
-        el("stopButton").textContent = t("stop");
-        ["telegram","feishu","qq","wework","dingtalk"].forEach((platform) => {
-          const testBtn = el("test-" + platform);
-          if (testBtn) {
-            testBtn.textContent = t("test");
-          }
+
+        // Platform field labels
+        Object.entries(LANGUAGE_UPDATES.platformLabels.fieldLabel).forEach(([id, { key }]) => {
+          const label = el(id + "-label");
+          if (label) label.textContent = t(key);
         });
-        if (currentMeta) {
-          el("modeBadge").textContent = t("mode") + ": " + currentMeta.mode;
-        }
-        el("dashboardTitle").textContent = t("dashboardTitle");
-        el("dashboardSubtitle").textContent = t("dashboardSubtitleFull");
-        el("quickActionsTitle").textContent = t("quickActionsTitle");
-        el("serviceTitle").textContent = t("serviceTitle");
-        el("serviceHint").textContent = t("serviceHint");
-        el("overviewTitle").textContent = t("overviewTitle");
-        el("overviewBody").textContent = t("overviewBody");
-        el("dashboardToPlatforms").textContent = t("openPlatforms");
-        el("dashboardToService").textContent = t("openService");
-        el("refreshHealth").textContent = t("refreshHealth");
-        el("statConfiguredLabel").textContent = t("statConfiguredLabel");
-        el("statConfiguredMeta").textContent = t("statConfiguredMeta");
-        el("statEnabledLabel").textContent = t("statEnabledLabel");
-        el("statEnabledMeta").textContent = t("statEnabledMeta");
-        el("statServiceLabel").textContent = t("statServiceLabel");
-        el("navOverviewBtn").textContent = t("dashboardTitle");
-        el("navPlatformsBtn").textContent = t("platformsTitle");
-        el("navAiBtn").textContent = t("aiTitle");
-        el("navServiceBtn").textContent = t("serviceTitle");
+
+        // Platform hints
+        Object.entries(LANGUAGE_UPDATES.platformLabels.fieldLabel).forEach(([id, { key }]) => {
+          const hint = el(id + "-hint");
+          if (hint && key === "allowedUserIds") hint.textContent = t("leaveEmptyAllUsers");
+        });
+
+        // Platform help blocks
+        LANGUAGE_UPDATES.platformHelp.forEach(({ platform, key }) => {
+          const helpBlock = el(platform + "-help");
+          if (helpBlock) helpBlock.innerHTML = t(key);
+        });
+
+        // AI labels
+        LANGUAGE_UPDATES.aiLabels.forEach(({ id, key }) => {
+          const label = el(id + "-label");
+          if (label) label.textContent = t(key);
+        });
+
+        // Buttons
+        LANGUAGE_UPDATES.buttons.forEach(({ id, key }) => {
+          const btn = el(id);
+          if (btn) btn.textContent = t(key);
+        });
+
+        // Test buttons
+        LANGUAGE_UPDATES.testButtons.forEach(({ prefix, key }) => {
+          platformKeys.forEach((platform) => {
+            const btn = el(prefix + platform);
+            if (btn) btn.textContent = t(key);
+          });
+        });
+
+        // Language button
+        el("langButton").textContent = isZh ? "EN" : "中文";
+
+        // Dark mode toggle aria-label
+        const darkModeToggle = el("darkModeToggle");
+        if (darkModeToggle) darkModeToggle.setAttribute("aria-label", t("darkModeToggle"));
       }
+
+      // AI tool switcher
       function updateAiToolVisibility() {
         const activeTool = getActiveAiTool();
         aiTools.forEach((tool) => {
-          const panel = document.querySelector('[data-tool-panel="' + tool + '"]');
+          const panel = el("ai-tool-" + tool);
+          const tab = document.querySelector('.tab[data-tool="' + tool + '"]');
           if (panel) {
-            panel.hidden = tool !== activeTool;
+            panel.classList.toggle("active", tool === activeTool);
+          }
+          if (tab) {
+            tab.classList.toggle("active", tool === activeTool);
           }
         });
-        document.querySelectorAll("[data-tool]").forEach((button) => {
-          button.classList.toggle("active", button.getAttribute("data-tool") === activeTool);
-        });
-        const toolLabels = { claude: "Claude", codex: "Codex", cursor: "Cursor", codebuddy: "CodeBuddy" };
-        el("aiConfigSummary").textContent = t("aiConfigSummary", { tool: toolLabels[activeTool] || activeTool });
       }
+
       function updateVisualState() {
         const enabled = [];
         platformDefinitions.forEach((platform) => {
-          const active = el(platform.key + "-enabled").checked;
-          el(platform.key + "-panel").classList.toggle("off", !active);
+          const active = getChecked(platform.key + "-enabled");
+          updatePlatformCardState(platform);
           if (active) enabled.push(platform.label);
         });
-        const aiTool = el("ai-aiCommand").value;
-        el("liveSummary").textContent = enabled.length
+        const aiTool = el("ai-aiCommand")?.value;
+        const summary = enabled.length
           ? t("summaryEnabled", { platforms: enabled.join(t("listSeparator")), tool: aiTool })
           : t("summaryEmpty", { tool: aiTool });
+        const liveSummary = el("liveSummary");
+        if (liveSummary) liveSummary.textContent = summary;
         updateAiToolVisibility();
       }
+
+      // Update dashboard with health status
       async function updateDashboard() {
         try {
           const data = await request("/api/health");
@@ -205,79 +335,313 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           let enabledCount = 0;
 
           platformKeys.forEach((platform) => {
-            const statusDiv = el("health-" + platform + "-status");
-            const messageDiv = el("health-" + platform + "-message");
-            const panelDiv = el("health-" + platform);
-
-            if (!statusDiv || !messageDiv || !panelDiv) return;
-
             const platformData = platforms[platform] || {};
             if (platformData.configured) configuredCount += 1;
             if (platformData.enabled) enabledCount += 1;
+
+            // Only update health cards if they exist
+            const statusBadge = el("health-" + platform + "-status");
+            const messageDiv = el("health-" + platform + "-message");
+            const cardDiv = el("health-" + platform);
+
+            if (!statusBadge || !messageDiv || !cardDiv) return;
+
+            let badgeClass = "badge-default";
             let statusText = "";
-            let statusClass = "";
             let messageText = platformData.message || "";
 
             if (!platformData.configured) {
               statusText = t("notConfigured");
-              statusClass = "off";
-              panelDiv.classList.add("off");
+              badgeClass = "badge-default";
+              cardDiv.classList.add("disabled");
             } else if (!platformData.enabled) {
               statusText = t("disabled");
-              statusClass = "off";
-              panelDiv.classList.add("off");
+              badgeClass = "badge-default";
+              cardDiv.classList.add("disabled");
             } else if (platformData.healthy) {
               statusText = t("healthy");
-              statusClass = "success";
-              panelDiv.classList.remove("off");
+              badgeClass = "badge-success";
+              cardDiv.classList.remove("disabled");
             } else {
               statusText = t("unhealthy");
-              statusClass = "error";
-              panelDiv.classList.remove("off");
+              badgeClass = "badge-error";
+              cardDiv.classList.remove("disabled");
             }
 
-            statusDiv.textContent = statusText;
-            if (statusClass === "success") {
-              statusDiv.style.backgroundColor = "var(--green)";
-            } else if (statusClass === "error") {
-              statusDiv.style.backgroundColor = "var(--red)";
-            } else if (statusClass === "off") {
-              statusDiv.style.backgroundColor = "var(--muted)";
-            } else {
-              statusDiv.style.backgroundColor = "var(--orange)";
-            }
+            statusBadge.textContent = statusText;
+            statusBadge.className = "badge " + badgeClass;
             messageDiv.textContent = messageText;
           });
 
-          // 更新服务状态
+          // Update stats
           el("statConfiguredValue").textContent = configuredCount + "/" + platformKeys.length;
           el("statEnabledValue").textContent = String(enabledCount);
-          el("statServiceValue").textContent = serviceStatus.running
-            ? t("serviceRunningShort")
-            : t("serviceIdleShort");
-          el("statServiceMeta").textContent = serviceStatus.running
-            ? t("serviceRunningMeta")
-            : t("serviceIdleMeta");
+          el("statServiceValue").textContent = serviceStatus.running ? t("serviceRunningShort") : t("serviceIdleShort");
+
+          return data;
         } catch (error) {
           console.error("Failed to update dashboard:", error);
         }
       }
-      function setActiveNav(target) {
+
+      // Navigation
+      function setActiveNav(targetId) {
         ["navOverviewBtn","navPlatformsBtn","navAiBtn","navServiceBtn"].forEach((id) => {
-          el(id)?.classList.toggle("active", id === target);
+          const btn = el(id);
+          if (btn) btn.classList.toggle("active", id === targetId);
         });
       }
-      function scrollToSection(id, navId) {
-        document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+      function scrollToSection(sectionId, navId) {
+        el(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
         setActiveNav(navId);
       }
-      function showDashboard() {
-        scrollToSection("dashboardSection", "navOverviewBtn");
-        updateDashboard();
+
+      // API request helper
+      async function request(path, options={}) {
+        const response = await fetch(path, {
+          headers: { "content-type": "application/json" },
+          ...options
+        });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || "Request failed");
+        return body;
       }
-      function showConfig() {
-        scrollToSection("configSection", "navPlatformsBtn");
+
+      // Fill form with data
+      const AI_FIELD_MAPPINGS = [
+        { id: "ai-aiCommand", key: "aiCommand" },
+        { id: "ai-claudeWorkDir", key: "claudeWorkDir" },
+        { id: "ai-claudeCliPath", key: "claudeCliPath" },
+        { id: "ai-claudeTimeoutMs", key: "claudeTimeoutMs" },
+        { id: "ai-claudeConfigPath", key: "claudeConfigPath" },
+        { id: "ai-claudeAuthToken", key: "claudeAuthToken" },
+        { id: "ai-claudeBaseUrl", key: "claudeBaseUrl" },
+        { id: "ai-claudeModel", key: "claudeModel" },
+        { id: "ai-claudeProxy", key: "claudeProxy" },
+        { id: "ai-codexCliPath", key: "codexCliPath" },
+        { id: "ai-codexTimeoutMs", key: "codexTimeoutMs" },
+        { id: "ai-codexProxy", key: "codexProxy" },
+        { id: "ai-cursorCliPath", key: "cursorCliPath" },
+        { id: "ai-cursorProxy", key: "cursorProxy" },
+        { id: "ai-codebuddyCliPath", key: "codebuddyCliPath" },
+        { id: "ai-codebuddyTimeoutMs", key: "codebuddyTimeoutMs" },
+        { id: "ai-hookPort", key: "hookPort" },
+        { id: "ai-logLevel", key: "logLevel" },
+      ];
+
+      function fill(data, meta) {
+        el("configPath").textContent = meta.configPath;
+        applyLanguage(meta);
+        platformDefinitions.forEach((platform) => fillPlatform(platform, data.platforms[platform.key]));
+
+        AI_FIELD_MAPPINGS.forEach(({ id, key }) => {
+          const value = data.ai[key];
+          if (key === "logLevel") {
+            setValue(id, value || "default");
+          } else {
+            setValue(id, value ?? "");
+          }
+        });
+
+        updateVisualState();
       }
+
+      // Refresh service status
+      async function refreshStatus() {
+        const data = await request("/api/service/status");
+        const serviceStateText = data.running ? t("bridgeRunning", { pid: data.pid }) : t("bridgeStopped");
+        const serviceState = el("serviceState");
+        if (serviceState) {
+          serviceState.textContent = serviceStateText;
+          serviceState.className = "badge " + (data.running ? "badge-success" : "badge-default");
+        }
+        return data;
+      }
+
+      // Boot function
+      async function boot() {
+        setBusy(true);
+        try {
+          applyLanguage();
+          const data = await request("/api/config");
+          fill(data.payload, data.meta);
+          // Initialize current AI tool panel from dropdown value
+          currentAiToolPanel = el("ai-aiCommand")?.value || "claude";
+          await refreshStatus();
+          setActiveNav("navOverviewBtn");
+          await updateDashboard();
+          clearMessage();
+        } catch (error) {
+          setMessage(error.message || String(error), "error");
+        } finally {
+          setBusy(false);
+        }
+
+        // Polling
+        setInterval(() => {
+          Promise.all([
+            refreshStatus().catch((err) => console.warn("[config-web] Failed to refresh status:", err)),
+            updateDashboard().catch((err) => console.warn("[config-web] Failed to update dashboard:", err)),
+          ]);
+        }, POLLING_INTERVAL);
+
+        // Event listeners for inputs
+        platformDefinitions.forEach((platform) => {
+          ["enabled", ...platform.fields].forEach((field) => {
+            const input = el(platform.key + "-" + field);
+            if (input) {
+              input.addEventListener("input", updateVisualState);
+              input.addEventListener("change", updateVisualState);
+            }
+          });
+        });
+
+        AI_FIELD_MAPPINGS.forEach(({ id }) => {
+          const input = el(id);
+          if (input) {
+            input.addEventListener("input", updateVisualState);
+            input.addEventListener("change", updateVisualState);
+          }
+        });
+
+        // AI tool switcher
+        document.querySelectorAll(".tab[data-tool]").forEach((tab) => {
+          tab.addEventListener("click", () => {
+            const tool = tab.getAttribute("data-tool");
+            if (tool) {
+              currentAiToolPanel = tool;
+              updateVisualState();
+            }
+          });
+        });
+
+        // Navigation
+        el("navOverviewBtn").onclick = () => scrollToSection("dashboardSection", "navOverviewBtn");
+        el("navPlatformsBtn").onclick = () => scrollToSection("configSection", "navPlatformsBtn");
+        el("navAiBtn").onclick = () => scrollToSection("aiSection", "navAiBtn");
+        el("navServiceBtn").onclick = () => scrollToSection("serviceSection", "navServiceBtn");
+
+        // Language toggle
+        el("langButton").onclick = () => {
+          currentLang = currentLang === "zh" ? "en" : "zh";
+          localStorage.setItem(STORAGE_KEY_LANG, currentLang);
+          applyLanguage();
+          updateVisualState();
+          refreshStatus().catch((err) => console.warn("[config-web] Failed to refresh status after language change:", err));
+        };
+
+        // Dark mode toggle
+        el("darkModeToggle").onclick = toggleDarkMode;
+        updateDarkMode(); // Initialize dark mode on load
+
+        // Service buttons
+        el("validateButton").onclick = validate;
+        el("saveButton").onclick = save;
+        el("startButton").onclick = startService;
+        el("stopButton").onclick = stopService;
+
+        // Platform test buttons
+        platformKeys.forEach((platform) => {
+          const testBtn = el("test-" + platform);
+          if (testBtn) {
+            testBtn.onclick = () => testPlatform(platform);
+          }
+        });
+
+      }
+
+      // Actions
+      async function validate() {
+        setBusy(true);
+        try {
+          await request("/api/config/validate", { method: "POST", body: JSON.stringify(payload()) });
+          setMessage(t("validationOk"), "success");
+        } catch (error) {
+          setMessage(error.message || String(error), "error");
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      async function save() {
+        setBusy(true);
+        try {
+          await request("/api/config/save?final=1", { method: "POST", body: JSON.stringify(payload()) });
+          setMessage(t("saveOk"), "success");
+        } catch (error) {
+          setMessage(error.message || String(error), "error");
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      async function startService() {
+        setBusy(true);
+        try {
+          await request("/api/config/save", { method: "POST", body: JSON.stringify(payload()) });
+          await request("/api/service/start", { method: "POST" });
+          await refreshStatus();
+          setMessage(t("startOk"), "success");
+        } catch (error) {
+          setMessage(error.message || String(error), "error");
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      async function stopService() {
+        setBusy(true);
+        try {
+          await request("/api/service/stop", { method: "POST" });
+          await refreshStatus();
+          setMessage(t("stopOk"), "success");
+        } catch (error) {
+          setMessage(error.message || String(error), "error");
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      // Platform test
+      async function testPlatform(platform) {
+        const resultDiv = el("test-" + platform + "-result");
+        const testBtn = el("test-" + platform);
+        if (!resultDiv || !testBtn) return;
+
+        const originalText = testBtn.textContent;
+        testBtn.textContent = t("testing");
+        testBtn.disabled = true;
+        resultDiv.textContent = "";
+        resultDiv.className = "";
+
+        try {
+          const platformDefinition = platformDefinitions.find((item) => item.key === platform);
+          if (!platformDefinition) throw new Error("Unknown platform");
+          const platformConfig = readPlatformConfig(platformDefinition);
+
+          const result = await request("/api/config/test", {
+            method: "POST",
+            body: JSON.stringify({ platform, config: platformConfig })
+          });
+
+          if (result.success) {
+            resultDiv.textContent = result.message || t("testSuccess");
+            resultDiv.className = "message message-success mt-4";
+          } else {
+            resultDiv.textContent = t("testFailed", { error: result.error || "Unknown error" });
+            resultDiv.className = "message message-error mt-4";
+          }
+        } catch (error) {
+          resultDiv.textContent = t("testFailed", { error: error.message || String(error) });
+          resultDiv.className = "message message-error mt-4";
+        } finally {
+          testBtn.textContent = originalText;
+          testBtn.disabled = false;
+        }
+      }
+
+      // Payload builder
       const payload = () => ({
         platforms: Object.fromEntries(platformDefinitions.map((platform) => [
           platform.key,
@@ -293,134 +657,25 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           aiCommand: getValue("ai-aiCommand"),
           claudeCliPath: getValue("ai-claudeCliPath"),
           claudeWorkDir: getValue("ai-claudeWorkDir"),
-          claudeSkipPermissions: getChecked("ai-claudeSkipPermissions"),
+          claudeSkipPermissions: true,
           claudeTimeoutMs: getNumber("ai-claudeTimeoutMs"),
+          claudeConfigPath: getValue("ai-claudeConfigPath"),
+          claudeAuthToken: getValue("ai-claudeAuthToken"),
+          claudeBaseUrl: getValue("ai-claudeBaseUrl"),
+          claudeModel: getValue("ai-claudeModel"),
+          claudeProxy: getValue("ai-claudeProxy"),
           codexTimeoutMs: getNumber("ai-codexTimeoutMs"),
           codebuddyTimeoutMs: getNumber("ai-codebuddyTimeoutMs"),
-          claudeModel: getValue("ai-claudeModel"),
-          cursorCliPath: getValue("ai-cursorCliPath"),
           codexCliPath: getValue("ai-codexCliPath"),
-          codebuddyCliPath: getValue("ai-codebuddyCliPath"),
           codexProxy: getValue("ai-codexProxy"),
+          cursorCliPath: getValue("ai-cursorCliPath"),
+          cursorProxy: getValue("ai-cursorProxy"),
+          codebuddyCliPath: getValue("ai-codebuddyCliPath"),
           hookPort: getNumber("ai-hookPort"),
           logLevel: getValue("ai-logLevel"),
-          useSdkMode: getChecked("ai-useSdkMode"),
+          useSdkMode: true,
         },
       });
-      async function request(path, options={}) { const response = await fetch(path, { headers: { "content-type": "application/json" }, ...options }); const body = await response.json(); if (!response.ok) throw new Error(body.error || "Request failed"); return body; }
-      function fill(data, meta) {
-        el("configPath").textContent = meta.configPath;
-        applyLanguage(meta);
-        platformDefinitions.forEach((platform) => fillPlatform(platform, data.platforms[platform.key]));
-        setValue("ai-aiCommand", data.ai.aiCommand);
-        setValue("ai-claudeCliPath", data.ai.claudeCliPath);
-        setValue("ai-claudeWorkDir", data.ai.claudeWorkDir);
-        setChecked("ai-claudeSkipPermissions", data.ai.claudeSkipPermissions);
-        setValue("ai-claudeTimeoutMs", String(data.ai.claudeTimeoutMs));
-        setValue("ai-codexTimeoutMs", String(data.ai.codexTimeoutMs));
-        setValue("ai-codebuddyTimeoutMs", String(data.ai.codebuddyTimeoutMs));
-        setValue("ai-claudeModel", data.ai.claudeModel);
-        setValue("ai-cursorCliPath", data.ai.cursorCliPath);
-        setValue("ai-codexCliPath", data.ai.codexCliPath);
-        setValue("ai-codebuddyCliPath", data.ai.codebuddyCliPath);
-        setValue("ai-codexProxy", data.ai.codexProxy);
-        setValue("ai-hookPort", String(data.ai.hookPort));
-        setValue("ai-logLevel", data.ai.logLevel || "default");
-        setChecked("ai-useSdkMode", data.ai.useSdkMode);
-        updateVisualState();
-      }
-      async function refreshStatus() { const data = await request("/api/service/status"); el("serviceState").textContent = data.running ? t("bridgeRunning", { pid: data.pid }) : t("bridgeStopped"); el("statusMeta").textContent = data.running ? t("bridgeActive") : t("bridgeInactive"); }
-      async function boot() {
-        setBusy(true);
-        try {
-          applyLanguage();
-          const data = await request("/api/config");
-          fill(data.payload, data.meta);
-          await refreshStatus();
-          setActiveNav("navOverviewBtn");
-          await updateDashboard();
-          setMessage(t("ready"), "success");
-        } catch (error) {
-          setMessage(error.message || String(error), "error");
-        } finally {
-          setBusy(false);
-        }
-        setInterval(() => {
-          refreshStatus().catch((err) => console.warn("[config-web] Failed to refresh status:", err));
-          updateDashboard().catch((err) => console.warn("[config-web] Failed to update dashboard:", err));
-        }, 10000);
-        ids.forEach((id) => {
-          const node = el(id);
-          if (node) {
-            node.addEventListener("input", updateVisualState);
-            node.addEventListener("change", updateVisualState);
-          }
-        });
-        document.querySelectorAll("[data-tool]").forEach((button) => {
-          button.addEventListener("click", () => {
-            const tool = button.getAttribute("data-tool");
-            if (!tool) return;
-            setValue("ai-aiCommand", tool);
-            updateVisualState();
-          });
-        });
-      }
-      async function validate() { setBusy(true); try { await request("/api/config/validate", { method: "POST", body: JSON.stringify(payload()) }); setMessage(t("validationOk"), "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
-      async function save() { setBusy(true); try { await request("/api/config/save?final=1", { method: "POST", body: JSON.stringify(payload()) }); setMessage(t("saveOk"), "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
-      async function startService() { setBusy(true); try { await request("/api/config/save", { method: "POST", body: JSON.stringify(payload()) }); await request("/api/service/start", { method: "POST" }); await refreshStatus(); setMessage(t("startOk"), "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
-      async function stopService() { setBusy(true); try { await request("/api/service/stop", { method: "POST" }); await refreshStatus(); setMessage(t("stopOk"), "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
-      async function testPlatform(platform) {
-        const resultDiv = el("test-" + platform + "-result");
-        const testBtn = el("test-" + platform);
-        if (!resultDiv || !testBtn) return;
 
-        const originalText = testBtn.textContent;
-        testBtn.textContent = t("testing");
-        testBtn.disabled = true;
-        resultDiv.textContent = "";
-        resultDiv.className = "message";
-
-        try {
-          const platformDefinition = platformDefinitions.find((item) => item.key === platform);
-          if (!platformDefinition) {
-            throw new Error("Unknown platform");
-          }
-          const platformConfig = readPlatformConfig(platformDefinition);
-
-          const result = await request("/api/config/test", {
-            method: "POST",
-            body: JSON.stringify({ platform, config: platformConfig })
-          });
-
-          if (result.success) {
-            resultDiv.textContent = result.message || t("testSuccess");
-            resultDiv.className = "message success";
-          } else {
-            resultDiv.textContent = t("testFailed", { error: result.error || "Unknown error" });
-            resultDiv.className = "message error";
-          }
-        } catch (error) {
-          resultDiv.textContent = t("testFailed", { error: error.message || String(error) });
-          resultDiv.className = "message error";
-        } finally {
-          testBtn.textContent = originalText;
-          testBtn.disabled = false;
-        }
-      }
-      el("langButton").onclick = () => { currentLang = currentLang === "zh" ? "en" : "zh"; localStorage.setItem(storageKey, currentLang); applyLanguage(); updateVisualState(); refreshStatus().catch((err) => console.warn("[config-web] Failed to refresh status after language change:", err)); };
-      el("validateButton").onclick = validate; el("saveButton").onclick = save; el("startButton").onclick = startService; el("stopButton").onclick = stopService;
-      platformKeys.forEach((platform) => {
-        const testBtn = el("test-" + platform);
-        if (testBtn) {
-          testBtn.onclick = () => testPlatform(platform);
-        }
-      });
-      el("refreshHealth").onclick = () => { updateDashboard(); };
-      el("dashboardToPlatforms").onclick = () => { showConfig(); };
-      el("dashboardToService").onclick = () => { scrollToSection("serviceSection", "navServiceBtn"); };
-      el("navOverviewBtn").onclick = () => showDashboard();
-      el("navPlatformsBtn").onclick = () => showConfig();
-      el("navAiBtn").onclick = () => scrollToSection("aiSection", "navAiBtn");
-      el("navServiceBtn").onclick = () => scrollToSection("serviceSection", "navServiceBtn");
       boot();
 `;

@@ -14,27 +14,31 @@ describe("config web page assembly", () => {
   });
 
   it("keeps every script-managed text target present in the HTML template", () => {
-    const textTargetIds = collectMatches(PAGE_SCRIPT, /setText\("([^"]+)"/g);
+    // Check for the new data-driven LANGUAGE_UPDATES pattern
+    const simpleTextIds = collectMatches(PAGE_SCRIPT, /\{ id: "([^"]+)", (?:value:|key:)/g);
+    const aiLabelIds = collectMatches(PAGE_SCRIPT, /\{ id: "ai-[^"]+", key: "[^"]+" \}/g);
+    const allIds = [...simpleTextIds, ...aiLabelIds.map((id) => id.replace(/\{ id: "/, '').replace(/", key: "[^"]+" \}/, ''))];
 
-    expect(textTargetIds.length).toBeGreaterThan(0);
-    for (const id of textTargetIds) {
+    expect(allIds.length).toBeGreaterThan(0);
+    for (const id of allIds) {
       expect(PAGE_HTML).toContain(`id="${id}"`);
     }
   });
 
   it("keeps every script-managed help block present in the HTML template", () => {
-    const helpTargetIds = collectMatches(PAGE_SCRIPT, /el\("([^"]+-help)"\)\.innerHTML/g);
+    // Check for the new data-driven platformHelp pattern
+    const helpTargets = collectMatches(PAGE_SCRIPT, /\{ platform: "([^"]+)", key: "[^"]+Help" \}/g);
 
-    expect(helpTargetIds).toEqual([
-      "telegram-help",
-      "feishu-help",
-      "qq-help",
-      "wework-help",
-      "dingtalk-help",
+    expect(helpTargets).toEqual([
+      "telegram",
+      "feishu",
+      "qq",
+      "wework",
+      "dingtalk",
     ]);
 
-    for (const id of helpTargetIds) {
-      expect(PAGE_HTML).toContain(`id="${id}"`);
+    for (const platform of helpTargets) {
+      expect(PAGE_HTML).toContain(`id="${platform}-help"`);
     }
   });
 

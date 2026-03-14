@@ -174,12 +174,14 @@ export interface FileToolClaude {
   skipPermissions?: boolean;
   timeoutMs?: number;
   model?: string;
+  proxy?: string;
 }
 
 export interface FileToolCursor {
   cliPath?: string;
   /** 是否跳过权限确认（默认 true，与 tools.claude 共用权限服务器） */
   skipPermissions?: boolean;
+  proxy?: string;
 }
 
 export interface FileToolCodex {
@@ -370,12 +372,12 @@ export function saveFileConfig(raw: FileConfig): void {
 }
 
 /** 获取用户主目录（兼容不同运行环境，如 launchd、systemd 等） */
-function getClaudeConfigHome(): string {
+export function getClaudeConfigHome(): string {
   return process.env.HOME || process.env.USERPROFILE || homedir();
 }
 
 /** 从 Claude Code 配置文件加载 env，支持多路径（与 Claude Code 共用） */
-function loadClaudeSettingsEnv(): Record<string, string> {
+export function loadClaudeSettingsEnv(): Record<string, string> {
   const home = getClaudeConfigHome();
   const paths = [
     join(home, '.claude', 'settings.json'),
@@ -399,6 +401,39 @@ function loadClaudeSettingsEnv(): Record<string, string> {
     }
   }
   return {};
+}
+
+/** 保存环境变量到 Claude Code 配置文件（~/.claude/settings.json） */
+export function saveClaudeSettingsEnv(env: Record<string, string>): void {
+  const home = getClaudeConfigHome();
+  const claudeSettingsPath = join(home, '.claude', 'settings.json');
+  const claudeDir = join(home, '.claude');
+
+  try {
+    // 确保 .claude 目录存在
+    if (!existsSync(claudeDir)) {
+      mkdirSync(claudeDir, { recursive: true });
+    }
+
+    // 读取现有配置
+    let existing: Record<string, unknown> = {};
+    if (existsSync(claudeSettingsPath)) {
+      try {
+        existing = JSON.parse(readFileSync(claudeSettingsPath, 'utf-8'));
+      } catch {
+        // 文件格式错误，从空对象开始
+      }
+    }
+
+    // 更新 env 字段
+    existing.env = { ...(existing.env as Record<string, unknown> | undefined), ...env };
+
+    // 写入文件
+    writeFileSync(claudeSettingsPath, JSON.stringify(existing, null, 2), 'utf-8');
+  } catch (error) {
+    console.error('[config] Failed to save Claude settings:', error);
+    throw new Error(`Failed to save Claude settings: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 /** 检查是否已配置 Claude API 凭证 */
