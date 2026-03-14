@@ -50,6 +50,14 @@ jobs:
 
       - run: npm ci
 
+      - name: Sync version from pushed tag
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Using version from tag: $VERSION"
+          npm pkg set version="$VERSION"
+
       - name: Bump version (manual trigger only)
         if: github.event_name == 'workflow_dispatch'
         shell: bash
