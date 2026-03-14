@@ -3,6 +3,8 @@
  */
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
+import { createInterface } from "node:readline/promises";
+import { stdin as input, stdout as output } from "node:process";
 
 const require = createRequire(import.meta.url);
 const { version: CURRENT_VERSION } = require("../package.json") as { version: string };
@@ -47,9 +49,24 @@ function runGlobalUpdate(): boolean {
   return result.status === 0;
 }
 
+async function confirmUpdate(latest: string): Promise<boolean> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    console.log(`\n📦 检测到新版本 v${latest}，可手动更新: npm install -g ${PKG_NAME}@latest`);
+    return false;
+  }
+
+  const rl = createInterface({ input, output });
+  try {
+    const answer = await rl.question(`\n📦 检测到新版本 v${latest}，是否现在更新？[Y/n] `);
+    return /^(|y|yes)$/i.test(answer.trim());
+  } finally {
+    rl.close();
+  }
+}
+
 /**
- * 检查更新，若有新版本则自动执行全局更新
- * @returns true 表示已更新并需要重启（调用方应退出），false 表示无需更新或更新失败
+ * 检查更新，若有新版本则询问用户是否执行全局更新
+ * @returns true 表示已更新，调用方应继续当前 start/restart 流程以拉起最新版本
  */
 export async function checkAndUpdate(): Promise<{ updated: boolean; latest?: string }> {
   const latest = await fetchLatestVersion();
@@ -57,15 +74,15 @@ export async function checkAndUpdate(): Promise<{ updated: boolean; latest?: str
     return { updated: false };
   }
 
+  const shouldUpdate = await confirmUpdate(latest);
+  if (!shouldUpdate) {
+    return { updated: false, latest };
+  }
+
   console.log(`\n📦 检测到新版本 v${latest}（当前 v${CURRENT_VERSION}），正在更新...`);
   const ok = runGlobalUpdate();
   if (ok) {
-    console.log(`\n✅ 已更新到 v${latest}，正在启动服务...\n`);
-    spawnSync("open-im", ["start"], {
-      stdio: "inherit",
-      shell: true,
-      windowsHide: false,
-    });
+    console.log(`\n✅ 已更新到 v${latest}，继续按最新版本启动服务...\n`);
     return { updated: true, latest };
   }
   console.log("\n⚠️ 自动更新失败，请手动执行: npm install -g @wu529778790/open-im@latest");

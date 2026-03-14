@@ -60,10 +60,7 @@ async function cmdStart(): Promise<void> {
     process.exit(1);
   }
 
-  const { updated } = await checkAndUpdate();
-  if (updated) {
-    process.exit(0);
-  }
+  await checkAndUpdate();
 
   const child = await startManagerProcess(process.cwd());
   console.log("\nopen-im started in the background.");
@@ -99,10 +96,7 @@ async function cmdRestart(): Promise<void> {
     process.exit(1);
   }
 
-  const { updated } = await checkAndUpdate();
-  if (updated) {
-    process.exit(0);
-  }
+  await checkAndUpdate();
 
   const child = await startManagerProcess(process.cwd());
   console.log("\nopen-im restarted in the background.");
