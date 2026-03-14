@@ -3,7 +3,7 @@
  */
 
 import { execFileSync, spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { createLogger } from '../logger.js';
@@ -12,6 +12,17 @@ const log = createLogger('CodexCli');
 const windowsCodexLaunchCache = new Map<string, { command: string; args: string[] } | null>();
 const MAX_TIMEOUT_MS = 2_147_483_647;
 const DEFAULT_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+const SUPPORTED_IMAGE_EXTENSIONS = new Set([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.bmp',
+  '.tif',
+  '.tiff',
+  '.avif',
+]);
 
 function getIdleTimeoutMs(totalTimeoutMs: number): number {
   const raw = process.env.CODEX_IDLE_TIMEOUT_MS;
@@ -69,8 +80,40 @@ function parseCodexEvent(line: string): Record<string, unknown> | null {
   }
 }
 
-function buildCodexArgs(
-  _prompt: string,
+function isSupportedImagePath(filePath: string): boolean {
+  const normalized = filePath.trim();
+  if (!normalized || !existsSync(normalized)) return false;
+  const lower = normalized.toLowerCase();
+  return Array.from(SUPPORTED_IMAGE_EXTENSIONS).some((ext) => lower.endsWith(ext));
+}
+
+export function extractPromptImagePaths(prompt: string): string[] {
+  const imagePaths = new Set<string>();
+  const lines = prompt.split(/\r?\n/);
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    const singleMatch = /^Saved local file path:\s*(.+)$/i.exec(line);
+    if (singleMatch) {
+      const candidate = singleMatch[1].trim();
+      if (isSupportedImagePath(candidate)) imagePaths.add(candidate);
+      continue;
+    }
+
+    const batchMatch = /^\d+\.\s+(?:.+:\s+)?(.+?)\s+\((image)\)$/i.exec(line);
+    if (batchMatch) {
+      const candidate = batchMatch[1].trim();
+      if (isSupportedImagePath(candidate)) imagePaths.add(candidate);
+    }
+  }
+
+  return Array.from(imagePaths);
+}
+
+export function buildCodexArgs(
+  prompt: string,
   sessionId: string | undefined,
   workDir: string,
   options?: CodexRunOptions,
@@ -79,6 +122,7 @@ function buildCodexArgs(
   const newSessionOptions = [...commonOptions, '--cd', workDir];
   const resumeOptions = [...commonOptions];
   const canResume = Boolean(sessionId) && options?.permissionMode !== 'plan';
+  const imagePaths = extractPromptImagePaths(prompt);
 
   if (options?.skipPermissions) {
     newSessionOptions.push('--dangerously-bypass-approvals-and-sandbox');
@@ -93,6 +137,11 @@ function buildCodexArgs(
   if (options?.model) {
     newSessionOptions.push('--model', options.model);
     resumeOptions.push('--model', options.model);
+  }
+
+  for (const imagePath of imagePaths) {
+    newSessionOptions.push('--image', imagePath);
+    resumeOptions.push('--image', imagePath);
   }
 
   if (sessionId && !canResume) {

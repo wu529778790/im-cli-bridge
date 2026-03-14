@@ -16,7 +16,7 @@ import {
   sendModeCard,
   sendDirectorySelection,
 } from './message-sender.js';
-import { ackMessage, registerSessionWebhook } from './client.js';
+import { ackMessage, downloadRobotMessageFile, registerSessionWebhook } from './client.js';
 import { registerPermissionSender } from '../hook/permission-server.js';
 import { CommandHandler } from '../commands/handler.js';
 import { getAdapter } from '../adapters/registry.js';
@@ -31,7 +31,12 @@ import { buildUnsupportedInboundMessage } from '../channels/capabilities.js';
 import { buildMediaMetadataPrompt } from '../shared/media-prompt.js';
 import { buildSavedMediaPrompt } from '../shared/media-analysis-prompt.js';
 import { buildMediaContext } from '../shared/media-context.js';
-import { downloadMediaFromUrl } from '../shared/media-storage.js';
+import {
+  downloadMediaFromUrl,
+  inferExtensionFromBuffer,
+  inferExtensionFromContentType,
+  saveBufferMedia,
+} from '../shared/media-storage.js';
 
 const log = createLogger('DingTalkHandler');
 const DINGTALK_THROTTLE_MS = 1000;
@@ -102,7 +107,11 @@ function buildDingTalkMediaContext(text: string | undefined, payload: Record<str
   }, text);
 }
 
-async function buildMediaPrompt(message: DingTalkRobotPayload, kind: DingTalkInboundKind): Promise<string | null> {
+async function buildMediaPrompt(
+  message: DingTalkRobotPayload,
+  kind: DingTalkInboundKind,
+  robotCodeFallback?: string,
+): Promise<string | null> {
   const payload = extractMediaPayload(message, kind);
   if (!payload) return null;
   const text = typeof message.text?.content === 'string' ? message.text.content.trim() : undefined;
@@ -114,6 +123,12 @@ async function buildMediaPrompt(message: DingTalkRobotPayload, kind: DingTalkInb
     payload.download_url,
     payload.picUrl,
   ].find((value): value is string => typeof value === 'string' && value.length > 0);
+  const downloadCode = [
+    payload.downloadCode,
+    payload.download_code,
+    payload.pictureDownloadCode,
+    payload.picture_download_code,
+  ].find((value): value is string => typeof value === 'string' && value.length > 0);
   let localPath: string | undefined;
   if (remoteUrl) {
     try {
@@ -121,6 +136,28 @@ async function buildMediaPrompt(message: DingTalkRobotPayload, kind: DingTalkInb
         basenameHint: typeof payload.fileName === 'string' ? payload.fileName : undefined,
         fallbackExtension: kind === 'image' ? 'jpg' : 'bin',
       });
+    } catch {
+      localPath = undefined;
+    }
+  }
+
+  if (!localPath && downloadCode) {
+    try {
+      const robotCode =
+        (typeof message.robotCode === 'string' && message.robotCode.length > 0
+          ? message.robotCode
+          : robotCodeFallback) ?? '';
+      if (robotCode) {
+        const downloaded = await downloadRobotMessageFile(downloadCode, robotCode);
+        const extension =
+          inferExtensionFromContentType(downloaded.contentType ?? '') ||
+          inferExtensionFromBuffer(downloaded.buffer) ||
+          (kind === 'image' ? '.jpg' : '.bin');
+        const basenameHint =
+          downloaded.filename ??
+          (typeof payload.fileName === 'string' ? payload.fileName : undefined);
+        localPath = await saveBufferMedia(downloaded.buffer, extension, basenameHint);
+      }
     } catch {
       localPath = undefined;
     }
@@ -292,7 +329,7 @@ export function setupDingTalkHandlers(
 
     if (message.msgtype !== 'text') {
       const kind = toInboundKind(message.msgtype);
-      const prompt = await buildMediaPrompt(message, kind);
+      const prompt = await buildMediaPrompt(message, kind, config.dingtalkClientId);
       if (!prompt) {
         await sendTextReply(chatId, buildUnsupportedInboundMessage('dingtalk', kind));
         ackMessage(callbackId, { ignored: message.msgtype });
