@@ -1,10 +1,11 @@
 import { startWebConfigServer } from "./config-web.js";
 import { removeManagerPid, removeManagerReady, writeManagerReady } from "./manager-control.js";
-import { startBackgroundService, stopBackgroundService } from "./service-control.js";
+import { startBackgroundService, stopBackgroundService, waitForBackgroundServiceReady } from "./service-control.js";
 
 async function main(): Promise<void> {
   const web = await startWebConfigServer({ mode: "start", cwd: process.cwd(), persistent: true });
   startBackgroundService(process.cwd());
+  await waitForBackgroundServiceReady();
   writeManagerReady();
 
   const shutdown = async () => {

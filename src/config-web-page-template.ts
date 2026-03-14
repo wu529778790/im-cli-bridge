@@ -159,6 +159,7 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
             <article class="panel" id="telegram-panel">
               <div class="panel-head"><h3>Telegram</h3><label class="toggle"><input id="telegram-enabled" type="checkbox" /> <span id="telegram-enabled-label">Enabled</span></label></div>
               <div class="summary" id="telegram-help" style="margin-bottom:12px;color:var(--muted);font-size:0.9em;">Get credentials: visit <a href="https://t.me/BotFather" target="_blank" style="color:var(--green);text-decoration:underline;">@BotFather</a>, send /newbot, then copy the Bot Token</div>
+              <label><span id="telegram-aiCommand-label">AI tool override</span><select id="telegram-aiCommand"><option value="">Use default AI tool</option><option value="claude">claude</option><option value="codex">codex</option><option value="cursor">cursor</option></select></label>
               <label><span id="telegram-botToken-label">Bot token</span><input id="telegram-botToken" type="password" autocomplete="off" placeholder="123456:ABC..." /></label>
               <label><span id="telegram-proxy-label">Proxy</span><input id="telegram-proxy" placeholder="http://127.0.0.1:7890" /></label>
               <label><span id="telegram-allowedUserIds-label">Allowed user IDs</span><textarea id="telegram-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
@@ -167,6 +168,7 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
             <article class="panel" id="feishu-panel">
               <div class="panel-head"><h3>Feishu</h3><label class="toggle"><input id="feishu-enabled" type="checkbox" /> <span id="feishu-enabled-label">Enabled</span></label></div>
               <div class="summary" id="feishu-help" style="margin-bottom:12px;color:var(--muted);font-size:0.9em;">Get credentials: visit <a href="https://open.feishu.cn/" target="_blank" style="color:var(--green);text-decoration:underline;">Feishu Open Platform</a>, create an app, enable the bot, and copy the App ID / App Secret</div>
+              <label><span id="feishu-aiCommand-label">AI tool override</span><select id="feishu-aiCommand"><option value="">Use default AI tool</option><option value="claude">claude</option><option value="codex">codex</option><option value="cursor">cursor</option></select></label>
               <label><span id="feishu-appId-label">App ID</span><input id="feishu-appId" /></label>
               <label><span id="feishu-appSecret-label">App Secret</span><input id="feishu-appSecret" type="password" autocomplete="off" /></label>
               <label><span id="feishu-allowedUserIds-label">Allowed user IDs</span><textarea id="feishu-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
@@ -175,6 +177,7 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
             <article class="panel" id="qq-panel">
               <div class="panel-head"><h3>QQ</h3><label class="toggle"><input id="qq-enabled" type="checkbox" /> <span id="qq-enabled-label">Enabled</span></label></div>
               <div class="summary" id="qq-help" style="margin-bottom:12px;color:var(--muted);font-size:0.9em;">Get credentials: visit <a href="https://bot.q.qq.com" target="_blank" style="color:var(--green);text-decoration:underline;">QQ Open Platform</a>, create a bot, and copy the App ID / App Secret</div>
+              <label><span id="qq-aiCommand-label">AI tool override</span><select id="qq-aiCommand"><option value="">Use default AI tool</option><option value="claude">claude</option><option value="codex">codex</option><option value="cursor">cursor</option></select></label>
               <label><span id="qq-appId-label">App ID</span><input id="qq-appId" /></label>
               <label><span id="qq-secret-label">App Secret</span><input id="qq-secret" type="password" autocomplete="off" /></label>
               <label><span id="qq-allowedUserIds-label">Allowed user IDs</span><textarea id="qq-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
@@ -183,6 +186,7 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
             <article class="panel" id="wework-panel">
               <div class="panel-head"><h3>WeWork</h3><label class="toggle"><input id="wework-enabled" type="checkbox" /> <span id="wework-enabled-label">Enabled</span></label></div>
               <div class="summary" id="wework-help" style="margin-bottom:12px;color:var(--muted);font-size:0.9em;">Get credentials: visit <a href="https://work.weixin.qq.com/" target="_blank" style="color:var(--green);text-decoration:underline;">WeWork Admin Console</a>, create an app, and copy the Bot ID (Corp ID) / Secret</div>
+              <label><span id="wework-aiCommand-label">AI tool override</span><select id="wework-aiCommand"><option value="">Use default AI tool</option><option value="claude">claude</option><option value="codex">codex</option><option value="cursor">cursor</option></select></label>
               <label><span id="wework-corpId-label">Corp ID / Bot ID</span><input id="wework-corpId" /></label>
               <label><span id="wework-secret-label">Secret</span><input id="wework-secret" type="password" autocomplete="off" /></label>
               <label><span id="wework-allowedUserIds-label">Allowed user IDs</span><textarea id="wework-allowedUserIds" placeholder="Comma-separated IDs"></textarea></label>
@@ -191,6 +195,7 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
             <article class="panel" id="dingtalk-panel">
               <div class="panel-head"><h3>DingTalk</h3><label class="toggle"><input id="dingtalk-enabled" type="checkbox" /> <span id="dingtalk-enabled-label">Enabled</span></label></div>
               <div class="summary" id="dingtalk-help" style="margin-bottom:12px;color:var(--muted);font-size:0.9em;">Get credentials: create an enterprise internal app on DingTalk Open Platform, enable Stream Mode, and copy the Client ID / Client Secret</div>
+              <label><span id="dingtalk-aiCommand-label">AI tool override</span><select id="dingtalk-aiCommand"><option value="">Use default AI tool</option><option value="claude">claude</option><option value="codex">codex</option><option value="cursor">cursor</option></select></label>
               <label><span id="dingtalk-clientId-label">Client ID / AppKey</span><input id="dingtalk-clientId" /></label>
               <label><span id="dingtalk-clientSecret-label">Client Secret / AppSecret</span><input id="dingtalk-clientSecret" type="password" autocomplete="off" /></label>
               <label><span id="dingtalk-cardTemplateId-label">Card template ID</span><input id="dingtalk-cardTemplateId" placeholder="Optional" /></label>

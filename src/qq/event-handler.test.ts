@@ -56,6 +56,13 @@ describe("QQ event handler", () => {
       aiCommand: "codex",
       qqAllowedUserIds: ["user-1"],
       defaultPermissionMode: "ask",
+      platforms: {
+        qq: {
+          enabled: true,
+          aiCommand: "codex",
+          allowedUserIds: ["user-1"],
+        },
+      },
     } as never;
 
     const sessionManager = {

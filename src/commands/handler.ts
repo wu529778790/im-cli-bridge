@@ -1,4 +1,4 @@
-import type { Config } from '../config.js';
+import { resolvePlatformAiCommand, type Config } from '../config.js';
 import type { SessionManager } from '../session/session-manager.js';
 import type { RequestQueue } from '../queue/request-queue.js';
 import { resolveLatestPermission, getPendingCount } from '../hook/permission-server.js';
@@ -59,7 +59,7 @@ export class CommandHandler {
     if (t === '/mode' || t.startsWith('/mode ')) return this.handleMode(chatId, userId, platform, t.slice(6).trim());
     if (t === '/new') return this.handleNew(chatId, userId, platform);
     if (t === '/pwd') return this.handlePwd(chatId, userId);
-    if (t === '/status') return this.handleStatus(chatId, userId);
+    if (t === '/status') return this.handleStatus(chatId, userId, platform);
     if (t === '/allow' || t === '/y') return this.handleAllow(chatId);
     if (t === '/deny' || t === '/n') return this.handleDeny(chatId);
 
@@ -168,15 +168,16 @@ export class CommandHandler {
     return true;
   }
 
-  private async handleStatus(chatId: string, userId: string): Promise<boolean> {
-    const version = await this.getAiVersion();
+  private async handleStatus(chatId: string, userId: string, platform: 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework'): Promise<boolean> {
+    const aiCommand = resolvePlatformAiCommand(this.deps.config, platform);
+    const version = await this.getAiVersion(aiCommand);
     const workDir = this.deps.sessionManager.getWorkDir(userId);
     const convId = this.deps.sessionManager.getConvId(userId);
-    const sessionId = this.deps.sessionManager.getSessionIdForConv(userId, convId, this.deps.config.aiCommand);
+    const sessionId = this.deps.sessionManager.getSessionIdForConv(userId, convId, aiCommand);
     const lines = [
       '📊 状态:',
       '',
-      `AI 工具: ${this.deps.config.aiCommand}`,
+      `AI 工具: ${aiCommand}`,
       `版本: ${version}`,
       `工作目录: ${escapePathForMarkdown(workDir)}`,
       `会话: ${sessionId ?? '无'}`,
@@ -234,10 +235,10 @@ export class CommandHandler {
     return true;
   }
 
-  private getAiVersion(): Promise<string> {
-    const cmd = this.deps.config.aiCommand === 'cursor'
+  private getAiVersion(aiCommand: 'claude' | 'codex' | 'cursor'): Promise<string> {
+    const cmd = aiCommand === 'cursor'
       ? this.deps.config.cursorCliPath
-      : this.deps.config.aiCommand === 'codex'
+      : aiCommand === 'codex'
         ? this.deps.config.codexCliPath
         : this.deps.config.claudeCliPath;
     return new Promise((resolve) => {

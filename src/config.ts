@@ -14,6 +14,7 @@ import { APP_HOME } from './constants.js';
 export type Platform = 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework';
 
 export type AiCommand = 'claude' | 'codex' | 'cursor';
+const AI_COMMANDS: readonly AiCommand[] = ['claude', 'codex', 'cursor'];
 
 export interface Config {
   enabledPlatforms: Platform[];
@@ -70,19 +71,23 @@ export interface Config {
   platforms: {
     telegram?: {
       enabled: boolean;
+      aiCommand?: AiCommand;
       proxy?: string; // HTTP/HTTPS/SOCKS 代理地址，例如: http://127.0.0.1:7890 或 socks5://127.0.0.1:1080
       allowedUserIds: string[];
     };
     feishu?: {
       enabled: boolean;
+      aiCommand?: AiCommand;
       allowedUserIds: string[];
     };
     qq?: {
       enabled: boolean;
+      aiCommand?: AiCommand;
       allowedUserIds: string[];
     };
     wechat?: {
       enabled: boolean;
+      aiCommand?: AiCommand;
       wsUrl?: string;
       token?: string;
       jwtToken?: string;
@@ -93,10 +98,12 @@ export interface Config {
     };
     wework?: {
       enabled: boolean;
+      aiCommand?: AiCommand;
       allowedUserIds: string[];
     };
     dingtalk?: {
       enabled: boolean;
+      aiCommand?: AiCommand;
       allowedUserIds: string[];
       cardTemplateId?: string;
     };
@@ -106,6 +113,7 @@ export interface Config {
 export interface FilePlatformTelegram {
   enabled?: boolean;
   botToken?: string;
+  aiCommand?: AiCommand;
   allowedUserIds?: string[];
   proxy?: string;
 }
@@ -114,6 +122,7 @@ export interface FilePlatformFeishu {
   enabled?: boolean;
   appId?: string;
   appSecret?: string;
+  aiCommand?: AiCommand;
   allowedUserIds?: string[];
 }
 
@@ -121,6 +130,7 @@ interface FilePlatformQQ {
   enabled?: boolean;
   appId?: string;
   secret?: string;
+  aiCommand?: AiCommand;
   allowedUserIds?: string[];
 }
 
@@ -128,6 +138,7 @@ interface FilePlatformWechat {
   enabled?: boolean;
   appId?: string;
   appSecret?: string;
+  aiCommand?: AiCommand;
   token?: string;      // AGP 协议 token
   jwtToken?: string;   // JWT Token，用于刷新 channel_token
   loginKey?: string;   // 4026 登录返回的 loginKey
@@ -141,6 +152,7 @@ export interface FilePlatformWework {
   enabled?: boolean;
   corpId?: string;  // Bot ID
   secret?: string;
+  aiCommand?: AiCommand;
   wsUrl?: string;
   allowedUserIds?: string[];
 }
@@ -149,6 +161,7 @@ export interface FilePlatformDingtalk {
   enabled?: boolean;
   clientId?: string;
   clientSecret?: string;
+  aiCommand?: AiCommand;
   allowedUserIds?: string[];
   cardTemplateId?: string;
 }
@@ -222,6 +235,12 @@ function hasOldConfigFormat(raw: Record<string, unknown>): boolean {
   const hasOld = OLD_ROOT_KEYS.some((k) => raw[k] !== undefined && raw[k] !== null);
   const hasNew = raw.tools && typeof raw.tools === 'object' && (raw.tools as Record<string, unknown>).claude;
   return !!hasOld && !hasNew;
+}
+
+function normalizeAiCommand(value: unknown, fallback: AiCommand): AiCommand {
+  return typeof value === 'string' && AI_COMMANDS.includes(value as AiCommand)
+    ? (value as AiCommand)
+    : fallback;
 }
 
 function hasCodexAuth(): boolean {
@@ -570,7 +589,7 @@ export function loadConfig(): Config {
       : fileDingtalk?.allowedUserIds ?? allowedUserIds;
 
   // 5. AI / 工作目录 / 安全配置（从 tools 读取）
-  const aiCommand = (process.env.AI_COMMAND ?? file.aiCommand ?? 'claude') as AiCommand;
+  const aiCommand = normalizeAiCommand(process.env.AI_COMMAND ?? file.aiCommand, 'claude');
   const tc = file.tools?.claude ?? {};
   const tcur = file.tools?.cursor ?? {};
   const tcod = file.tools?.codex ?? {};
@@ -806,35 +825,42 @@ export function loadConfig(): Config {
     telegram: telegramEnabled
       ? {
           enabled: true,
+          aiCommand: normalizeAiCommand(file.platforms?.telegram?.aiCommand, aiCommand),
           proxy: process.env.TELEGRAM_PROXY ?? file.platforms?.telegram?.proxy,
           allowedUserIds: telegramAllowedUserIds,
         }
       : {
           enabled: false,
+          aiCommand: normalizeAiCommand(file.platforms?.telegram?.aiCommand, aiCommand),
           proxy: process.env.TELEGRAM_PROXY ?? file.platforms?.telegram?.proxy,
           allowedUserIds: telegramAllowedUserIds,
         },
     feishu: feishuEnabled
       ? {
           enabled: true,
+          aiCommand: normalizeAiCommand(file.platforms?.feishu?.aiCommand, aiCommand),
           allowedUserIds: feishuAllowedUserIds,
         }
       : {
           enabled: false,
+          aiCommand: normalizeAiCommand(file.platforms?.feishu?.aiCommand, aiCommand),
           allowedUserIds: feishuAllowedUserIds,
         },
     qq: qqEnabled
       ? {
           enabled: true,
+          aiCommand: normalizeAiCommand(file.platforms?.qq?.aiCommand, aiCommand),
           allowedUserIds: qqAllowedUserIds,
         }
       : {
           enabled: false,
+          aiCommand: normalizeAiCommand(file.platforms?.qq?.aiCommand, aiCommand),
           allowedUserIds: qqAllowedUserIds,
         },
     wechat: wechatEnabled
       ? {
           enabled: true,
+          aiCommand: normalizeAiCommand(file.platforms?.wechat?.aiCommand, aiCommand),
           wsUrl: wechatWsUrl,
           token: wechatToken,
           jwtToken: wechatJwtToken,
@@ -845,6 +871,7 @@ export function loadConfig(): Config {
         }
       : {
           enabled: false,
+          aiCommand: normalizeAiCommand(file.platforms?.wechat?.aiCommand, aiCommand),
           wsUrl: wechatWsUrl,
           token: wechatToken,
           jwtToken: wechatJwtToken,
@@ -856,20 +883,24 @@ export function loadConfig(): Config {
     wework: weworkEnabled
       ? {
           enabled: true,
+          aiCommand: normalizeAiCommand(file.platforms?.wework?.aiCommand, aiCommand),
           allowedUserIds: weworkAllowedUserIds,
         }
       : {
           enabled: false,
+          aiCommand: normalizeAiCommand(file.platforms?.wework?.aiCommand, aiCommand),
           allowedUserIds: weworkAllowedUserIds,
         },
     dingtalk: dingtalkEnabled
       ? {
           enabled: true,
+          aiCommand: normalizeAiCommand(file.platforms?.dingtalk?.aiCommand, aiCommand),
           allowedUserIds: dingtalkAllowedUserIds,
           cardTemplateId: dingtalkCardTemplateId,
         }
       : {
           enabled: false,
+          aiCommand: normalizeAiCommand(file.platforms?.dingtalk?.aiCommand, aiCommand),
           allowedUserIds: dingtalkAllowedUserIds,
           cardTemplateId: dingtalkCardTemplateId,
         },
@@ -935,4 +966,16 @@ export function getPlatformsWithCredentials(config: Config): Platform[] {
     (config.wechatAppId && config.wechatAppSecret);
   if (hasWechat) r.push('wechat');
   return r;
+}
+
+export function resolvePlatformAiCommand(config: Config, platform: Platform): AiCommand {
+  return config.platforms[platform]?.aiCommand ?? config.aiCommand;
+}
+
+export function getConfiguredAiCommands(config: Config): AiCommand[] {
+  const commands = new Set<AiCommand>([config.aiCommand]);
+  for (const platform of config.enabledPlatforms) {
+    commands.add(resolvePlatformAiCommand(config, platform));
+  }
+  return Array.from(commands);
 }

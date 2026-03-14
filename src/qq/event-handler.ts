@@ -1,4 +1,4 @@
-import type { Config } from "../config.js";
+import { resolvePlatformAiCommand, type Config } from "../config.js";
 import { AccessControl } from "../access/access-control.js";
 import type { SessionManager } from "../session/session-manager.js";
 import { RequestQueue } from "../queue/request-queue.js";
@@ -180,16 +180,17 @@ export function setupQQHandlers(
     _threadCtx?: ThreadContext,
     replyToMessageId?: string,
   ) {
-    const toolAdapter = getAdapter(config.aiCommand);
+    const aiCommand = resolvePlatformAiCommand(config, "qq");
+    const toolAdapter = getAdapter(aiCommand);
     if (!toolAdapter) {
-      await sendTextReply(chatId, `AI tool is not configured: ${config.aiCommand}`);
+      await sendTextReply(chatId, `AI tool is not configured: ${aiCommand}`);
       return;
     }
 
     const sessionId = convId
-      ? sessionManager.getSessionIdForConv(userId, convId, config.aiCommand)
+      ? sessionManager.getSessionIdForConv(userId, convId, aiCommand)
       : undefined;
-    const toolId = config.aiCommand;
+    const toolId = aiCommand;
     const msgId = await sendThinkingMessage(chatId, replyToMessageId, toolId);
     const stopTyping = startTypingLoop();
     const taskKey = `${userId}:${msgId}`;

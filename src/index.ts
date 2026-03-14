@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { writeFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { loadConfig, needsSetup } from "./config.js";
+import { getConfiguredAiCommands, loadConfig, needsSetup, resolvePlatformAiCommand } from "./config.js";
 import { runInteractiveSetup, runClaudeApiSetup } from "./setup.js";
 import { runWebConfigFlow } from "./config-web.js";
 
@@ -114,7 +114,6 @@ function buildStartupMessage(
   appVersion: string,
   aiCommand: string,
   defaultWorkDir: string,
-  successfulPlatforms: string[],
   sessionManager: SessionManager,
 ): string {
   let sessionDir: string | undefined;
@@ -127,13 +126,12 @@ function buildStartupMessage(
     }
   }
 
-  const platformList = successfulPlatforms.map((item) => `\`${item}\``).join("、");
   const lines = [
     `**服务已启动**`,
     "",
     `- 版本: \`open-im v${appVersion}\``,
-    `- AI 工具: \`${aiCommand}\``,
-    `- 成功启动平台: ${platformList}`,
+    `- 当前渠道: \`${platform}\``,
+    `- 当前渠道 CLI: \`${aiCommand}\``,
   ];
 
   if (sessionDir) {
@@ -198,7 +196,7 @@ export async function main() {
   log.info(`Permission server listening on port ${actualPort}`);
 
   log.info("Starting open-im bridge...");
-  log.info(`AI 工具: ${config.aiCommand}`);
+  log.info(`AI 工具: ${getConfiguredAiCommands(config).join(", ")}`);
   log.info(`默认会话目录: ${config.claudeWorkDir}`);
   log.info(`启用平台: ${config.enabledPlatforms.join(", ")}`);
 
@@ -206,9 +204,7 @@ export async function main() {
 
   // CLI 工具（Cursor/Codex）的 session 是进程级别的，服务重启后一定无效。
   // 启动时仅清除 CLI 工具自己的 sessionId，保留 Claude 的持久上下文。
-  if (config.aiCommand !== 'claude') {
-    sessionManager.clearAllCliSessionIds();
-  }
+  sessionManager.clearAllCliSessionIds();
 
   let telegramHandle: ReturnType<typeof setupTelegramHandlers> | null = null;
   let feishuHandle: ReturnType<typeof setupFeishuHandlers> | null = null;
@@ -294,9 +290,8 @@ export async function main() {
     const startupMsg = buildStartupMessage(
       platform,
       APP_VERSION,
-      config.aiCommand,
+      resolvePlatformAiCommand(config, platform as "telegram" | "feishu" | "qq" | "wechat" | "wework" | "dingtalk"),
       config.claudeWorkDir,
-      successfulPlatforms,
       sessionManager,
     );
     await sendLifecycleNotification(platform, startupMsg).catch((err) => {

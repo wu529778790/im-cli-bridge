@@ -1,6 +1,6 @@
 import type { Telegraf } from "telegraf";
 import { message } from "telegraf/filters";
-import type { Config } from "../config.js";
+import { resolvePlatformAiCommand, type Config } from "../config.js";
 import { AccessControl } from "../access/access-control.js";
 import type { SessionManager } from "../session/session-manager.js";
 import { RequestQueue } from "../queue/request-queue.js";
@@ -156,20 +156,21 @@ export function setupTelegramHandlers(
     const currentTurns = sessionManager.addTurns(userId, 1);
     log.info(`User request: total turns = ${currentTurns} for user ${userId}`);
 
-    const toolAdapter = getAdapter(config.aiCommand);
+    const aiCommand = resolvePlatformAiCommand(config, "telegram");
+    const toolAdapter = getAdapter(aiCommand);
     if (!toolAdapter) {
-      await sendTextReply(chatId, `未配置 AI 工具: ${config.aiCommand}`);
+      await sendTextReply(chatId, `未配置 AI 工具: ${aiCommand}`);
       return;
     }
 
     const sessionId = convId
-      ? sessionManager.getSessionIdForConv(userId, convId, config.aiCommand)
+      ? sessionManager.getSessionIdForConv(userId, convId, aiCommand)
       : undefined;
     log.info(
-      `Running ${config.aiCommand} for user ${userId}, sessionId=${sessionId ?? "new"}`,
+      `Running ${aiCommand} for user ${userId}, sessionId=${sessionId ?? "new"}`,
     );
 
-    const toolId = config.aiCommand;
+    const toolId = aiCommand;
     let msgId: string;
     try {
       msgId = await sendThinkingMessage(chatId, replyToMessageId, toolId);
@@ -384,7 +385,7 @@ export function setupTelegramHandlers(
           taskInfo.latestContent || "已停止",
           "error",
           "⏹️ 已停止",
-          config.aiCommand,
+          taskInfo.toolId,
         );
         await ctx.answerCbQuery("已停止执行");
       } else {

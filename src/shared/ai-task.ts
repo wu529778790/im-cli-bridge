@@ -57,6 +57,10 @@ export interface TaskRunState {
   toolId: string;
 }
 
+function isUsageLimitError(error: string): boolean {
+  return /usage limit/i.test(error) || /try again at\s+\d{1,2}:\d{2}\s*(AM|PM)/i.test(error);
+}
+
 function buildCompletionNote(
   result: ParsedResult,
   sessionManager: SessionManager,
@@ -98,6 +102,8 @@ export function runAITask(
     let firstContentLogged = false;
     let wasThinking = false;
     let thinkingText = '';
+    let currentSessionId = ctx.sessionId;
+    let activeHandle: { abort: () => void } | null = null;
     const toolLines: string[] = [];
     const minDelta = platformAdapter.minContentDeltaChars ?? 0;
 
@@ -147,7 +153,6 @@ export function runAITask(
     };
 
     const mode = getPermissionMode(ctx.userId, config.defaultPermissionMode);
-    process.env.CC_IM_CHAT_ID = ctx.chatId;
 
     let skipPermissions: boolean | undefined;
     let permissionMode: 'default' | 'acceptEdits' | 'plan' | undefined;
@@ -171,12 +176,14 @@ export function runAITask(
         ? config.codexTimeoutMs
         : config.claudeTimeoutMs;
 
-    const handle = toolAdapter.run(
-      prompt,
-      ctx.sessionId,
-      ctx.workDir,
-      {
+    const startRun = () => {
+      activeHandle = toolAdapter.run(
+        prompt,
+        currentSessionId,
+        ctx.workDir,
+        {
         onSessionId: (id) => {
+          currentSessionId = id;
           if (ctx.threadId) sessionManager.setSessionIdForThread(ctx.userId, ctx.threadId, config.aiCommand, id);
           else if (ctx.convId) sessionManager.setSessionIdForConv(ctx.userId, ctx.convId, config.aiCommand, id);
         },
@@ -249,16 +256,18 @@ export function runAITask(
         },
         onError: async (error) => {
           if (settled) return;
-          settled = true;
           if (pendingUpdate) {
             clearTimeout(pendingUpdate);
             pendingUpdate = null;
           }
+          settled = true;
           log.error(`Task error for user ${ctx.userId}: ${error}`);
-          if (config.aiCommand !== 'claude') {
+          if (config.aiCommand !== 'claude' && !isUsageLimitError(error)) {
             if (ctx.convId) sessionManager.clearSessionForConv(ctx.userId, ctx.convId, config.aiCommand);
             else sessionManager.clearActiveToolSession(ctx.userId, config.aiCommand);
             log.info(`Session reset for user ${ctx.userId} due to ${config.aiCommand} task error`);
+          } else if (config.aiCommand === 'codex' && isUsageLimitError(error)) {
+            log.info(`Keeping codex session for user ${ctx.userId} after usage limit error`);
           }
           try {
             await platformAdapter.sendError(error);
@@ -268,19 +277,34 @@ export function runAITask(
           cleanup();
           resolve();
         },
-      },
-      {
-        skipPermissions,
-        permissionMode,
-        timeoutMs,
-        model: sessionManager.getModel(ctx.userId, ctx.threadId) ?? config.claudeModel,
-        chatId: ctx.chatId,
-        ...(config.useSdkMode ? {} : { hookPort: config.hookPort }),
-        ...(config.aiCommand === 'codex' && config.codexProxy ? { proxy: config.codexProxy } : {}),
-      }
-    );
+        },
+        {
+          skipPermissions,
+          permissionMode,
+          timeoutMs,
+          model: sessionManager.getModel(ctx.userId, ctx.threadId) ?? config.claudeModel,
+          chatId: ctx.chatId,
+          ...(config.useSdkMode ? {} : { hookPort: config.hookPort }),
+          ...(config.aiCommand === 'codex' && config.codexProxy ? { proxy: config.codexProxy } : {}),
+        }
+      );
+      return activeHandle;
+    };
 
-    taskState = { handle, latestContent: '', settle, startedAt: Date.now(), toolId: config.aiCommand };
+    taskState = {
+      handle: {
+        abort: () => {
+          activeHandle?.abort();
+          cleanup();
+          settle();
+        },
+      },
+      latestContent: '',
+      settle,
+      startedAt: Date.now(),
+      toolId: config.aiCommand,
+    };
+    startRun();
     platformAdapter.onTaskReady(taskState);
   });
 }

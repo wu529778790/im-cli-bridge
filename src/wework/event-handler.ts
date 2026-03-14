@@ -2,7 +2,7 @@
  * WeWork Event Handler - Handle WeWork message events
  */
 
-import type { Config } from '../config.js';
+import { resolvePlatformAiCommand, type Config } from '../config.js';
 import { AccessControl } from '../access/access-control.js';
 import type { SessionManager } from '../session/session-manager.js';
 import { RequestQueue } from '../queue/request-queue.js';
@@ -259,19 +259,20 @@ export function setupWeWorkHandlers(
     if (reqId) setCurrentReqId(reqId);
 
     try {
-      const toolAdapter = getAdapter(config.aiCommand);
+      const aiCommand = resolvePlatformAiCommand(config, 'wework');
+      const toolAdapter = getAdapter(aiCommand);
       if (!toolAdapter) {
-        log.error(`[handleAIRequest] No adapter found for: ${config.aiCommand}`);
-        await sendTextReply(chatId, `AI tool is not configured: ${config.aiCommand}`, reqId);
+        log.error(`[handleAIRequest] No adapter found for: ${aiCommand}`);
+        await sendTextReply(chatId, `AI tool is not configured: ${aiCommand}`, reqId);
         return;
       }
 
       const sessionId = convId
-        ? sessionManager.getSessionIdForConv(userId, convId, config.aiCommand)
+        ? sessionManager.getSessionIdForConv(userId, convId, aiCommand)
         : undefined;
-      log.info(`[handleAIRequest] Running ${config.aiCommand} for user ${userId}, sessionId=${sessionId ?? 'new'}`);
+      log.info(`[handleAIRequest] Running ${aiCommand} for user ${userId}, sessionId=${sessionId ?? 'new'}`);
 
-      const toolId = config.aiCommand;
+      const toolId = aiCommand;
       const msgId = await sendThinkingMessage(chatId, replyToMessageId, toolId, reqId);
       const stopTyping = startTypingLoop(chatId);
       const taskKey = `${userId}:${msgId}`;
