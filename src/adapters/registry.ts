@@ -4,6 +4,7 @@ import { ClaudeAdapter } from './claude-adapter.js';
 import { ClaudeSDKAdapter } from './claude-sdk-adapter.js';
 import { CursorAdapter } from './cursor-adapter.js';
 import { CodexAdapter } from './codex-adapter.js';
+import { CodeBuddyAdapter } from './codebuddy-adapter.js';
 
 const adapters = new Map<string, ToolAdapter>();
 
@@ -12,10 +13,10 @@ export function initAdapters(config: Config): void {
   for (const aiCommand of getConfiguredAiCommands(config)) {
     if (aiCommand === 'claude') {
       if (config.useSdkMode) {
-        console.log('⚡ 启用 Claude Agent SDK 模式 - 进程内执行，响应更快');
+        console.log('Claude Agent SDK adapter enabled');
         adapters.set('claude', new ClaudeSDKAdapter());
       } else {
-        console.log('🚀 使用标准 Claude 适配器');
+        console.log('Claude CLI adapter enabled');
         adapters.set('claude', new ClaudeAdapter(config.claudeCliPath, {
           useProcessPool: true,
           idleTimeoutMs: 2 * 60 * 1000,
@@ -25,14 +26,20 @@ export function initAdapters(config: Config): void {
     }
 
     if (aiCommand === 'cursor') {
-      console.log('🖱️ 使用 Cursor Agent CLI 适配器');
+      console.log('Cursor CLI adapter enabled');
       adapters.set('cursor', new CursorAdapter(config.cursorCliPath));
       continue;
     }
 
     if (aiCommand === 'codex') {
-      console.log('📦 使用 Codex CLI 适配器');
+      console.log('Codex CLI adapter enabled');
       adapters.set('codex', new CodexAdapter(config.codexCliPath));
+      continue;
+    }
+
+    if (aiCommand === 'codebuddy') {
+      console.log('CodeBuddy CLI adapter enabled');
+      adapters.set('codebuddy', new CodeBuddyAdapter(config.codebuddyCliPath));
     }
   }
 }

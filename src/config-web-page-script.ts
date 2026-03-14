@@ -6,7 +6,7 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         { key: "dingtalk", label: "DingTalk", fields: ["aiCommand", "clientId", "clientSecret", "cardTemplateId", "allowedUserIds"], testFields: ["clientId", "clientSecret"] },
       ];
       const platformKeys = platformDefinitions.map((platform) => platform.key);
-      const ids = platformDefinitions.flatMap((platform) => ["enabled", ...platform.fields].map((field) => platform.key + "-" + field)).concat(["ai-aiCommand","ai-claudeCliPath","ai-claudeWorkDir","ai-claudeSkipPermissions","ai-claudeTimeoutMs","ai-codexTimeoutMs","ai-claudeModel","ai-cursorCliPath","ai-codexCliPath","ai-codexProxy","ai-hookPort","ai-logLevel","ai-useSdkMode"]);
+      const ids = platformDefinitions.flatMap((platform) => ["enabled", ...platform.fields].map((field) => platform.key + "-" + field)).concat(["ai-aiCommand","ai-claudeCliPath","ai-claudeWorkDir","ai-claudeSkipPermissions","ai-claudeTimeoutMs","ai-codexTimeoutMs","ai-codebuddyTimeoutMs","ai-claudeModel","ai-cursorCliPath","ai-codexCliPath","ai-codebuddyCliPath","ai-codexProxy","ai-hookPort","ai-logLevel","ai-useSdkMode"]);
       const el = (id) => document.getElementById(id);
       const storageKey = "open-im-web-lang";
       const texts = __PAGE_TEXTS__;
@@ -102,9 +102,11 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         setText("ai-claudeCliPath-label", t("claudeCli"));
         setText("ai-cursorCliPath-label", t("cursorCli"));
         setText("ai-codexCliPath-label", t("codexCli"));
+        setText("ai-codebuddyCliPath-label", t("codebuddyCli"));
         setText("ai-codexProxy-label", t("codexProxy"));
         setText("ai-claudeTimeoutMs-label", t("claudeTimeout"));
         setText("ai-codexTimeoutMs-label", t("codexTimeout"));
+        setText("ai-codebuddyTimeoutMs-label", t("codebuddyTimeout"));
         setText("ai-claudeModel-label", t("claudeModel"));
         setText("ai-hookPort-label", t("hookPort"));
         setText("ai-logLevel-label", t("logLevel"));
@@ -266,9 +268,11 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           claudeSkipPermissions: getChecked("ai-claudeSkipPermissions"),
           claudeTimeoutMs: getNumber("ai-claudeTimeoutMs"),
           codexTimeoutMs: getNumber("ai-codexTimeoutMs"),
+          codebuddyTimeoutMs: getNumber("ai-codebuddyTimeoutMs"),
           claudeModel: getValue("ai-claudeModel"),
           cursorCliPath: getValue("ai-cursorCliPath"),
           codexCliPath: getValue("ai-codexCliPath"),
+          codebuddyCliPath: getValue("ai-codebuddyCliPath"),
           codexProxy: getValue("ai-codexProxy"),
           hookPort: getNumber("ai-hookPort"),
           logLevel: getValue("ai-logLevel"),
@@ -286,9 +290,11 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         setChecked("ai-claudeSkipPermissions", data.ai.claudeSkipPermissions);
         setValue("ai-claudeTimeoutMs", String(data.ai.claudeTimeoutMs));
         setValue("ai-codexTimeoutMs", String(data.ai.codexTimeoutMs));
+        setValue("ai-codebuddyTimeoutMs", String(data.ai.codebuddyTimeoutMs));
         setValue("ai-claudeModel", data.ai.claudeModel);
         setValue("ai-cursorCliPath", data.ai.cursorCliPath);
         setValue("ai-codexCliPath", data.ai.codexCliPath);
+        setValue("ai-codebuddyCliPath", data.ai.codebuddyCliPath);
         setValue("ai-codexProxy", data.ai.codexProxy);
         setValue("ai-hookPort", String(data.ai.hookPort));
         setValue("ai-logLevel", data.ai.logLevel || "default");

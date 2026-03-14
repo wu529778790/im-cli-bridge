@@ -39,6 +39,7 @@ interface ExistingConfig {
     claude?: { cliPath?: string; workDir?: string; skipPermissions?: boolean; timeoutMs?: number; model?: string };
     cursor?: { cliPath?: string; skipPermissions?: boolean };
     codex?: { cliPath?: string; workDir?: string; skipPermissions?: boolean; proxy?: string };
+    codebuddy?: { cliPath?: string; skipPermissions?: boolean; timeoutMs?: number };
   };
 }
 
@@ -106,7 +107,8 @@ function printManualInstructions(configPath: string): void {
       "timeoutMs": 600000
     },
     "cursor": { "cliPath": "agent", "skipPermissions": true },
-    "codex": { "cliPath": "codex", "workDir": "${process.cwd().replace(/\\/g, "/")}", "skipPermissions": true, "proxy": "http://127.0.0.1:7890" }
+    "codex": { "cliPath": "codex", "workDir": "${process.cwd().replace(/\\/g, "/")}", "skipPermissions": true, "proxy": "http://127.0.0.1:7890" },
+    "codebuddy": { "cliPath": "codebuddy", "skipPermissions": true, "timeoutMs": 600000 }
   },
   "platforms": {
     "telegram": {
@@ -119,6 +121,13 @@ function printManualInstructions(configPath: string): void {
       "appId": "你的飞书 App ID（可选）",
       "appSecret": "你的飞书 App Secret（可选）",
       "allowedUserIds": ["允许访问的飞书用户 ID（可选）"]
+    },
+    "qq": {
+      "enabled": false,
+      "aiCommand": "codebuddy",
+      "appId": "你的 QQ App ID（可选）",
+      "secret": "你的 QQ App Secret（可选）",
+      "allowedUserIds": ["允许访问的 QQ 用户 ID（可选）"]
     },
     "wework": {
       "enabled": false,
@@ -143,9 +152,9 @@ function printManualInstructions(configPath: string): void {
   }
 }`);
   console.log("");
-  console.log("提示：至少需要配置 Telegram、Feishu、WeChat、WeWork 或 DingTalk 其中一个平台");
+  console.log("提示：至少需要配置 Telegram、Feishu、QQ、WeChat、WeWork 或 DingTalk 其中一个平台");
   console.log(
-    "或设置环境变量: TELEGRAM_BOT_TOKEN=xxx、FEISHU_APP_ID=xxx、WECHAT_APP_ID=xxx、WEWORK_CORP_ID=xxx 或 DINGTALK_CLIENT_ID=xxx 后再运行",
+    "或设置环境变量: TELEGRAM_BOT_TOKEN=xxx、FEISHU_APP_ID=xxx、QQ_BOT_APPID=xxx、WECHAT_APP_ID=xxx、WEWORK_CORP_ID=xxx 或 DINGTALK_CLIENT_ID=xxx 后再运行",
   );
   console.log("");
 }
@@ -637,7 +646,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
   const wcIds = existing?.platforms?.wechat?.allowedUserIds?.join(", ") ?? "";
   const wwIds = existing?.platforms?.wework?.allowedUserIds?.join(", ") ?? "";
   const dtIds = existing?.platforms?.dingtalk?.allowedUserIds?.join(", ") ?? "";
-  const aiIdx = ["claude", "codex", "cursor"].indexOf(existing?.aiCommand ?? "claude");
+  const aiIdx = ["claude", "codex", "cursor", "codebuddy"].indexOf(existing?.aiCommand ?? "claude");
 
   const commonPrompts: prompts.PromptObject[] = [];
   if (selectedPlatforms.includes("qq")) {
@@ -697,6 +706,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
         { title: "claude-code", value: "claude" },
         { title: "codex", value: "codex" },
         { title: "cursor", value: "cursor" },
+        { title: "codebuddy", value: "codebuddy" },
       ],
       initial: aiIdx >= 0 ? aiIdx : 0,
     },
@@ -918,6 +928,12 @@ export async function runInteractiveSetup(): Promise<boolean> {
           commonResp.aiCommand === "codex"
             ? (codexProxyResp as { codexProxy?: string }).codexProxy?.trim() || undefined
             : baseTools.codex?.proxy,
+      },
+      codebuddy: {
+        ...baseTools.codebuddy,
+        cliPath: baseTools.codebuddy?.cliPath ?? "codebuddy",
+        skipPermissions: baseTools.codebuddy?.skipPermissions ?? baseTools.claude?.skipPermissions ?? true,
+        timeoutMs: baseTools.codebuddy?.timeoutMs ?? 600000,
       },
     },
   };
