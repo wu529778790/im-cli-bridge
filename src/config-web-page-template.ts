@@ -1062,6 +1062,26 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                       <label class="form-label" id="ai-claudeTimeoutMs-label">Timeout (ms)</label>
                       <input id="ai-claudeTimeoutMs" class="form-input" type="number" min="1" />
                     </div>
+                    <div class="form-group">
+                      <label class="form-label" id="ai-claudeConfigPath-label">Config File Location</label>
+                      <input id="ai-claudeConfigPath" class="form-input mono" type="text" readonly style="background: var(--bg-secondary);" />
+                      <div class="form-hint" id="ai-claudeConfigPath-hint">Environment variables are saved to ~/.claude/settings.json</div>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label" id="ai-claudeAuthToken-label">ANTHROPIC_AUTH_TOKEN</label>
+                      <input id="ai-claudeAuthToken" class="form-input mono" type="password" />
+                      <div class="form-hint" id="ai-claudeAuthToken-hint">Auth token for API access (optional, overrides env)</div>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label" id="ai-claudeBaseUrl-label">ANTHROPIC_BASE_URL</label>
+                      <input id="ai-claudeBaseUrl" class="form-input mono" type="text" />
+                      <div class="form-hint" id="ai-claudeBaseUrl-hint">Custom API base URL (optional, overrides env)</div>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label" id="ai-claudeModel-label">ANTHROPIC_MODEL</label>
+                      <input id="ai-claudeModel" class="form-input mono" type="text" />
+                      <div class="form-hint" id="ai-claudeModel-hint">Model name (optional, overrides env)</div>
+                    </div>
                   </div>
 
                   <div id="ai-tool-codex" class="ai-tool-panel" data-tool-panel="codex">

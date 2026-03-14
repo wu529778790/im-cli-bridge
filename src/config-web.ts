@@ -4,7 +4,7 @@ import { URL } from "node:url";
 import { DWClient } from "dingtalk-stream";
 import type { Config } from "./config.js";
 import { WEB_CONFIG_PORT } from "./constants.js";
-import { CONFIG_PATH, loadConfig, loadFileConfig, saveFileConfig, type FileConfig } from "./config.js";
+import { CONFIG_PATH, getClaudeConfigHome, loadClaudeSettingsEnv, saveClaudeSettingsEnv, loadConfig, loadFileConfig, saveFileConfig, type FileConfig } from "./config.js";
 import { PAGE_HTML } from "./config-web-page.js";
 import { getServiceStatus, startBackgroundService, stopBackgroundService } from "./service-control.js";
 import { initWeWork, stopWeWork } from "./wework/client.js";
@@ -33,9 +33,12 @@ interface WebConfigPayload {
     claudeWorkDir: string;
     claudeSkipPermissions: boolean;
     claudeTimeoutMs: number;
+    claudeConfigPath: string;
+    claudeAuthToken: string;
+    claudeBaseUrl: string;
+    claudeModel: string;
     codexTimeoutMs: number;
     codebuddyTimeoutMs: number;
-    claudeModel: string;
     cursorCliPath: string;
     codexCliPath: string;
     codebuddyCliPath: string;
@@ -134,6 +137,9 @@ function json(response: ServerResponse, statusCode: number, body: unknown): void
 }
 
 function buildInitialPayload(file: FileConfig): WebConfigPayload {
+  // Load Claude settings from ~/.claude/settings.json
+  const claudeEnv = loadClaudeSettingsEnv();
+
   return {
     platforms: {
       telegram: {
@@ -179,9 +185,14 @@ function buildInitialPayload(file: FileConfig): WebConfigPayload {
       claudeWorkDir: file.tools?.claude?.workDir ?? process.cwd(),
       claudeSkipPermissions: file.tools?.claude?.skipPermissions ?? true,
       claudeTimeoutMs: file.tools?.claude?.timeoutMs ?? 600000,
+      claudeConfigPath: process.platform === 'win32'
+        ? getClaudeConfigHome() + "\\.claude\\settings.json"
+        : getClaudeConfigHome() + "/.claude/settings.json",
+      claudeAuthToken: claudeEnv.ANTHROPIC_AUTH_TOKEN ?? "",
+      claudeBaseUrl: claudeEnv.ANTHROPIC_BASE_URL ?? "",
+      claudeModel: file.tools?.claude?.model ?? claudeEnv.ANTHROPIC_MODEL ?? "",
       codexTimeoutMs: file.tools?.codex?.timeoutMs ?? 600000,
       codebuddyTimeoutMs: file.tools?.codebuddy?.timeoutMs ?? 600000,
-      claudeModel: file.tools?.claude?.model ?? "",
       cursorCliPath: file.tools?.cursor?.cliPath ?? "agent",
       codexCliPath: file.tools?.codex?.cliPath ?? "codex",
       codebuddyCliPath: file.tools?.codebuddy?.cliPath ?? "codebuddy",
@@ -438,6 +449,16 @@ export async function testPlatformConfig(platform: string, config: Record<string
 }
 
 function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConfig {
+  // Save Claude environment variables to ~/.claude/settings.json
+  const claudeEnv: Record<string, string> = {};
+  if (payload.ai.claudeAuthToken) claudeEnv.ANTHROPIC_AUTH_TOKEN = payload.ai.claudeAuthToken;
+  if (payload.ai.claudeBaseUrl) claudeEnv.ANTHROPIC_BASE_URL = payload.ai.claudeBaseUrl;
+  if (payload.ai.claudeModel) claudeEnv.ANTHROPIC_MODEL = payload.ai.claudeModel;
+  if (Object.keys(claudeEnv).length > 0) {
+    saveClaudeSettingsEnv(claudeEnv);
+  }
+  // claudeConfigPath is informational only, not saved
+
   return {
     ...existing,
     aiCommand: payload.ai.aiCommand,
@@ -453,7 +474,7 @@ function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConf
         workDir: clean(payload.ai.claudeWorkDir) ?? process.cwd(),
         skipPermissions: payload.ai.claudeSkipPermissions,
         timeoutMs: payload.ai.claudeTimeoutMs,
-        model: clean(payload.ai.claudeModel),
+        // model is now saved to ~/.claude/settings.json as ANTHROPIC_MODEL
       },
       cursor: {
         ...existing.tools?.cursor,
