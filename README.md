@@ -2,12 +2,12 @@
 
 [中文](./README.zh-CN.md)
 
-Multi-platform IM bridge for AI CLI tools. Connect Telegram, Feishu, WeCom, DingTalk, QQ, and WeChat to Claude Code, Codex, and Cursor so you can use your coding assistant remotely from a phone or chat window.
+Multi-platform IM bridge for AI CLI tools. Connect Telegram, Feishu, WeCom, DingTalk, QQ, and WeChat to Claude Code, Codex, Cursor, and CodeBuddy so you can use your coding assistant remotely from a phone or chat window.
 
 ## Features
 
 - Multi-platform support: Telegram, Feishu, WeCom, DingTalk, QQ, and WeChat (experimental), with multiple platforms enabled at the same time
-- Multiple AI tools: Claude, Codex, and Cursor
+- Multiple AI tools: Claude, Codex, Cursor, and CodeBuddy
 - Per-platform AI routing: each IM platform can use a different AI tool, with `aiCommand` as the global default and `platforms.<name>.aiCommand` as the override
 - Streaming replies: relay AI output and tool execution progress in real time (DingTalk streaming is not fully supported yet)
 - Graphical configuration page and CLI setup flow
@@ -72,12 +72,16 @@ Example:
     "feishu": {
       "enabled": true,
       "aiCommand": "cursor"
+    },
+    "qq": {
+      "enabled": true,
+      "aiCommand": "codebuddy"
     }
   }
 }
 ```
 
-In that setup, Telegram uses Codex, Feishu uses Cursor, and any platform without its own `aiCommand` continues using Claude.
+In that setup, Telegram uses Codex, Feishu uses Cursor, QQ uses CodeBuddy, and any platform without its own `aiCommand` continues using Claude.
 
 ### Claude
 
@@ -124,6 +128,11 @@ The following is valid JSON and can be saved directly as `~/.open-im/config.json
       "workDir": "D:/coding/open-im",
       "skipPermissions": true,
       "proxy": "http://127.0.0.1:7890"
+    },
+    "codebuddy": {
+      "cliPath": "codebuddy",
+      "skipPermissions": true,
+      "timeoutMs": 600000
     }
   },
   "platforms": {
@@ -178,7 +187,7 @@ The following is valid JSON and can be saved directly as `~/.open-im/config.json
 
 | Variable | Description |
 | ---- | ---- |
-| `AI_COMMAND` | Select `claude`, `codex`, or `cursor` |
+| `AI_COMMAND` | Select `claude`, `codex`, `cursor`, or `codebuddy` |
 | `CLAUDE_WORK_DIR` | Default session working directory |
 | `LOG_DIR` | Log directory |
 | `LOG_LEVEL` | Log level |
@@ -186,6 +195,8 @@ The following is valid JSON and can be saved directly as `~/.open-im/config.json
 | `CODEX_PROXY` | Proxy used by Codex to access `chatgpt.com` |
 | `OPENAI_API_KEY` | Codex API key, can replace `codex login` |
 | `CURSOR_API_KEY` | Cursor API key, can replace `agent login` |
+| `CODEBUDDY_API_KEY` | CodeBuddy API key, can replace `codebuddy login` |
+| `CODEBUDDY_AUTH_TOKEN` | CodeBuddy auth token, can replace `codebuddy login` |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token |
 | `TELEGRAM_PROXY` | Telegram proxy URL |
 | `TELEGRAM_ALLOWED_USER_IDS` | Telegram allowlist |
@@ -260,6 +271,8 @@ DingTalk AI card templates are already compatible with the official "Search Resu
 **Cursor shows `Authentication required`**: run `agent login` first, or set `CURSOR_API_KEY` in `env`.
 
 **Codex shows `stream disconnected` or `error sending request`**: `chatgpt.com` is not reachable. Configure `tools.codex.proxy` or set `CODEX_PROXY`.
+
+**CodeBuddy prompts for login**: run `codebuddy login` first, or set `CODEBUDDY_API_KEY` / `CODEBUDDY_AUTH_TOKEN` in `env`.
 
 ## License
 

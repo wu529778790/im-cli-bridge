@@ -174,6 +174,8 @@ export function runAITask(
     const timeoutMs =
       config.aiCommand === 'codex'
         ? config.codexTimeoutMs
+        : config.aiCommand === 'codebuddy'
+          ? config.codebuddyTimeoutMs
         : config.claudeTimeoutMs;
 
     const startRun = () => {

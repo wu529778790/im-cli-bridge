@@ -39,6 +39,7 @@ interface ExistingConfig {
     claude?: { cliPath?: string; workDir?: string; skipPermissions?: boolean; timeoutMs?: number; model?: string };
     cursor?: { cliPath?: string; skipPermissions?: boolean };
     codex?: { cliPath?: string; workDir?: string; skipPermissions?: boolean; proxy?: string };
+    codebuddy?: { cliPath?: string; skipPermissions?: boolean; timeoutMs?: number };
   };
 }
 
@@ -106,7 +107,8 @@ function printManualInstructions(configPath: string): void {
       "timeoutMs": 600000
     },
     "cursor": { "cliPath": "agent", "skipPermissions": true },
-    "codex": { "cliPath": "codex", "workDir": "${process.cwd().replace(/\\/g, "/")}", "skipPermissions": true, "proxy": "http://127.0.0.1:7890" }
+    "codex": { "cliPath": "codex", "workDir": "${process.cwd().replace(/\\/g, "/")}", "skipPermissions": true, "proxy": "http://127.0.0.1:7890" },
+    "codebuddy": { "cliPath": "codebuddy", "skipPermissions": true, "timeoutMs": 600000 }
   },
   "platforms": {
     "telegram": {
@@ -637,7 +639,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
   const wcIds = existing?.platforms?.wechat?.allowedUserIds?.join(", ") ?? "";
   const wwIds = existing?.platforms?.wework?.allowedUserIds?.join(", ") ?? "";
   const dtIds = existing?.platforms?.dingtalk?.allowedUserIds?.join(", ") ?? "";
-  const aiIdx = ["claude", "codex", "cursor"].indexOf(existing?.aiCommand ?? "claude");
+  const aiIdx = ["claude", "codex", "cursor", "codebuddy"].indexOf(existing?.aiCommand ?? "claude");
 
   const commonPrompts: prompts.PromptObject[] = [];
   if (selectedPlatforms.includes("qq")) {
@@ -697,6 +699,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
         { title: "claude-code", value: "claude" },
         { title: "codex", value: "codex" },
         { title: "cursor", value: "cursor" },
+        { title: "codebuddy", value: "codebuddy" },
       ],
       initial: aiIdx >= 0 ? aiIdx : 0,
     },
@@ -918,6 +921,12 @@ export async function runInteractiveSetup(): Promise<boolean> {
           commonResp.aiCommand === "codex"
             ? (codexProxyResp as { codexProxy?: string }).codexProxy?.trim() || undefined
             : baseTools.codex?.proxy,
+      },
+      codebuddy: {
+        ...baseTools.codebuddy,
+        cliPath: baseTools.codebuddy?.cliPath ?? "codebuddy",
+        skipPermissions: baseTools.codebuddy?.skipPermissions ?? baseTools.claude?.skipPermissions ?? true,
+        timeoutMs: baseTools.codebuddy?.timeoutMs ?? 600000,
       },
     },
   };

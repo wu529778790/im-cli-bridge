@@ -13,8 +13,8 @@ import { APP_HOME } from './constants.js';
 
 export type Platform = 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework';
 
-export type AiCommand = 'claude' | 'codex' | 'cursor';
-const AI_COMMANDS: readonly AiCommand[] = ['claude', 'codex', 'cursor'];
+export type AiCommand = 'claude' | 'codex' | 'cursor' | 'codebuddy';
+const AI_COMMANDS: readonly AiCommand[] = ['claude', 'codex', 'cursor', 'codebuddy'];
 
 export interface Config {
   enabledPlatforms: Platform[];
@@ -54,6 +54,7 @@ export interface Config {
   claudeCliPath: string;
   cursorCliPath: string;
   codexCliPath: string;
+  codebuddyCliPath: string;
   /** Codex 访问 chatgpt.com 的代理（如 http://127.0.0.1:7890） */
   codexProxy?: string;
   claudeWorkDir: string;
@@ -61,6 +62,7 @@ export interface Config {
   defaultPermissionMode: 'ask' | 'accept-edits' | 'plan' | 'yolo';
   claudeTimeoutMs: number;
   codexTimeoutMs: number;
+  codebuddyTimeoutMs: number;
   claudeModel?: string;
   hookPort: number;
   logDir: string;
@@ -190,6 +192,13 @@ export interface FileToolCodex {
   proxy?: string;
 }
 
+export interface FileToolCodeBuddy {
+  cliPath?: string;
+  timeoutMs?: number;
+  /** 是否跳过权限确认（默认 true） */
+  skipPermissions?: boolean;
+}
+
 export interface FileConfig {
   telegramBotToken?: string;
   feishuAppId?: string;
@@ -211,6 +220,7 @@ export interface FileConfig {
     claude?: FileToolClaude;
     cursor?: FileToolCursor;
     codex?: FileToolCodex;
+    codebuddy?: FileToolCodeBuddy;
   };
   defaultPermissionMode?: 'ask' | 'accept-edits' | 'plan' | 'yolo';
   hookPort?: number;
@@ -259,6 +269,7 @@ function migrateToNewConfigFormat(raw: Record<string, unknown>): Record<string, 
   const tc = (tools.claude as Record<string, unknown>) || {};
   const tcur = (tools.cursor as Record<string, unknown>) || {};
   const tcod = (tools.codex as Record<string, unknown>) || {};
+  const tcb = (tools.codebuddy as Record<string, unknown>) || {};
 
   const migrated: Record<string, unknown> = { ...raw };
   migrated.tools = {
@@ -283,6 +294,12 @@ function migrateToNewConfigFormat(raw: Record<string, unknown>): Record<string, 
       timeoutMs: tcod.timeoutMs ?? raw.claudeTimeoutMs ?? 600000,
       proxy: tcod.proxy,
     },
+    codebuddy: {
+      ...tcb,
+      cliPath: tcb.cliPath ?? 'codebuddy',
+      skipPermissions: tcb.skipPermissions ?? raw.claudeSkipPermissions ?? true,
+      timeoutMs: tcb.timeoutMs ?? raw.claudeTimeoutMs ?? 600000,
+    },
   };
 
   for (const k of OLD_ROOT_KEYS) {
@@ -291,7 +308,7 @@ function migrateToNewConfigFormat(raw: Record<string, unknown>): Record<string, 
   return migrated;
 }
 
-/** 确保 cursor/codex 有 skipPermissions（缺失时从 claude 继承并写回） */
+/** 确保 cursor/codex/codebuddy 有 skipPermissions（缺失时从 claude 继承并写回） */
 function ensureToolsSkipPermissions(raw: Record<string, unknown>): boolean {
   const tools = raw.tools as Record<string, unknown> | undefined;
   if (!tools || typeof tools !== 'object') return false;
@@ -309,6 +326,13 @@ function ensureToolsSkipPermissions(raw: Record<string, unknown>): boolean {
     const cod = tools.codex as Record<string, unknown>;
     if (cod.skipPermissions === undefined) {
       cod.skipPermissions = fallback;
+      changed = true;
+    }
+  }
+  if (tools.codebuddy && typeof tools.codebuddy === 'object') {
+    const codebuddy = tools.codebuddy as Record<string, unknown>;
+    if (codebuddy.skipPermissions === undefined) {
+      codebuddy.skipPermissions = fallback;
       changed = true;
     }
   }
@@ -593,6 +617,7 @@ export function loadConfig(): Config {
   const tc = file.tools?.claude ?? {};
   const tcur = file.tools?.cursor ?? {};
   const tcod = file.tools?.codex ?? {};
+  const tcb = file.tools?.codebuddy ?? {};
 
   const claudeCliPath = process.env.CLAUDE_CLI_PATH ?? tc.cliPath ?? 'claude';
   const codexProxy = process.env.CODEX_PROXY ?? tcod.proxy;
@@ -622,14 +647,32 @@ export function loadConfig(): Config {
       /* 使用默认 agent */
     }
   }
+  let codebuddyCliPath = process.env.CODEBUDDY_CLI_PATH ?? tcb.cliPath ?? 'codebuddy';
+  if (process.platform === 'win32' && codebuddyCliPath === 'codebuddy') {
+    const npmPaths = [
+      join(process.env.APPDATA || '', 'npm', 'codebuddy.cmd'),
+      join(process.env.LOCALAPPDATA || '', 'npm', 'codebuddy.cmd'),
+    ];
+    for (const p of npmPaths) {
+      try {
+        accessSync(p, constants.F_OK);
+        codebuddyCliPath = p;
+        break;
+      } catch {
+        /* 尝试下一个路径 */
+      }
+    }
+  }
   const claudeWorkDir = process.env.CLAUDE_WORK_DIR ?? tc.workDir ?? process.cwd();
 
-  // 按当前 AI 工具选择 skipPermissions：claude 用 tools.claude，cursor 用 tools.cursor（fallback claude），codex 用 tools.codex（fallback claude）
+  // 按当前 AI 工具选择 skipPermissions：claude 用 tools.claude，其他 CLI 工具优先读各自配置，再回退到 claude
   const claudeSkipPermissions = (() => {
     if (process.env.CLAUDE_SKIP_PERMISSIONS !== undefined) return process.env.CLAUDE_SKIP_PERMISSIONS === 'true';
     if (process.env.CURSOR_SKIP_PERMISSIONS !== undefined && aiCommand === 'cursor') return process.env.CURSOR_SKIP_PERMISSIONS === 'true';
+    if (process.env.CODEBUDDY_SKIP_PERMISSIONS !== undefined && aiCommand === 'codebuddy') return process.env.CODEBUDDY_SKIP_PERMISSIONS === 'true';
     if (aiCommand === 'cursor') return tcur.skipPermissions ?? tc.skipPermissions ?? true;
     if (aiCommand === 'codex') return tcod.skipPermissions ?? tc.skipPermissions ?? true;
+    if (aiCommand === 'codebuddy') return tcb.skipPermissions ?? tc.skipPermissions ?? true;
     return tc.skipPermissions ?? true;
   })();
 
@@ -643,6 +686,10 @@ export function loadConfig(): Config {
     process.env.CODEX_TIMEOUT_MS !== undefined
       ? parseInt(process.env.CODEX_TIMEOUT_MS, 10) || 600000
       : tcod.timeoutMs ?? 600000;
+  const codebuddyTimeoutMs =
+    process.env.CODEBUDDY_TIMEOUT_MS !== undefined
+      ? parseInt(process.env.CODEBUDDY_TIMEOUT_MS, 10) || 600000
+      : tcb.timeoutMs ?? 600000;
 
   const hookPort =
     process.env.HOOK_PORT !== undefined
@@ -734,7 +781,47 @@ export function loadConfig(): Config {
     }
   }
 
-  // 8. 校验 Cursor CLI（使用 cursor 时）
+  // 8. 校验 CodeBuddy CLI（使用 codebuddy 时）
+  if (aiCommand === 'codebuddy') {
+    if (isAbsolute(codebuddyCliPath) || codebuddyCliPath.includes('/') || codebuddyCliPath.includes('\\')) {
+      try {
+        accessSync(codebuddyCliPath, constants.F_OK);
+      } catch {
+        throw new Error(`CodeBuddy CLI 不可执行: ${codebuddyCliPath}`);
+      }
+    } else {
+      const checkCommand = process.platform === 'win32' ? 'where' : 'which';
+      try {
+        execFileSync(checkCommand, [codebuddyCliPath], {
+          stdio: 'pipe',
+          windowsHide: process.platform === 'win32',
+        });
+      } catch {
+        const installGuide = [
+          '',
+          '━━━ CodeBuddy CLI 未安装 ━━━',
+          '',
+          '使用 CodeBuddy 需要先安装 CodeBuddy Code CLI。',
+          '',
+          '安装方法：',
+          '',
+          '  npm install -g @tencent-ai/codebuddy-code',
+          '',
+          '安装后运行 codebuddy --version 验证，再执行 codebuddy login 登录。',
+          '',
+        ].join('\n');
+        throw new Error(installGuide);
+      }
+    }
+    if (!process.env.CODEBUDDY_API_KEY && !process.env.CODEBUDDY_AUTH_TOKEN) {
+      console.warn(
+        '\n⚠ CodeBuddy 模式：未检测到 CODEBUDDY_API_KEY 或 CODEBUDDY_AUTH_TOKEN。首次使用请先运行 codebuddy login，\n' +
+        '  或在 ~/.open-im/config.json 的 env 中添加 "CODEBUDDY_API_KEY" / "CODEBUDDY_AUTH_TOKEN"。\n'
+      );
+    }
+  }
+
+  // 9. 校验 Cursor CLI（使用 cursor 时）
   if (aiCommand === 'cursor') {
     if (isAbsolute(cursorCliPath) || cursorCliPath.includes('/') || cursorCliPath.includes('\\')) {
       try {
@@ -776,7 +863,7 @@ export function loadConfig(): Config {
     }
   }
 
-  // 9. 校验 Claude CLI（SDK 模式不需要 CLI）
+  // 10. 校验 Claude CLI（SDK 模式不需要 CLI）
   if (aiCommand === 'claude' && !useSdkMode) {
     if (isAbsolute(claudeCliPath) || claudeCliPath.includes('/') || claudeCliPath.includes('\\')) {
       try {
@@ -938,12 +1025,14 @@ export function loadConfig(): Config {
     claudeCliPath,
     cursorCliPath,
     codexCliPath,
+    codebuddyCliPath,
     codexProxy,
     claudeWorkDir,
     claudeSkipPermissions,
     defaultPermissionMode,
     claudeTimeoutMs,
     codexTimeoutMs,
+    codebuddyTimeoutMs,
     claudeModel: process.env.CLAUDE_MODEL ?? tc.model,
     hookPort,
     logDir,

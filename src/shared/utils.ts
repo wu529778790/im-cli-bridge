@@ -11,6 +11,7 @@ export const AI_TOOL_DISPLAY_NAMES: Record<string, string> = {
   claude: 'Claude Code',
   codex: 'Codex',
   cursor: 'Cursor',
+  codebuddy: 'CodeBuddy',
 };
 
 /** 获取 AI 工具的显示名称 */
