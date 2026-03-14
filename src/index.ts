@@ -195,6 +195,29 @@ export async function main() {
   const actualPort = startPermissionServer(config.hookPort);
   log.info(`Permission server listening on port ${actualPort}`);
 
+  // 尽早启动 shutdown 并写入 port 文件，使 open-im start 的 8s 就绪超时能通过（平台初始化可能较慢）
+  let shutdownServer: ReturnType<typeof createServer> | null = null;
+  await new Promise<void>((resolve, reject) => {
+    shutdownServer = createServer((req, res) => {
+      if (req.url === "/shutdown" || req.url === "/") {
+        res.writeHead(200, { "Content-Type": "text/plain" });
+        res.end("ok");
+        shutdown().catch(() => process.exit(1));
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+    shutdownServer!.listen(SHUTDOWN_PORT, "127.0.0.1", () => {
+      const portFile = join(APP_HOME, "open-im.port");
+      const dir = dirname(portFile);
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      writeFileSync(portFile, String(SHUTDOWN_PORT), "utf-8");
+      resolve();
+    });
+    shutdownServer!.on("error", reject);
+  });
+
   log.info("Starting open-im bridge...");
   log.info(`AI 工具: ${getConfiguredAiCommands(config).join(", ")}`);
   log.info(`默认会话目录: ${config.claudeWorkDir}`);
@@ -346,24 +369,6 @@ export async function main() {
 
   process.on("SIGINT", () => shutdown().catch(() => process.exit(1)));
   process.on("SIGTERM", () => shutdown().catch(() => process.exit(1)));
-
-  // 优雅关闭 HTTP 服务：stop 命令通过此端口触发 shutdown（Windows 下 SIGTERM 不可靠）
-  const shutdownServer = createServer((req, res) => {
-    if (req.url === "/shutdown" || req.url === "/") {
-      res.writeHead(200, { "Content-Type": "text/plain" });
-      res.end("ok");
-      shutdown().catch(() => process.exit(1));
-    } else {
-      res.writeHead(404);
-      res.end();
-    }
-  });
-  shutdownServer.listen(SHUTDOWN_PORT, "127.0.0.1", () => {
-    const portFile = join(APP_HOME, "open-im.port");
-    const dir = dirname(portFile);
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    writeFileSync(portFile, String(SHUTDOWN_PORT), "utf-8");
-  });
 }
 
 const isEntry =
