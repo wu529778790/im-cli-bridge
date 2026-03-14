@@ -31,6 +31,7 @@ import { downloadMediaFromUrl } from "../shared/media-storage.js";
 const log = createLogger("QQHandler");
 const QQ_THROTTLE_MS = 1200;
 const QQ_MIN_STREAM_DELTA_CHARS = 80;
+const QQ_EVENT_DEDUP_TTL_MS = 5 * 60 * 1000;
 type QQAttachmentKind = "image" | "file" | "voice" | "video";
 
 function toChatId(event: QQMessageEvent): string {
@@ -142,6 +143,7 @@ export function setupQQHandlers(
   const accessControl = new AccessControl(config.qqAllowedUserIds);
   const requestQueue = new RequestQueue();
   const runningTasks = new Map<string, TaskRunState>();
+  const recentEventIds = new Map<string, number>();
   const stopTaskCleanup = startTaskCleanup(runningTasks);
 
   const commandHandler = new CommandHandler({
@@ -222,6 +224,21 @@ export function setupQQHandlers(
   }
 
   async function handleEvent(event: QQMessageEvent): Promise<void> {
+    const now = Date.now();
+    for (const [eventId, timestamp] of recentEventIds) {
+      if (now - timestamp > QQ_EVENT_DEDUP_TTL_MS) {
+        recentEventIds.delete(eventId);
+      }
+    }
+
+    if (event.id) {
+      if (recentEventIds.has(event.id)) {
+        log.info(`Skipping duplicate QQ event: ${event.id}`);
+        return;
+      }
+      recentEventIds.set(event.id, now);
+    }
+
     const userId = event.userOpenid;
     const chatId = toChatId(event);
     const text = event.content?.trim() ?? "";

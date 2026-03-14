@@ -73,7 +73,7 @@ function buildStreamChunk(toolId: string, content: string, note?: string, withHe
 
 function findPreferredSplit(text: string, limit: number): number {
   const normalizedLimit = Math.min(text.length, limit);
-  const boundaries = ["\n\n", "\n", "。", "！", "？", ". ", "! ", "? ", "，", "、", " "];
+  const boundaries = ["\n\n", "\n", "。", "，", "；", ". ", "! ", "? ", ", ", " "];
   const minimumUsefulSplit = Math.min(80, Math.floor(normalizedLimit / 3));
 
   for (const boundary of boundaries) {
@@ -83,7 +83,18 @@ function findPreferredSplit(text: string, limit: number): number {
     }
   }
 
-  return text.length >= limit ? normalizedLimit : 0;
+  if (text.length >= minimumUsefulSplit) {
+    return normalizedLimit;
+  }
+
+  return 0;
+}
+
+function resetStreamState(state: StreamState): void {
+  state.lastSentLength = 0;
+  state.lastToolNote = undefined;
+  state.pendingText = "";
+  state.sentStreamChunk = false;
 }
 
 async function sendIncrementalContent(
@@ -93,6 +104,10 @@ async function sendIncrementalContent(
   note?: string,
   flushAll = false,
 ): Promise<void> {
+  if (!flushAll && content.length < state.lastSentLength) {
+    resetStreamState(state);
+  }
+
   const delta = content.slice(state.lastSentLength);
   const hasNewNote = !!note && note !== state.lastToolNote;
 
@@ -106,25 +121,6 @@ async function sendIncrementalContent(
       const splitAt = flushAll
         ? Math.min(state.pendingText.length, STREAM_CHUNK_LENGTH)
         : findPreferredSplit(state.pendingText, STREAM_CHUNK_LENGTH);
-      // 修复：即使 splitAt <= 0，如果还有 pendingText，也应该继续处理
-      // 防止最后一个分块被跳过导致 lastSentLength 没有更新
-      if (splitAt <= 0 && state.pendingText.length > 0) {
-        // 如果无法找到合适的分割点，但有内容待发送，强制分割
-        const part = state.pendingText.trim();
-        state.pendingText = "";
-        if (part) {
-          const text = buildStreamChunk(
-            toolId,
-            part,
-            hasNewNote ? note : undefined,
-            !state.sentStreamChunk,
-          );
-          await sendRaw(state.chatId, text, state.replyToMessageId);
-          if (hasNewNote) noteSent = true;
-          state.sentStreamChunk = true;
-        }
-        break;
-      }
 
       if (splitAt <= 0) break;
 
@@ -167,9 +163,9 @@ export async function sendImageReply(chatId: string, imagePath: string): Promise
   await sendTextReply(chatId, buildImageFallbackMessage("qq", imagePath));
 }
 
-export async function sendThinkingMessage(chatId: string, _replyToMessageId?: string, toolId = "claude"): Promise<string> {
+export async function sendThinkingMessage(chatId: string, replyToMessageId?: string, _toolId = "claude"): Promise<string> {
   const messageId = `${Date.now()}`;
-  getOrCreateStreamState(messageId, chatId, _replyToMessageId);
+  getOrCreateStreamState(messageId, chatId, replyToMessageId);
   return messageId;
 }
 

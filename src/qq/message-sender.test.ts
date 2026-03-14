@@ -30,4 +30,35 @@ describe("QQ message sender", () => {
     expect(sendGroupMessageMock.mock.calls[0][1]).toContain("open-im");
     expect(sendGroupMessageMock.mock.calls[0][1]).toContain("C:\\images\\out.png");
   });
+
+  it("streams short replies before completion and does not resend the body on done", async () => {
+    const sender = await import("./message-sender.js");
+
+    const messageId = await sender.sendThinkingMessage("private:user-1", "reply-1", "codex");
+    await sender.updateMessage("private:user-1", messageId, "第一段回复", "streaming", undefined, "codex");
+    await sender.sendFinalMessages("private:user-1", messageId, "第一段回复", "耗时 1.2s", "codex");
+
+    expect(sendPrivateMessageMock).toHaveBeenCalledTimes(2);
+    expect(sendPrivateMessageMock.mock.calls[0][1]).toContain("第一段回复");
+    expect(sendPrivateMessageMock.mock.calls[1][1]).toContain("耗时 1.2s");
+    expect(sendPrivateMessageMock.mock.calls[1][1]).not.toContain("第一段回复");
+  });
+
+  it("resets the stream when content switches from a longer draft to a shorter answer", async () => {
+    const sender = await import("./message-sender.js");
+
+    const messageId = await sender.sendThinkingMessage("private:user-1", undefined, "codex");
+    await sender.updateMessage(
+      "private:user-1",
+      messageId,
+      "这是比较长的前置内容，用来模拟思考流。",
+      "streaming",
+      undefined,
+      "codex",
+    );
+    await sender.updateMessage("private:user-1", messageId, "短答案", "streaming", undefined, "codex");
+
+    expect(sendPrivateMessageMock).toHaveBeenCalledTimes(2);
+    expect(sendPrivateMessageMock.mock.calls[1][1]).toContain("短答案");
+  });
 });
