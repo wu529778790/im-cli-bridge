@@ -19,7 +19,7 @@ vi.mock("./wework/client.js", () => ({
   stopWeWork: stopWeWorkMock,
 }));
 
-import { testPlatformConfig } from "./config-web.js";
+import { getHealthPlatformSnapshot, testPlatformConfig } from "./config-web.js";
 
 describe("testPlatformConfig", () => {
   beforeEach(() => {
@@ -79,5 +79,18 @@ describe("testPlatformConfig", () => {
     );
 
     expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("getHealthPlatformSnapshot", () => {
+  it("recognizes QQ credentials from runtime env names", () => {
+    const snapshot = getHealthPlatformSnapshot(
+      { platforms: { qq: { enabled: true } } },
+      { QQ_BOT_APPID: "qq-app", QQ_BOT_SECRET: "qq-secret" },
+    );
+
+    expect(snapshot.qq.configured).toBe(true);
+    expect(snapshot.qq.enabled).toBe(true);
+    expect(snapshot.qq.message).toContain("configured");
   });
 });

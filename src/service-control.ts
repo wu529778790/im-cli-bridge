@@ -8,6 +8,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PID_FILE = join(APP_HOME, "open-im-worker.pid");
 const PORT_FILE = join(APP_HOME, "open-im.port");
 
+function removePortFile(): void {
+  try {
+    if (existsSync(PORT_FILE)) unlinkSync(PORT_FILE);
+  } catch {
+    /* ignore */
+  }
+}
+
 function getServiceEntry(): { command: string; args: string[] } {
   const extension = extname(fileURLToPath(import.meta.url));
   if (extension === ".ts") {
@@ -66,6 +74,7 @@ export function getServiceStatus(): { running: boolean; pid: number | null } {
   if (!pid) return { running: false, pid: null };
   if (!isRunning(pid)) {
     removePid();
+    removePortFile();
     return { running: false, pid: null };
   }
   return { running: true, pid };
@@ -78,6 +87,7 @@ export function startBackgroundService(cwd: string): { pid: number } {
   }
 
   removePid();
+  removePortFile();
   const entry = getServiceEntry();
   const child = spawn(entry.command, entry.args, {
     detached: true,
@@ -94,6 +104,28 @@ export function startBackgroundService(cwd: string): { pid: number } {
 
   writePid(child.pid);
   return { pid: child.pid };
+}
+
+export async function waitForBackgroundServiceReady(
+  timeoutMs = 8000,
+  pollIntervalMs = 100,
+): Promise<void> {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const status = getServiceStatus();
+    if (!status.running || !status.pid) {
+      throw new Error("Background service exited before becoming ready.");
+    }
+
+    if (existsSync(PORT_FILE)) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+  }
+
+  throw new Error("Background service did not become ready in time.");
 }
 
 export async function stopBackgroundService(): Promise<{ pid: number | null; stopped: boolean }> {
@@ -128,11 +160,7 @@ export async function stopBackgroundService(): Promise<{ pid: number | null; sto
   }
 
   removePid();
-  try {
-    if (existsSync(PORT_FILE)) unlinkSync(PORT_FILE);
-  } catch {
-    /* ignore */
-  }
+  removePortFile();
 
   return { pid, stopped: true };
 }

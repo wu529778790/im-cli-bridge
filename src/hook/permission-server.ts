@@ -30,6 +30,16 @@ interface MessageSender {
   sendPermissionCard?(chatId: string, requestId: string, toolName: string, toolInput: string): Promise<void>;
 }
 
+export function resolvePermissionChatId(data: Record<string, unknown>): string | undefined {
+  if (typeof data.chatId === 'string' && data.chatId.trim()) {
+    return data.chatId;
+  }
+  if (typeof data.chat_id === 'string' && data.chat_id.trim()) {
+    return data.chat_id;
+  }
+  return undefined;
+}
+
 // Global state
 let server: Server | null = null;
 let serverPort = DEFAULT_PORT;
@@ -199,11 +209,7 @@ function handlePermissionRequest(req: IncomingMessage, res: ServerResponse): voi
       const requestId = String(data.requestId ?? '');
       const toolName = String(data.toolName ?? '');
       const toolInput = data.toolInput;
-      const chatId =
-        (typeof data.chatId === 'string' ? data.chatId : null) ??
-        (typeof data.chat_id === 'string' ? data.chat_id : null) ??
-        process.env.CC_IM_CHAT_ID ??
-        undefined;
+      const chatId = resolvePermissionChatId(data);
 
       if (!requestId || !toolName) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -212,9 +218,9 @@ function handlePermissionRequest(req: IncomingMessage, res: ServerResponse): voi
       }
 
       if (!chatId) {
-        log.warn('No chatId, auto-allowing permission');
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ allowed: true }));
+        log.warn(`Permission request ${requestId} missing chatId`);
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Missing chatId' }));
         return;
       }
 
