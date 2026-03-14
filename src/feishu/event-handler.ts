@@ -36,6 +36,7 @@ import { createLogger } from '../logger.js';
 import { createMediaTargetPath } from '../shared/media-storage.js';
 import { buildSavedMediaPrompt } from '../shared/media-analysis-prompt.js';
 import { buildMediaContext } from '../shared/media-context.js';
+import { buildProgressNote } from '../shared/message-note.js';
 
 const log = createLogger('FeishuHandler');
 
@@ -87,14 +88,16 @@ async function sendPermissionCard(
 ${formattedInput}
 \`\`\`
 
-**请求 ID:** \`${requestId.slice(-8)}\``;
+**请求 ID:** \`${requestId.slice(-8)}\`
+
+请点击下方按钮进行处理。`;
 
   const cardContent = createFeishuButtonCard(
     '权限请求',
     content,
     [
-      { label: '✅ 允许', value: `allow_${requestId}`, type: 'primary' },
-      { label: '❌ 拒绝', value: `deny_${requestId}`, type: 'default' },
+      { label: '允许', value: `allow_${requestId}`, type: 'primary' },
+      { label: '拒绝', value: `deny_${requestId}`, type: 'default' },
     ]
   );
 
@@ -177,7 +180,7 @@ export function setupFeishuHandlers(
     const taskKey = `${userId}:${cardId}`;
 
     const streamUpdate = (content: string, toolNote?: string) => {
-      const note = toolNote ? '输出中...\n' + toolNote : '输出中...';
+      const note = buildProgressNote(toolNote);
       streamContentUpdate(cardId, content, note).catch((e) =>
         log.debug('Stream update failed (will retry on next update):', e?.message ?? e)
       );

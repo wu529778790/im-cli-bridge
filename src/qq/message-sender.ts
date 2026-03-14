@@ -2,6 +2,9 @@ import { createLogger } from "../logger.js";
 import { splitLongContent } from "../shared/utils.js";
 import { buildImageFallbackMessage } from "../channels/capabilities.js";
 import { getQQBot } from "./client.js";
+import { buildMessageTitle, OPEN_IM_SYSTEM_TITLE } from "../shared/message-title.js";
+import { buildTextNote } from "../shared/message-note.js";
+import { buildDirectoryMessage, buildModeMessage } from "../shared/system-messages.js";
 
 const log = createLogger("QQSender");
 const MAX_QQ_MESSAGE_LENGTH = 1500;
@@ -63,8 +66,8 @@ function getOrCreateStreamState(
 }
 
 function buildStreamChunk(toolId: string, content: string, note?: string, withHeader = false): string {
-  const header = withHeader ? `[${toolId}]` : "";
-  const noteBlock = note ? `\n\n${note}` : "";
+  const header = withHeader ? buildMessageTitle(toolId, "streaming") : "";
+  const noteBlock = note ? `\n\n${buildTextNote(note)}` : "";
   return `${header}${header ? "\n" : ""}${content}${noteBlock}`.trim();
 }
 
@@ -151,7 +154,8 @@ async function sendIncrementalContent(
 
 export async function sendTextReply(chatId: string, text: string): Promise<void> {
   try {
-    for (const part of splitLongContent(text, MAX_QQ_MESSAGE_LENGTH)) {
+    const formatted = `${buildMessageTitle(OPEN_IM_SYSTEM_TITLE, "done")}\n\n${text}`;
+    for (const part of splitLongContent(formatted, MAX_QQ_MESSAGE_LENGTH)) {
       await sendRaw(chatId, part);
     }
   } catch (error) {
@@ -193,10 +197,10 @@ export async function sendFinalMessages(
   await sendIncrementalContent(state, toolId, fullContent, undefined, true);
 
   const completionText = note
-    ? `[${toolId}] done\n${note}`
+    ? `${buildMessageTitle(toolId, "done")}\n${note}`
     : state.sentStreamChunk
-      ? `[${toolId}] done`
-      : `[${toolId}]\n${fullContent}`;
+      ? buildMessageTitle(toolId, "done")
+      : `${buildMessageTitle(toolId, "done")}\n${fullContent}`;
 
   for (const part of splitLongContent(completionText, MAX_QQ_MESSAGE_LENGTH)) {
     await sendRaw(chatId, part, state.replyToMessageId);
@@ -208,15 +212,17 @@ export async function sendFinalMessages(
 export async function sendErrorMessage(chatId: string, messageId: string, error: string, toolId = "claude"): Promise<void> {
   const replyToMessageId = streamStates.get(messageId)?.replyToMessageId;
   streamStates.delete(messageId);
-  await sendRaw(chatId, `[${toolId}] error\n${error}`, replyToMessageId);
+  await sendRaw(chatId, `${buildMessageTitle(toolId, "error")}\n${error}`, replyToMessageId);
 }
 
 export async function sendDirectorySelection(chatId: string, currentDir: string): Promise<void> {
-  await sendTextReply(chatId, `Current directory: ${currentDir}\nUse /cd <path> to switch.`);
+  await sendTextReply(chatId, buildDirectoryMessage(currentDir));
 }
 
 export async function sendModeKeyboard(chatId: string, _userId: string, currentMode: string): Promise<void> {
-  await sendTextReply(chatId, `Current mode: ${currentMode}\nUse /mode ask|accept-edits|plan|yolo to switch.`);
+  const { MODE_LABELS } = await import("../permission-mode/types.js");
+  const label = MODE_LABELS[currentMode as keyof typeof MODE_LABELS] || currentMode;
+  await sendTextReply(chatId, buildModeMessage(label));
 }
 
 export function startTypingLoop(): () => void {

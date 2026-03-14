@@ -31,6 +31,7 @@ import { createLogger } from "../logger.js";
 import { downloadMediaFromUrl } from "../shared/media-storage.js";
 import { buildSavedMediaPrompt } from "../shared/media-analysis-prompt.js";
 import { buildMediaContext } from "../shared/media-context.js";
+import { buildErrorNote, buildProgressNote } from "../shared/message-note.js";
 
 const log = createLogger("TgHandler");
 
@@ -252,7 +253,7 @@ export function setupTelegramHandlers(
                 : content;
           }
 
-          const note = toolNote ? "输出中...\n" + toolNote : "输出中...";
+          const note = buildProgressNote(toolNote);
           await updateMessage(
             chatId,
             msgId,
@@ -343,7 +344,7 @@ export function setupTelegramHandlers(
             msgId,
             `错误：${error}`,
             "error",
-            "执行失败",
+            buildErrorNote(),
             toolId,
           );
         },

@@ -40,6 +40,7 @@ import {
 } from '../shared/media-storage.js';
 import { buildSavedMediaPrompt } from '../shared/media-analysis-prompt.js';
 import { buildMediaContext } from '../shared/media-context.js';
+import { buildErrorNote, buildProgressNote } from '../shared/message-note.js';
 
 const log = createLogger('WeWorkHandler');
 
@@ -272,7 +273,7 @@ export function setupWeWorkHandlers(
         {
           throttleMs: WEWORK_THROTTLE_MS,
           streamUpdate: async (content, toolNote) => {
-            const note = toolNote ? `Working...\n${toolNote}` : 'Working...';
+            const note = buildProgressNote(toolNote);
             try {
               await updateMessage(chatId, msgId, content, 'streaming', note, toolId, reqId);
             } catch (err) {
@@ -283,7 +284,7 @@ export function setupWeWorkHandlers(
             await sendFinalMessages(chatId, msgId, content, note ?? '', toolId, reqId);
           },
           sendError: async (error) => {
-            await updateMessage(chatId, msgId, `Error: ${error}`, 'error', 'Execution failed', toolId, reqId);
+            await updateMessage(chatId, msgId, `Error: ${error}`, 'error', buildErrorNote(), toolId, reqId);
           },
           extraCleanup: () => {
             stopTyping();

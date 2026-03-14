@@ -19,6 +19,13 @@ import { MAX_DINGTALK_MESSAGE_LENGTH } from '../constants.js';
 import type { ThreadContext } from '../shared/types.js';
 import type { DingTalkActiveTarget } from '../shared/active-chats.js';
 import { buildImageFallbackMessage } from '../channels/capabilities.js';
+import { buildMessageTitle, OPEN_IM_SYSTEM_TITLE } from '../shared/message-title.js';
+import { buildTextNote } from '../shared/message-note.js';
+import {
+  buildDirectoryMessage,
+  buildModeMessage,
+  buildPermissionRequestMessage,
+} from '../shared/system-messages.js';
 
 const log = createLogger('DingTalkSender');
 
@@ -89,16 +96,12 @@ function formatMessage(
           : toolName;
 
   let text = `${icon} ${title}\n\n${content}`;
-  if (note) text += `\n\n─────────\n${note}`;
+  if (note) text += `\n\n${buildTextNote(note)}`;
   return text;
 }
 
 function getToolTitle(toolId: string, status: MessageStatus): string {
-  const toolName = getAIToolDisplayName(toolId);
-  if (status === 'done') return toolName;
-  if (status === 'thinking') return `${toolName} - 思考中`;
-  if (status === 'streaming') return `${toolName} - 执行中`;
-  return `${toolName} - 错误`;
+  return buildMessageTitle(toolId, status);
 }
 
 /**
@@ -470,7 +473,7 @@ export async function sendTextReply(
   text: string,
   _threadCtx?: ThreadContext | string,
 ): Promise<void> {
-  await sendTextWithRetry(chatId, text);
+  await sendTextWithRetry(chatId, formatMessage(text, 'done', undefined, OPEN_IM_SYSTEM_TITLE));
   log.info(`Text reply sent to DingTalk chat ${chatId}`);
 }
 
@@ -482,7 +485,7 @@ export async function sendProactiveTextReply(
   target: string | DingTalkActiveTarget,
   text: string,
 ): Promise<void> {
-  await sendProactiveText(target, text);
+  await sendProactiveText(target, formatMessage(text, 'done', undefined, OPEN_IM_SYSTEM_TITLE));
   const targetId = typeof target === 'string' ? target : target.chatId;
   log.info(`Proactive text sent to DingTalk chat ${targetId}`);
 }
@@ -493,18 +496,7 @@ export async function sendPermissionCard(
   toolName: string,
   toolInput: string,
 ): Promise<void> {
-  const message = `🔐 权限请求
-
-工具: ${toolName}
-
-参数:
-${toolInput.length > 300 ? toolInput.slice(0, 300) + '...' : toolInput}
-
-请回复以下命令进行操作:
-/allow - 允许
-/deny - 拒绝
-
-请求 ID: ${requestId.slice(-8)}`;
+  const message = buildPermissionRequestMessage(toolName, toolInput, requestId);
   await sendTextWithRetry(chatId, message);
 }
 
@@ -514,15 +506,9 @@ export async function sendModeCard(
   currentMode: string,
 ): Promise<void> {
   const { MODE_LABELS } = await import('../permission-mode/types.js');
-  const message = `🔐 权限模式
-
-当前模式: ${MODE_LABELS[currentMode as keyof typeof MODE_LABELS] || currentMode}
-
-发送命令切换模式:
-/mode ask - 每次询问
-/mode accept-edits - 自动批准编辑
-/mode plan - 仅分析
-/mode yolo - 跳过所有权限`;
+  const message = buildModeMessage(
+    MODE_LABELS[currentMode as keyof typeof MODE_LABELS] || currentMode,
+  );
   await sendTextWithRetry(chatId, message);
 }
 
@@ -534,15 +520,15 @@ export async function sendDirectorySelection(
   const directories = listDirectories(currentDir);
   const dirName = basename(currentDir) || currentDir;
   if (directories.length === 0) {
-    await sendTextWithRetry(chatId, `📁 当前目录: ${dirName}\n\n没有可访问的子目录`);
+    await sendTextWithRetry(chatId, buildDirectoryMessage(dirName));
     return;
   }
   const keyboard = buildDirectoryKeyboard(directories, userId);
   const entries = keyboard.inline_keyboard
     .flat()
     .map((item) => item.text)
-    .join('\n');
-  await sendTextWithRetry(chatId, `📁 当前目录: ${dirName}\n\n可用目录:\n${entries}\n\n请使用 /cd <路径> 切换目录`);
+    .map((item) => `- ${item}`);
+  await sendTextWithRetry(chatId, buildDirectoryMessage(dirName, entries));
 }
 
 export function startTypingLoop(_chatId: string): () => void {

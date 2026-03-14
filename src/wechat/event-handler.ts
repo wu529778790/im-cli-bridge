@@ -32,6 +32,7 @@ import { buildSavedMediaPrompt } from '../shared/media-analysis-prompt.js';
 import { buildMediaMetadataPrompt } from '../shared/media-prompt.js';
 import { buildMediaContext } from '../shared/media-context.js';
 import { downloadMediaFromUrl } from '../shared/media-storage.js';
+import { buildErrorNote, buildProgressNote } from '../shared/message-note.js';
 
 const log = createLogger('WeChatHandler');
 type WeChatInboundMediaKind = 'image' | 'file' | 'voice' | 'video';
@@ -190,7 +191,7 @@ export function setupWeChatHandlers(
       {
         throttleMs: WECHAT_THROTTLE_MS,
         streamUpdate: async (content, toolNote) => {
-          const note = toolNote ? `Working...\n${toolNote}` : 'Working...';
+          const note = buildProgressNote(toolNote);
           try {
             await updateMessage(chatId, msgId, content, 'streaming', note, toolId);
           } catch (err) {
@@ -201,7 +202,7 @@ export function setupWeChatHandlers(
           await sendFinalMessages(chatId, msgId, content, note ?? '', toolId);
         },
         sendError: async (error) => {
-          await updateMessage(chatId, msgId, `Error: ${error}`, 'error', 'Execution failed', toolId);
+          await updateMessage(chatId, msgId, `Error: ${error}`, 'error', buildErrorNote(), toolId);
         },
         extraCleanup: () => {
           stopTyping();

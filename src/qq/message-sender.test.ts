@@ -27,6 +27,7 @@ describe("QQ message sender", () => {
 
     expect(sendGroupMessageMock).toHaveBeenCalledTimes(1);
     expect(sendGroupMessageMock.mock.calls[0][0]).toBe("group-1");
+    expect(sendGroupMessageMock.mock.calls[0][1]).toContain("open-im");
     expect(sendGroupMessageMock.mock.calls[0][1]).toContain("C:\\images\\out.png");
   });
 });

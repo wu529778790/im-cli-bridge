@@ -5,8 +5,9 @@ import { createLogger } from "../logger.js";
 import {
   splitLongContent,
   truncateText,
-  getAIToolDisplayName,
 } from "../shared/utils.js";
+import { buildMessageTitle, OPEN_IM_SYSTEM_TITLE } from "../shared/message-title.js";
+import { buildTextNote } from "../shared/message-note.js";
 import { MAX_TELEGRAM_MESSAGE_LENGTH } from "../constants.js";
 import {
   listDirectories,
@@ -26,10 +27,7 @@ const STATUS_ICONS: Record<MessageStatus, string> = {
 };
 
 function getToolTitle(toolId: string, status: MessageStatus): string {
-  const name = getAIToolDisplayName(toolId);
-  if (status === "thinking") return `${name} - 思考中...`;
-  if (status === "error") return `${name} - 错误`;
-  return name;
+  return buildMessageTitle(toolId, status);
 }
 
 const TG_MAX_LENGTH = 4096;
@@ -44,13 +42,14 @@ function formatMessage(
   const icon = STATUS_ICONS[status];
   const title = getToolTitle(toolId, status);
   const headerLength = `${icon} ${title}\n\n`.length;
-  const noteLength = note ? `\n\n─────────\n${note}`.length : 0;
+  const noteBlock = note ? `\n\n${buildTextNote(note)}` : "";
+  const noteLength = noteBlock.length;
   const maxContentLength =
     TG_MAX_LENGTH - headerLength - noteLength - RESERVED_LENGTH;
 
   const text = truncateText(content, Math.max(100, maxContentLength));
   let out = `${icon} ${title}\n\n${text}`;
-  if (note) out += `\n\n─────────\n${note}`;
+  out += noteBlock;
 
   if (out.length > TG_MAX_LENGTH) {
     const keepLen = TG_MAX_LENGTH - 50;
@@ -59,7 +58,7 @@ function formatMessage(
     const clean =
       lineBreak > 0 && lineBreak < 200 ? tail.slice(lineBreak + 1) : tail;
     out = `${icon} ${title}\n\n...(前文已省略)...\n${clean}`;
-    if (note) out += `\n\n─────────\n${note}`;
+    out += noteBlock;
   }
 
   return out;
@@ -174,7 +173,7 @@ export async function sendTextReply(
 ): Promise<void> {
   const bot = getBot();
   try {
-    await bot.telegram.sendMessage(Number(chatId), text, {
+    await bot.telegram.sendMessage(Number(chatId), formatMessage(text, "done", undefined, OPEN_IM_SYSTEM_TITLE), {
       parse_mode: "Markdown",
     });
   } catch (err) {
@@ -203,7 +202,7 @@ export async function sendDirectorySelection(
   if (directories.length === 0) {
     await bot.telegram.sendMessage(
       Number(chatId),
-      `📁 当前目录: \`${currentDir}\`\n\n没有可访问的子目录`,
+      `📁 当前目录: \`${currentDir}\`\n\n没有可访问的子目录。\n\n可发送 \`/cd <路径>\` 切换目录。`,
       { parse_mode: "Markdown" },
     );
     return;
@@ -214,7 +213,7 @@ export async function sendDirectorySelection(
 
   await bot.telegram.sendMessage(
     Number(chatId),
-    `📁 当前目录: \`${dirName}\`\n\n选择要切换到的目录：`,
+    `📁 当前目录: \`${dirName}\`\n\n请选择要切换到的目录：`,
     {
       parse_mode: "Markdown",
       reply_markup: keyboard,
@@ -240,7 +239,7 @@ export async function sendModeKeyboard(
   };
   await bot.telegram.sendMessage(
     Number(chatId),
-    `🔐 **权限模式** (当前: ${MODE_LABELS[currentMode as keyof typeof MODE_LABELS] ?? currentMode})\n\n点击切换：`,
+    `🔐 **权限模式**\n\n当前模式: ${MODE_LABELS[currentMode as keyof typeof MODE_LABELS] ?? currentMode}\n\n点击下方按钮切换：`,
     { parse_mode: "Markdown", reply_markup: keyboard },
   );
 }

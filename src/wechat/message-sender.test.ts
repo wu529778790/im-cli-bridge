@@ -23,8 +23,9 @@ describe("WeChat message sender", () => {
       expect.objectContaining({
         session_id: "session-1",
         status: "success",
-        content: expect.stringContaining("C:\\images\\out.png"),
+        content: expect.stringContaining("open-im"),
       }),
     );
+    expect(sendAGPMessageMock.mock.calls[0][1].content).toContain("C:\\images\\out.png");
   });
 });

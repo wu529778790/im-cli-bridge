@@ -4,9 +4,15 @@
 
 import { sendAGPMessage } from './client.js';
 import { createLogger } from '../logger.js';
-import { splitLongContent, getAIToolDisplayName } from '../shared/utils.js';
+import { splitLongContent } from '../shared/utils.js';
 import { buildImageFallbackMessage } from '../channels/capabilities.js';
 import type { MessageStatus } from './types.js';
+import { buildMessageTitle, OPEN_IM_SYSTEM_TITLE } from '../shared/message-title.js';
+import { buildTextNote } from '../shared/message-note.js';
+import {
+  buildModeMessage,
+  buildPermissionRequestMessage,
+} from '../shared/system-messages.js';
 
 const log = createLogger('WeChatSender');
 
@@ -20,9 +26,14 @@ const STATUS_CONFIG: Record<MessageStatus, { icon: string; title: string }> = {
 };
 
 function getToolTitle(toolId: string, status: MessageStatus): string {
-  const name = getAIToolDisplayName(toolId);
-  const statusText = STATUS_CONFIG[status].title;
-  return status === 'done' ? name : `${name} - ${statusText}`;
+  return buildMessageTitle(toolId, status, {
+    statusTitles: {
+      thinking: STATUS_CONFIG.thinking.title,
+      streaming: STATUS_CONFIG.streaming.title,
+      done: STATUS_CONFIG.done.title,
+      error: STATUS_CONFIG.error.title,
+    },
+  });
 }
 
 /**
@@ -44,7 +55,7 @@ function formatWeChatMessage(
   }
 
   if (note) {
-    message += `---\n\n💡 **${note}**`;
+    message += buildTextNote(note);
   }
 
   return message;
@@ -148,7 +159,7 @@ export async function sendFinalMessages(
  * Send simple text reply to WeChat
  */
 export async function sendTextReply(chatId: string, text: string): Promise<void> {
-  const message = formatWeChatMessage('📢 open-im', text, 'done');
+  const message = formatWeChatMessage(OPEN_IM_SYSTEM_TITLE, text, 'done');
 
   try {
     sendAGPMessage('session.promptResponse', {
@@ -179,20 +190,7 @@ export async function sendPermissionCard(
   toolName: string,
   toolInput: string
 ): Promise<void> {
-  const message = `🔐 **权限请求**
-
-**工具:** \`${toolName}\`
-
-**参数:**
-\`\`\`
-${toolInput}
-\`\`\`
-
-请回复以下命令进行操作:
-• \`/allow\` - 允许
-• \`/deny\` - 拒绝
-
-**请求 ID:** \`${requestId}\``;
+  const message = buildPermissionRequestMessage(toolName, toolInput, requestId);
 
   try {
     sendAGPMessage('session.promptResponse', {
@@ -216,15 +214,7 @@ export async function sendModeCard(
   _userId: string,
   currentMode: string
 ): Promise<void> {
-  const message = `🔐 **权限模式**
-
-**当前模式:** \`${currentMode}\`
-
-点击下方按钮或发送命令切换模式:
-• \`/mode ask\` - 每次询问
-• \`/mode accept-edits\` - 自动批准编辑
-• \`/mode plan\` - 仅分析
-• \`/mode yolo\` - 跳过所有权限`;
+  const message = buildModeMessage(currentMode);
 
   try {
     sendAGPMessage('session.promptResponse', {

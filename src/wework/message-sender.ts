@@ -5,7 +5,14 @@
 
 import { sendText, sendStream, sendStreamWithItems, sendProactiveMessage } from './client.js';
 import { createLogger } from '../logger.js';
-import { splitLongContent, getAIToolDisplayName } from '../shared/utils.js';
+import { splitLongContent } from '../shared/utils.js';
+import { buildMessageTitle, OPEN_IM_SYSTEM_TITLE } from '../shared/message-title.js';
+import { buildTextNote } from '../shared/message-note.js';
+import {
+  buildDirectoryMessage,
+  buildModeMessage,
+  buildPermissionRequestMessage,
+} from '../shared/system-messages.js';
 import { MAX_WEWORK_MESSAGE_LENGTH } from '../constants.js';
 import { createHash, randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -40,9 +47,14 @@ const STATUS_CONFIG: Record<MessageStatus, { icon: string; title: string }> = {
 };
 
 function getToolTitle(toolId: string, status: MessageStatus): string {
-  const name = getAIToolDisplayName(toolId);
-  const statusText = STATUS_CONFIG[status].title;
-  return status === 'done' ? name : `${name} - ${statusText}`;
+  return buildMessageTitle(toolId, status, {
+    statusTitles: {
+      thinking: STATUS_CONFIG.thinking.title,
+      streaming: STATUS_CONFIG.streaming.title,
+      done: STATUS_CONFIG.done.title,
+      error: STATUS_CONFIG.error.title,
+    },
+  });
 }
 
 function generateReqId(): string {
@@ -69,7 +81,7 @@ function formatWeWorkMessage(
   }
 
   if (note) {
-    message += `---\n\n[note] **${note}**`;
+    message += buildTextNote(note);
   }
 
   return message;
@@ -281,7 +293,7 @@ export async function sendFinalMessages(
  * 主动推送文本，用于启动/关闭通知等场景，无需 req_id。
  */
 export async function sendProactiveTextReply(chatId: string, text: string): Promise<void> {
-  const message = formatWeWorkMessage('[open-im]', text, 'done');
+  const message = formatWeWorkMessage(OPEN_IM_SYSTEM_TITLE, text, 'done');
   try {
     sendProactiveMessage(chatId, message);
     log.info(`Proactive text sent to user ${chatId}`);
@@ -299,7 +311,7 @@ export async function sendTextReply(
   text: string,
   threadCtxOrReqId?: import('../shared/types.js').ThreadContext | string
 ): Promise<void> {
-  const message = formatWeWorkMessage('[open-im]', text, 'done');
+  const message = formatWeWorkMessage(OPEN_IM_SYSTEM_TITLE, text, 'done');
   const explicitReqId = typeof threadCtxOrReqId === 'string' ? threadCtxOrReqId : undefined;
   const effectiveReqId = explicitReqId ?? currentReqId;
 
@@ -318,21 +330,7 @@ export async function sendPermissionCard(
   toolInput: string,
   reqId?: string
 ): Promise<void> {
-  const message = [
-    '[Permission Request]',
-    '',
-    `Tool: ${toolName}`,
-    'Arguments:',
-    '```',
-    toolInput,
-    '```',
-    '',
-    'Reply with one of the following commands:',
-    '- /allow',
-    '- /deny',
-    '',
-    `Request ID: ${requestId.slice(-8)}`,
-  ].join('\n');
+  const message = buildPermissionRequestMessage(toolName, toolInput, requestId);
 
   try {
     sendText(getReqId(reqId), message);
@@ -350,17 +348,7 @@ export async function sendModeCard(
 ): Promise<void> {
   const { MODE_LABELS } = await import('../permission-mode/types.js');
   const label = MODE_LABELS[currentMode as keyof typeof MODE_LABELS] || currentMode;
-  const message = [
-    '[Permission Mode]',
-    '',
-    `Current mode: ${label}`,
-    '',
-    'Send one of the following commands to switch:',
-    '- /mode ask',
-    '- /mode accept-edits',
-    '- /mode plan',
-    '- /mode yolo',
-  ].join('\n');
+  const message = buildModeMessage(label);
 
   try {
     sendText(getReqId(reqId), message);
@@ -398,7 +386,7 @@ export async function sendDirectorySelection(
   currentDir: string,
   _userId: string
 ): Promise<void> {
-  await sendTextReply(chatId, `Current directory: ${currentDir}\n\nUse \`/cd <directory>\` to switch.`);
+  await sendTextReply(chatId, buildDirectoryMessage(currentDir));
 }
 
 export function startTypingLoop(_chatId: string): () => void {

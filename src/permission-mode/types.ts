@@ -7,12 +7,12 @@ export type PermissionMode = 'ask' | 'accept-edits' | 'plan' | 'yolo';
 
 export const PERMISSION_MODES: PermissionMode[] = ['ask', 'accept-edits', 'plan', 'yolo'];
 
-/** Claude Code 官方模式名（用于显示） */
+/** 用户侧展示名 */
 export const MODE_LABELS: Record<PermissionMode, string> = {
-  ask: 'default',
-  'accept-edits': 'acceptEdits',
-  plan: 'plan',
-  yolo: 'bypassPermissions',
+  ask: '每次询问',
+  'accept-edits': '自动批准编辑',
+  plan: '仅分析',
+  yolo: '跳过所有权限',
 };
 
 export const MODE_DESCRIPTIONS: Record<PermissionMode, string> = {

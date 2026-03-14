@@ -4,7 +4,9 @@ import { createLogger } from '../logger.js';
 import { splitLongContent } from '../shared/utils.js';
 import { MAX_FEISHU_MESSAGE_LENGTH } from '../constants.js';
 import { buildCardV2, splitLongContent as cardSplitLongContent, truncateForStreaming } from './card-builder.js';
-import { getAIToolDisplayName, OPEN_IM_BRAND_SUFFIX } from '../shared/utils.js';
+import { getAIToolDisplayName } from '../shared/utils.js';
+import { buildMessageTitle, OPEN_IM_SYSTEM_TITLE } from '../shared/message-title.js';
+import { buildTextNote } from '../shared/message-note.js';
 import {
   createCard,
   enableStreaming,
@@ -33,10 +35,15 @@ const STATUS_CONFIG: Record<MessageStatus, { icon: string; template: string; tit
 };
 
 function getToolTitle(toolId: string, status: MessageStatus): string {
-  const name = getAIToolDisplayName(toolId);
-  const statusText = STATUS_CONFIG[status].title;
-  const base = status === 'done' ? name : `${name} - ${statusText}`;
-  return `${base}${OPEN_IM_BRAND_SUFFIX}`;
+  return buildMessageTitle(toolId, status, {
+    brandSuffix: true,
+    statusTitles: {
+      thinking: STATUS_CONFIG.thinking.title,
+      streaming: STATUS_CONFIG.streaming.title,
+      done: STATUS_CONFIG.done.title,
+      error: STATUS_CONFIG.error.title,
+    },
+  });
 }
 
 /**
@@ -68,7 +75,7 @@ function createFeishuCard(
       tag: 'div',
       text: {
         tag: 'lark_md',
-        content: `**💡 ${note}**`,
+        content: buildTextNote(note),
       },
     });
   }
@@ -161,7 +168,7 @@ export function createFeishuModeCardReadOnly(currentMode: string): Record<string
   return {
     config: { wide_screen_mode: true },
     header: {
-      template: 'green',
+      template: 'blue',
       title: { content: '🔐 权限模式', tag: 'plain_text' },
     },
     elements: [
@@ -169,7 +176,7 @@ export function createFeishuModeCardReadOnly(currentMode: string): Record<string
         tag: 'div',
         text: {
           tag: 'lark_md',
-          content: `**当前模式:** ${currentMode}\n\n✅ 已切换成功，发送 \`/mode\` 可再次切换。`,
+          content: `**当前模式:** ${currentMode}\n\n✅ 已切换成功。\n\n发送 \`/mode\` 可再次切换。`,
         },
       },
     ],
@@ -223,7 +230,7 @@ function createFeishuModeCard(
     tag: 'div',
     text: {
       tag: 'lark_md',
-      content: `**当前模式:** ${currentMode}\n\n点击下方按钮切换模式：\n\n_💡 若点击报错：开放平台 → 事件与回调 → 切到「回调」Tab → 添加「卡片回传交互」。或直接用 \`/mode ask\` 等命令切换。_`,
+      content: `**当前模式:** ${currentMode}\n\n点击下方按钮切换模式。\n\n_💡 若点击报错：开放平台 → 事件与回调 → 切到「回调」Tab → 添加「卡片回传交互」。也可直接发送 \`/mode ask\` 等命令切换。_`,
     },
   });
   elements.push({ tag: 'hr' });
@@ -549,7 +556,7 @@ export async function sendTextReply(chatId: string, text: string): Promise<void>
   const client = getClient();
 
   const cardContent = createFeishuCard(
-    '📢 open-im',
+    OPEN_IM_SYSTEM_TITLE,
     text,
     'done'
   );
@@ -571,7 +578,7 @@ export async function sendTextReply(chatId: string, text: string): Promise<void>
 /** 使用 open_id 发送（私聊时 context 可能只有 open_id） */
 export async function sendTextReplyByOpenId(openId: string, text: string): Promise<void> {
   const client = getClient();
-  const cardContent = createFeishuCard('📢 open-im', text, 'done');
+  const cardContent = createFeishuCard(OPEN_IM_SYSTEM_TITLE, text, 'done');
   try {
     await client.im.message.create({
       data: {
