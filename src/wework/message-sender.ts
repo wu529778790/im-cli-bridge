@@ -65,6 +65,50 @@ function generateStreamId(): string {
   return `${Date.now()}-${randomBytes(8).toString('hex')}`;
 }
 
+function formatWeWorkNote(note: string): string {
+  const trimmedNote = note.trim();
+  const lines = trimmedNote.split('\n').map((line) => line.trim()).filter(Boolean);
+
+  if (lines.length === 0) return buildTextNote(trimmedNote);
+
+  const formattedLines = lines.flatMap((line) => {
+    if (line.startsWith('输出中')) {
+      return ['💡 输出中...'];
+    }
+
+    const bashIndex = line.indexOf('Bash');
+    if (bashIndex >= 0) {
+      const command = line
+        .slice(bashIndex + 'Bash'.length)
+        .replace(/^[\s:：\-–—>→]+/, '')
+        .trim();
+      return command ? ['🔧 Bash', '```', command, '```'] : ['🔧 Bash'];
+    }
+
+    const readIndex = line.indexOf('Read');
+    if (readIndex >= 0) {
+      const path = line
+        .slice(readIndex + 'Read'.length)
+        .replace(/^[\s:：\-–—>→]+/, '')
+        .trim();
+      return path ? [`📖 Read \`${path.replace(/`/g, '\\`')}\``] : ['📖 Read'];
+    }
+
+    const writeIndex = line.indexOf('Write');
+    if (writeIndex >= 0) {
+      const path = line
+        .slice(writeIndex + 'Write'.length)
+        .replace(/^[\s:：\-–—>→]+/, '')
+        .trim();
+      return path ? [`✏️ Write \`${path.replace(/`/g, '\\`')}\``] : ['✏️ Write'];
+    }
+
+    return [line];
+  });
+
+  return `─────────\n${formattedLines.join('\n')}`;
+}
+
 function formatWeWorkMessage(
   title: string,
   content: string,
@@ -81,7 +125,7 @@ function formatWeWorkMessage(
   }
 
   if (note) {
-    message += buildTextNote(note);
+    message += formatWeWorkNote(note);
   }
 
   return message;
