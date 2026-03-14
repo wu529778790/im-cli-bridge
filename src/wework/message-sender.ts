@@ -106,7 +106,7 @@ function formatWeWorkNote(note: string): string {
     return [line];
   });
 
-  return `─────────\n${formattedLines.join('\n')}`;
+  return `─────────\n\n${formattedLines.join('\n')}`;
 }
 
 function formatWeWorkMessage(

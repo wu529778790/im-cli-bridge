@@ -45,4 +45,21 @@ describe('WeWork message sender', () => {
       '"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"',
     );
   });
+
+  it('renders note content below the divider instead of inline with it', async () => {
+    const sender = await import('./message-sender.js');
+
+    await sender.updateMessage(
+      'chat-1',
+      'stream-1',
+      '正文',
+      'streaming',
+      '输出中...\nRead src/wework/message-sender.ts',
+      'codex',
+      'req-1',
+    );
+
+    expect(sendStreamMock).toHaveBeenCalledTimes(1);
+    expect(sendStreamMock.mock.calls[0][2]).toContain('─────────\n\n');
+  });
 });
