@@ -85,6 +85,46 @@ jobs:
 
           let version, isPrerelease, prereleaseTag;
 
+          function getPackageVersion() {
+            try {
+              return JSON.parse(fs.readFileSync('package.json', 'utf8')).version;
+            } catch (e) {
+              console.error('WARN: failed to read package.json version: ' + e.message);
+              return null;
+            }
+          }
+
+          function getLatestGitTagVersion() {
+            try {
+              const tags = execSync('git tag --list "v*"', { encoding: 'utf8', shell: '/bin/bash' })
+                .trim()
+                .split('\n')
+                .map(tagName => tagName.replace(/^v/, ''))
+                .filter(Boolean)
+                .filter(semver.valid);
+              return tags.length > 0 ? tags.sort(semver.compare).pop() : null;
+            } catch (e) {
+              console.error('WARN: failed to read git tags: ' + e.message);
+              return null;
+            }
+          }
+
+          function getLatestRegistryVersion() {
+            try {
+              const versionsJson = execSync('npm view @wu529778790/open-im versions --json 2>/dev/null || echo []', { encoding: 'utf8', shell: '/bin/bash' });
+              const versions = JSON.parse(versionsJson.trim() || '[]').filter(semver.valid);
+              return versions.length > 0 ? versions.sort(semver.compare).pop() : null;
+            } catch (e) {
+              console.error('WARN: failed to read npm versions: ' + e.message);
+              return null;
+            }
+          }
+
+          function getHighestVersion(candidates) {
+            const validVersions = candidates.filter(semver.valid);
+            return validVersions.length > 0 ? validVersions.sort(semver.compare).pop() : '0.0.0';
+          }
+
           if (!doPrerelease) {
             const npmVer = execSync('npm view @wu529778790/open-im version 2>/dev/null || echo 0.0.0', { encoding: 'utf8', shell: '/bin/bash' }).trim();
             version = semver.inc(npmVer, bump);
@@ -92,20 +132,21 @@ jobs:
             prereleaseTag = '';
           } else {
             try {
-              const versionsJson = execSync('npm view @wu529778790/open-im versions --json 2>/dev/null || echo []', { encoding: 'utf8', shell: '/bin/bash' });
-              const versions = JSON.parse(versionsJson.trim() || '[]');
-              const npmVer = versions.length > 0 ? versions.sort(semver.compare).pop() : '0.0.0';
-              console.error('DEBUG: Latest npm version: ' + npmVer);
+              const packageVer = getPackageVersion();
+              const tagVer = getLatestGitTagVersion();
+              const registryVer = getLatestRegistryVersion();
+              const currentVer = getHighestVersion([packageVer, tagVer, registryVer]);
+              console.error('DEBUG: package=' + packageVer + ', gitTag=' + tagVer + ', registry=' + registryVer + ', current=' + currentVer);
 
-              const prerelease = semver.prerelease(npmVer);
+              const prerelease = semver.prerelease(currentVer);
 
               if (!prerelease || prerelease.length === 0) {
-                const base = semver.inc(npmVer, 'patch');
+                const base = semver.inc(currentVer, 'patch');
                 version = base + '-' + tag + '.0';
-              } else if (npmVer.indexOf('-' + tag + '.') >= 0) {
-                version = semver.inc(npmVer, 'prerelease', tag);
+              } else if (currentVer.indexOf('-' + tag + '.') >= 0) {
+                version = semver.inc(currentVer, 'prerelease', tag);
               } else {
-                const base = npmVer.split('-')[0];
+                const base = currentVer.split('-')[0];
                 version = base + '-' + tag + '.0';
               }
 
