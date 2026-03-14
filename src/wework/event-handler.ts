@@ -43,6 +43,7 @@ import { buildMediaContext } from '../shared/media-context.js';
 import { buildErrorNote, buildProgressNote } from '../shared/message-note.js';
 
 const log = createLogger('WeWorkHandler');
+const WEWORK_MEDIA_TIMEOUT_MS = 60_000;
 
 type MediaKind = 'image' | 'file' | 'voice' | 'video';
 
@@ -61,6 +62,35 @@ export interface WeWorkEventHandlerHandle {
   stop: () => void;
   getRunningTaskCount: () => number;
   handleEvent: (data: WeWorkCallbackMessage) => Promise<void>;
+}
+
+async function saveWeWorkUrlMedia(
+  payload: WeWorkMediaPayload,
+  fallbackExtension: string,
+): Promise<string> {
+  if (!payload.url) {
+    throw new Error("Missing WeWork media URL");
+  }
+
+  if (typeof payload.aeskey === "string" && payload.aeskey.trim().length > 0) {
+    const response = await fetch(payload.url, { signal: AbortSignal.timeout(WEWORK_MEDIA_TIMEOUT_MS) });
+    if (!response.ok) {
+      throw new Error(`Failed to download media: HTTP ${response.status}`);
+    }
+
+    const encryptedBuffer = Buffer.from(await response.arrayBuffer());
+    const decryptedBuffer = decryptAes256CbcMedia(encryptedBuffer, payload.aeskey);
+    const extension =
+      inferExtensionFromBuffer(decryptedBuffer) ||
+      inferExtensionFromContentType(response.headers.get("content-type") ?? "") ||
+      `.${fallbackExtension}`;
+    return saveBufferMedia(decryptedBuffer, extension, payload.filename ?? payload.md5);
+  }
+
+  return downloadMediaFromUrl(payload.url, {
+    basenameHint: payload.filename ?? payload.md5,
+    fallbackExtension,
+  });
 }
 
 function extractTextContent(data: WeWorkCallbackMessage): string {
@@ -119,7 +149,7 @@ function extractMediaPayload(data: WeWorkCallbackMessage, kind: MediaKind): WeWo
   return null;
 }
 
-async function buildMediaPrompt(data: WeWorkCallbackMessage, kind: MediaKind): Promise<string | null> {
+export async function buildMediaPrompt(data: WeWorkCallbackMessage, kind: MediaKind): Promise<string | null> {
   const text = extractTextContent(data);
   const payload = extractMediaPayload(data, kind);
   const contextText = buildMediaContext({
@@ -143,27 +173,8 @@ async function buildMediaPrompt(data: WeWorkCallbackMessage, kind: MediaKind): P
       });
     } else if (typeof imagePayload.url === 'string' && imagePayload.url.length > 0) {
       try {
-        let savedPath = '';
-        if (typeof imagePayload.aeskey === 'string' && imagePayload.aeskey.trim().length > 0) {
-          const response = await fetch(imagePayload.url, { signal: AbortSignal.timeout(30000) });
-          if (!response.ok) {
-            throw new Error(`Failed to download media: HTTP ${response.status}`);
-          }
-
-          const encryptedBuffer = Buffer.from(await response.arrayBuffer());
-          const decryptedBuffer = decryptAes256CbcMedia(encryptedBuffer, imagePayload.aeskey);
-          const extension =
-            inferExtensionFromBuffer(decryptedBuffer) ||
-            inferExtensionFromContentType(response.headers.get('content-type') ?? '') ||
-            '.jpg';
-          savedPath = await saveBufferMedia(decryptedBuffer, extension, imagePayload.md5);
-          log.info(`Downloaded and decrypted WeWork image: ${savedPath}`);
-        } else {
-          savedPath = await downloadMediaFromUrl(imagePayload.url, {
-            basenameHint: imagePayload.md5,
-            fallbackExtension: 'jpg',
-          });
-        }
+        const savedPath = await saveWeWorkUrlMedia(imagePayload, 'jpg');
+        log.info(`Downloaded WeWork image: ${savedPath}`);
         return buildSavedMediaPrompt({
           source: 'WeWork',
           kind: 'image',
@@ -190,10 +201,10 @@ async function buildMediaPrompt(data: WeWorkCallbackMessage, kind: MediaKind): P
 
   if (payload?.url) {
     try {
-      const savedPath = await downloadMediaFromUrl(payload.url, {
-        basenameHint: payload.filename ?? payload.md5,
-        fallbackExtension: kind === 'voice' ? 'ogg' : kind === 'video' ? 'mp4' : 'bin',
-      });
+      const savedPath = await saveWeWorkUrlMedia(
+        payload,
+        kind === 'voice' ? 'ogg' : kind === 'video' ? 'mp4' : 'bin',
+      );
       return buildSavedMediaPrompt({
         source: 'WeWork',
         kind,

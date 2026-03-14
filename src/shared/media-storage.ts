@@ -3,6 +3,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { IMAGE_DIR } from "../constants.js";
 
+const MEDIA_DOWNLOAD_TIMEOUT_MS = 60_000;
+
 function sanitizeName(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
@@ -73,11 +75,69 @@ function decodeAesKey(aesKey: string): Buffer {
   throw new Error(`Invalid AES key length: expected 32 bytes, got ${decoded.length || utf8.length}`);
 }
 
+function trimDecryptedMedia(buffer: Buffer): Buffer {
+  const extension = inferExtensionFromBuffer(buffer);
+
+  if (extension === ".jpg") {
+    for (let index = buffer.length - 2; index >= 0; index--) {
+      if (buffer[index] === 0xff && buffer[index + 1] === 0xd9) {
+        return buffer.subarray(0, index + 2);
+      }
+    }
+  }
+
+  if (extension === ".png" && buffer.length >= 8) {
+    const iendChunk = Buffer.from([0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82]);
+    const endIndex = buffer.indexOf(iendChunk);
+    if (endIndex >= 0) {
+      return buffer.subarray(0, endIndex + iendChunk.length);
+    }
+  }
+
+  if (extension === ".gif") {
+    const endIndex = buffer.lastIndexOf(0x3b);
+    if (endIndex >= 0) {
+      return buffer.subarray(0, endIndex + 1);
+    }
+  }
+
+  if (extension === ".webp" && buffer.length >= 8) {
+    const declaredSize = buffer.readUInt32LE(4) + 8;
+    if (declaredSize > 0 && declaredSize <= buffer.length) {
+      return buffer.subarray(0, declaredSize);
+    }
+  }
+
+  if (extension === ".pdf") {
+    const eofMarker = Buffer.from("%%EOF", "ascii");
+    const endIndex = buffer.lastIndexOf(eofMarker);
+    if (endIndex >= 0) {
+      return buffer.subarray(0, endIndex + eofMarker.length);
+    }
+  }
+
+  return buffer;
+}
+
 export function decryptAes256CbcMedia(buffer: Buffer, aesKey: string): Buffer {
   const key = decodeAesKey(aesKey);
   const iv = key.subarray(0, 16);
-  const decipher = createDecipheriv("aes-256-cbc", key, iv);
-  return Buffer.concat([decipher.update(buffer), decipher.final()]);
+
+  try {
+    const decipher = createDecipheriv("aes-256-cbc", key, iv);
+    return Buffer.concat([decipher.update(buffer), decipher.final()]);
+  } catch (error) {
+    const fallbackDecipher = createDecipheriv("aes-256-cbc", key, iv);
+    fallbackDecipher.setAutoPadding(false);
+    const decrypted = Buffer.concat([fallbackDecipher.update(buffer), fallbackDecipher.final()]);
+    const trimmed = trimDecryptedMedia(decrypted);
+
+    if (inferExtensionFromBuffer(trimmed)) {
+      return trimmed;
+    }
+
+    throw error;
+  }
 }
 
 export async function saveBase64Media(
@@ -93,7 +153,7 @@ export async function downloadMediaFromUrl(
   options?: { basenameHint?: string; fallbackExtension?: string },
 ): Promise<string> {
   await mkdir(IMAGE_DIR, { recursive: true });
-  const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
+  const response = await fetch(url, { signal: AbortSignal.timeout(MEDIA_DOWNLOAD_TIMEOUT_MS) });
   if (!response.ok) {
     throw new Error(`Failed to download media: HTTP ${response.status}`);
   }
