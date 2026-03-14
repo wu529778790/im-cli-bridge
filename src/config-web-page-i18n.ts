@@ -95,7 +95,6 @@ export const PAGE_TEXTS = {
           hookPort: "Hook port",
           logLevel: "Log level",
           logLevelDefault: "default (app default)",
-          configDir: "Config directory",
           autoApprove: "Auto-approve tool permissions",
           sdkMode: "Use Claude SDK mode",
           validate: "Validate",
