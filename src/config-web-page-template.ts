@@ -1063,6 +1063,11 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                       <input id="ai-claudeTimeoutMs" class="form-input" type="number" min="1" />
                     </div>
                     <div class="form-group">
+                      <label class="form-label" id="ai-claudeProxy-label">Proxy (optional)</label>
+                      <input id="ai-claudeProxy" class="form-input mono" type="text" />
+                      <div class="form-hint" id="ai-claudeProxy-hint">HTTP proxy for API requests (e.g., http://127.0.0.1:7890)</div>
+                    </div>
+                    <div class="form-group">
                       <label class="form-label" id="ai-claudeConfigPath-label">Config File Location</label>
                       <input id="ai-claudeConfigPath" class="form-input mono" type="text" readonly style="background: var(--bg-secondary);" />
                       <div class="form-hint" id="ai-claudeConfigPath-hint">Environment variables are saved to ~/.claude/settings.json</div>
@@ -1103,6 +1108,11 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                     <div class="form-group">
                       <label class="form-label" id="ai-cursorCliPath-label">CLI Path</label>
                       <input id="ai-cursorCliPath" class="form-input mono" type="text" />
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label" id="ai-cursorProxy-label">Proxy (optional)</label>
+                      <input id="ai-cursorProxy" class="form-input mono" type="text" />
+                      <div class="form-hint" id="ai-cursorProxy-hint">HTTP proxy for API requests (e.g., http://127.0.0.1:7890)</div>
                     </div>
                   </div>
 

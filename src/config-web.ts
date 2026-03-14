@@ -37,12 +37,14 @@ interface WebConfigPayload {
     claudeAuthToken: string;
     claudeBaseUrl: string;
     claudeModel: string;
+    claudeProxy: string;
     codexTimeoutMs: number;
     codebuddyTimeoutMs: number;
     cursorCliPath: string;
     codexCliPath: string;
     codebuddyCliPath: string;
     codexProxy: string;
+    cursorProxy: string;
     defaultPermissionMode?: "ask" | "accept-edits" | "plan" | "yolo";
     hookPort: number;
     logDir?: string;
@@ -191,12 +193,14 @@ function buildInitialPayload(file: FileConfig): WebConfigPayload {
       claudeAuthToken: claudeEnv.ANTHROPIC_AUTH_TOKEN ?? "",
       claudeBaseUrl: claudeEnv.ANTHROPIC_BASE_URL ?? "",
       claudeModel: file.tools?.claude?.model ?? claudeEnv.ANTHROPIC_MODEL ?? "",
+      claudeProxy: file.tools?.claude?.proxy ?? "",
       codexTimeoutMs: file.tools?.codex?.timeoutMs ?? 600000,
       codebuddyTimeoutMs: file.tools?.codebuddy?.timeoutMs ?? 600000,
       cursorCliPath: file.tools?.cursor?.cliPath ?? "agent",
       codexCliPath: file.tools?.codex?.cliPath ?? "codex",
       codebuddyCliPath: file.tools?.codebuddy?.cliPath ?? "codebuddy",
       codexProxy: file.tools?.codex?.proxy ?? "",
+      cursorProxy: file.tools?.cursor?.proxy ?? "",
     defaultPermissionMode: file.defaultPermissionMode ?? "ask",
       hookPort: file.hookPort ?? 35801,
       logDir: file.logDir ?? "",
@@ -474,12 +478,14 @@ function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConf
         workDir: clean(payload.ai.claudeWorkDir) ?? process.cwd(),
         skipPermissions: payload.ai.claudeSkipPermissions,
         timeoutMs: payload.ai.claudeTimeoutMs,
+        proxy: clean(payload.ai.claudeProxy),
         // model is now saved to ~/.claude/settings.json as ANTHROPIC_MODEL
       },
       cursor: {
         ...existing.tools?.cursor,
         cliPath: clean(payload.ai.cursorCliPath) ?? "agent",
         skipPermissions: existing.tools?.cursor?.skipPermissions ?? payload.ai.claudeSkipPermissions,
+        proxy: clean(payload.ai.cursorProxy),
       },
       codex: {
         ...existing.tools?.codex,

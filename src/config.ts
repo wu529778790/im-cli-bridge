@@ -174,12 +174,14 @@ export interface FileToolClaude {
   skipPermissions?: boolean;
   timeoutMs?: number;
   model?: string;
+  proxy?: string;
 }
 
 export interface FileToolCursor {
   cliPath?: string;
   /** 是否跳过权限确认（默认 true，与 tools.claude 共用权限服务器） */
   skipPermissions?: boolean;
+  proxy?: string;
 }
 
 export interface FileToolCodex {
