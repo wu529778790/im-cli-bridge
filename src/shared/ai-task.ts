@@ -171,12 +171,15 @@ export function runAITask(
         : undefined;
     }
 
+    const toolId = toolAdapter.toolId as 'claude' | 'codex' | 'cursor' | 'codebuddy';
     const timeoutMs =
-      config.aiCommand === 'codex'
+      toolId === 'codex'
         ? config.codexTimeoutMs
-        : config.aiCommand === 'codebuddy'
-          ? config.codebuddyTimeoutMs
-        : config.claudeTimeoutMs;
+        : toolId === 'cursor'
+          ? config.cursorTimeoutMs
+          : toolId === 'codebuddy'
+            ? config.codebuddyTimeoutMs
+            : config.claudeTimeoutMs;
 
     const startRun = () => {
       activeHandle = toolAdapter.run(
@@ -186,11 +189,11 @@ export function runAITask(
         {
         onSessionId: (id) => {
           currentSessionId = id;
-          if (ctx.threadId) sessionManager.setSessionIdForThread(ctx.userId, ctx.threadId, config.aiCommand, id);
-          else if (ctx.convId) sessionManager.setSessionIdForConv(ctx.userId, ctx.convId, config.aiCommand, id);
+          if (ctx.threadId) sessionManager.setSessionIdForThread(ctx.userId, ctx.threadId, toolId, id);
+          else if (ctx.convId) sessionManager.setSessionIdForConv(ctx.userId, ctx.convId, toolId, id);
         },
         onSessionInvalid: () => {
-          if (ctx.convId) sessionManager.clearSessionForConv(ctx.userId, ctx.convId, config.aiCommand);
+          if (ctx.convId) sessionManager.clearSessionForConv(ctx.userId, ctx.convId, toolId);
         },
         onThinking: (t) => {
           if (!firstContentLogged) {
@@ -199,7 +202,7 @@ export function runAITask(
           }
           wasThinking = true;
           thinkingText = t;
-          throttledUpdate(`💭 **${getAIToolDisplayName(config.aiCommand)} 思考中...**\n\n${t}`);
+          throttledUpdate(`💭 **${getAIToolDisplayName(toolId)} 思考中...**\n\n${t}`);
         },
         onText: (accumulated) => {
           if (!firstContentLogged) {
@@ -264,11 +267,11 @@ export function runAITask(
           }
           settled = true;
           log.error(`Task error for user ${ctx.userId}: ${error}`);
-          if (config.aiCommand !== 'claude' && !isUsageLimitError(error)) {
-            if (ctx.convId) sessionManager.clearSessionForConv(ctx.userId, ctx.convId, config.aiCommand);
-            else sessionManager.clearActiveToolSession(ctx.userId, config.aiCommand);
-            log.info(`Session reset for user ${ctx.userId} due to ${config.aiCommand} task error`);
-          } else if (config.aiCommand === 'codex' && isUsageLimitError(error)) {
+          if (toolId !== 'claude' && !isUsageLimitError(error)) {
+            if (ctx.convId) sessionManager.clearSessionForConv(ctx.userId, ctx.convId, toolId);
+            else sessionManager.clearActiveToolSession(ctx.userId, toolId);
+            log.info(`Session reset for user ${ctx.userId} due to ${toolId} task error`);
+          } else if (toolId === 'codex' && isUsageLimitError(error)) {
             log.info(`Keeping codex session for user ${ctx.userId} after usage limit error`);
           }
           try {
@@ -284,10 +287,12 @@ export function runAITask(
           skipPermissions,
           permissionMode,
           timeoutMs,
-          model: sessionManager.getModel(ctx.userId, ctx.threadId) ?? config.claudeModel,
+          model: sessionManager.getModel(ctx.userId, ctx.threadId)
+            ?? (toolId === 'cursor' ? config.cursorModel : config.claudeModel),
           chatId: ctx.chatId,
-          ...(config.useSdkMode ? {} : { hookPort: config.hookPort }),
-          ...(config.aiCommand === 'codex' && config.codexProxy ? { proxy: config.codexProxy } : {}),
+          ...(toolId === 'claude' && config.useSdkMode ? {} : { hookPort: config.hookPort }),
+          ...(toolId === 'codex' && config.codexProxy ? { proxy: config.codexProxy } : {}),
+          ...(toolId === 'cursor' && config.cursorProxy ? { proxy: config.cursorProxy } : {}),
         }
       );
       return activeHandle;
@@ -304,7 +309,7 @@ export function runAITask(
       latestContent: '',
       settle,
       startedAt: Date.now(),
-      toolId: config.aiCommand,
+      toolId,
     };
     startRun();
     platformAdapter.onTaskReady(taskState);

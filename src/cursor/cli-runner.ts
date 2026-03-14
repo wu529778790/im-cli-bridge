@@ -4,6 +4,7 @@
  */
 
 import { spawn } from 'node:child_process';
+import { basename } from 'node:path';
 import { createInterface } from 'node:readline';
 import { createLogger } from '../logger.js';
 
@@ -13,6 +14,7 @@ export interface CursorRunCallbacks {
   onText: (accumulated: string) => void;
   onThinking?: (accumulated: string) => void;
   onToolUse?: (toolName: string, toolInput?: Record<string, unknown>) => void;
+  onSessionInvalid?: () => void;
   onComplete: (result: {
     success: boolean;
     result: string;
@@ -34,6 +36,8 @@ export interface CursorRunOptions {
   model?: string;
   chatId?: string;
   hookPort?: number;
+  /** HTTP/HTTPS 代理（CLI 非官方支持，部分环境可能生效） */
+  proxy?: string;
 }
 
 export interface CursorRunHandle {
@@ -76,6 +80,11 @@ function extractToolFromCursorEvent(event: Record<string, unknown>): { name: str
   return { name, input: args };
 }
 
+function shouldPrependAgentSubcommand(cliPath: string): boolean {
+  const command = basename(cliPath).toLowerCase();
+  return command === 'cursor' || command === 'cursor.cmd' || command === 'cursor.exe';
+}
+
 export function runCursor(
   cliPath: string,
   prompt: string,
@@ -84,7 +93,11 @@ export function runCursor(
   callbacks: CursorRunCallbacks,
   options?: CursorRunOptions
 ): CursorRunHandle {
-  const args = ['-p', '--output-format', 'stream-json', '--stream-partial-output',
+  // 使用 json 格式：输出单行 JSON，stream-json 在 Windows 管道下可能无输出（lines=0）
+  const args = [
+    ...(shouldPrependAgentSubcommand(cliPath) ? ['agent'] : []),
+    '-p', '--output-format', 'json',
+    '--trust',  // headless 模式必须，否则会卡在 "Workspace Trust Required" 提示
     '--sandbox', 'disabled',  // 禁用 sandbox，避免 Windows 下 shell 命令极慢或卡死
   ];
 
@@ -109,6 +122,14 @@ export function runCursor(
   }
   if (options?.chatId) env.CC_IM_CHAT_ID = options.chatId;
   if (options?.hookPort) env.CC_IM_HOOK_PORT = String(options.hookPort);
+  if (options?.proxy) {
+    env.HTTPS_PROXY = options.proxy;
+    env.HTTP_PROXY = options.proxy;
+    env.https_proxy = options.proxy;
+    env.http_proxy = options.proxy;
+    env.ALL_PROXY = options.proxy;
+    env.all_proxy = options.proxy;
+  }
 
   const argsForLog = args.filter(a => a !== prompt).join(' ');
   log.info(`Spawning Cursor CLI: path=${cliPath}, cwd=${workDir}, session=${sessionId ?? 'new'}, args=${argsForLog}`);
@@ -129,6 +150,8 @@ export function runCursor(
   let completed = false;
   let model = '';
   const toolStats: Record<string, number> = {};
+  let lineCount = 0;
+  let stdoutBytes = 0;
   const MAX_TIMEOUT = 2_147_483_647;
   const timeoutMs =
     options?.timeoutMs && options.timeoutMs > 0
@@ -172,26 +195,33 @@ export function runCursor(
     log.debug(`[stderr] ${text.trimEnd()}`);
   });
 
+  child.stdout?.on('data', (chunk: Buffer) => {
+    stdoutBytes += chunk.length;
+  });
+
   const rl = createInterface({ input: child.stdout! });
 
   rl.on('line', (line) => {
     const trimmed = line.trim();
     if (!trimmed) return;
 
+    lineCount++;
     let event: Record<string, unknown>;
     try {
       event = JSON.parse(trimmed) as Record<string, unknown>;
     } catch {
+      log.warn(`[Cursor] Failed to parse line ${lineCount}: ${trimmed.slice(0, 80)}...`);
       return;
     }
 
-    log.debug(`[Cursor event] type=${event.type} subtype=${event.subtype}`);
     const type = event.type as string;
+    log.debug(`[Cursor event] type=${type} subtype=${event.subtype}`);
 
     if (type === 'system' && event.subtype === 'init') {
       model = (event.model as string) ?? '';
       const sid = event.session_id as string | undefined;
       if (sid) callbacks.onSessionId?.(sid);
+      log.info(`[Cursor] Session init: model=${model}, sessionId=${sid ?? 'none'}`);
       return;
     }
 
@@ -205,6 +235,15 @@ export function runCursor(
             callbacks.onText(accumulated);
           }
         }
+      }
+      // 兼容 content 为字符串或结构不同的情况
+      const rawContent = (msg as Record<string, unknown>)?.content;
+      if (!Array.isArray(content) && typeof rawContent === 'string') {
+        accumulated += rawContent;
+        callbacks.onText(accumulated);
+      }
+      if (accumulated.length > 0) {
+        log.info(`[Cursor] Assistant text received: ${accumulated.length} chars total`);
       }
       return;
     }
@@ -231,7 +270,10 @@ export function runCursor(
       completed = true;
       if (timeoutHandle) clearTimeout(timeoutHandle);
       const result = (event.result as string) ?? '';
+      const sid = event.session_id as string | undefined;
+      if (sid) callbacks.onSessionId?.(sid);
       if (!accumulated && result) accumulated = result;
+      log.info(`[Cursor] Result event: resultLen=${result.length}, accumulatedLen=${accumulated.length}, lines=${lineCount}`);
       callbacks.onComplete({
         success: true,
         result,
@@ -267,8 +309,22 @@ export function runCursor(
               stderrTail;
           }
         }
-        callbacks.onError(errMsg || `Cursor CLI exited with code ${exitCode}`);
+        const fullErr = errMsg || `Cursor CLI exited with code ${exitCode}`;
+        const isSessionErr = /no session found|no conversation found|unable to find session|session not found|invalid session/i.test(fullErr);
+        if (isSessionErr) callbacks.onSessionInvalid?.();
+        callbacks.onError(fullErr);
       } else {
+        const stderrPreview = stderrTotal > 0 ? stderrHead.slice(0, 500) : '(无)';
+        log.warn(
+          `[Cursor] Process exited 0 without result event: accumulated=${accumulated.length} chars, lines=${lineCount}, stdoutBytes=${stdoutBytes}. stderr(${stderrTotal} chars): ${stderrPreview}`
+        );
+        // 检测到 Cursor IDE（非 Agent CLI）时给出明确指引
+        if (stderrHead.includes('Electron') || stderrHead.includes('Chromium') || stderrHead.includes('not in the list of known options')) {
+          callbacks.onError(
+            '当前使用的是 Cursor IDE 的 cursor.cmd，不支持 CLI 模式。请安装独立的 Cursor Agent CLI：在 PowerShell 运行 irm \'https://cursor.com/install?win32=true\' | iex，安装后在配置中把 CLI Path 改为 agent。'
+          );
+          return;
+        }
         callbacks.onComplete({
           success: true,
           result: accumulated,

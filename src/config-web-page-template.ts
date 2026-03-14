@@ -1176,6 +1176,15 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                       <input id="ai-cursorCliPath" class="form-input mono" type="text" />
                     </div>
                     <div class="form-group">
+                      <label class="form-label" id="ai-cursorModel-label">Model</label>
+                      <input id="ai-cursorModel" class="form-input mono" type="text" placeholder="auto" />
+                      <div class="form-hint" id="ai-cursorModel-hint">如 auto、Claude 4 Sonnet 等，agent --list-models 查看</div>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label" id="ai-cursorTimeoutMs-label">Timeout (ms)</label>
+                      <input id="ai-cursorTimeoutMs" class="form-input" type="number" min="1" />
+                    </div>
+                    <div class="form-group">
                       <label class="form-label" id="ai-cursorProxy-label">Proxy (optional)</label>
                       <input id="ai-cursorProxy" class="form-input mono" type="text" />
                       <div class="form-hint" id="ai-cursorProxy-hint">HTTP proxy for API requests (e.g., http://127.0.0.1:7890)</div>
