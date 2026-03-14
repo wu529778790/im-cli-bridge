@@ -8,8 +8,59 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
       const platformKeys = platformDefinitions.map((platform) => platform.key);
       const aiTools = ["claude", "codex", "cursor", "codebuddy"];
       const STORAGE_KEY_LANG = "open-im-web-lang";
+      const STORAGE_KEY_DARK_MODE = "open-im-web-dark-mode";
       const POLLING_INTERVAL = 10000;
       const toolLabels = { claude: "Claude", codex: "Codex", cursor: "Cursor", codebuddy: "CodeBuddy" };
+
+      // Dark mode handling
+      const getSystemDarkMode = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
+      const getSavedDarkMode = () => {
+        const saved = localStorage.getItem(STORAGE_KEY_DARK_MODE);
+        if (saved === "true") return true;
+        if (saved === "false") return false;
+        return null; // auto mode
+      };
+      const setDarkMode = (isDark) => {
+        if (isDark) {
+          document.documentElement.classList.add("dark");
+        } else {
+          document.documentElement.classList.remove("dark");
+        }
+        const sunIcon = el("darkModeToggle")?.querySelector(".sun-icon");
+        const moonIcon = el("darkModeToggle")?.querySelector(".moon-icon");
+        if (sunIcon && moonIcon) {
+          sunIcon.style.display = isDark ? "none" : "block";
+          moonIcon.style.display = isDark ? "block" : "none";
+        }
+      };
+      const updateDarkMode = () => {
+        const saved = getSavedDarkMode();
+        const isDark = saved !== null ? saved : getSystemDarkMode();
+        setDarkMode(isDark);
+      };
+      const toggleDarkMode = () => {
+        const currentDark = document.documentElement.classList.contains("dark");
+        const systemDark = getSystemDarkMode();
+        // Toggle: auto -> off -> on -> auto
+        let nextMode;
+        const saved = getSavedDarkMode();
+        if (saved === null) {
+          nextMode = !systemDark; // auto -> force opposite of system
+        } else if (saved === true) {
+          nextMode = null; // on -> auto
+        } else {
+          nextMode = true; // off -> on
+        }
+        localStorage.setItem(STORAGE_KEY_DARK_MODE, nextMode === null ? "auto" : String(nextMode));
+        updateDarkMode();
+      };
+
+      // Listen for system theme changes
+      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+        if (getSavedDarkMode() === null) {
+          updateDarkMode();
+        }
+      });
 
       const el = (id) => document.getElementById(id);
       const texts = __PAGE_TEXTS__;
@@ -237,6 +288,10 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
 
         // Language button
         el("langButton").textContent = isZh ? "EN" : "中文";
+
+        // Dark mode toggle aria-label
+        const darkModeToggle = el("darkModeToggle");
+        if (darkModeToggle) darkModeToggle.setAttribute("aria-label", t("darkModeToggle"));
       }
 
       // AI tool switcher
@@ -475,6 +530,10 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           updateVisualState();
           refreshStatus().catch((err) => console.warn("[config-web] Failed to refresh status after language change:", err));
         };
+
+        // Dark mode toggle
+        el("darkModeToggle").onclick = toggleDarkMode;
+        updateDarkMode(); // Initialize dark mode on load
 
         // Service buttons
         el("validateButton").onclick = validate;

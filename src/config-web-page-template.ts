@@ -61,6 +61,45 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
         --transition-normal: 200ms ease;
       }
 
+      /* Dark Theme */
+      :root.dark {
+        --bg-primary: #0f0f0f;
+        --bg-secondary: #18181b;
+        --bg-tertiary: #27272a;
+        --bg-card: #18181b;
+        --bg-hover: #27272a;
+        --bg-active: #3f3f46;
+
+        --border-subtle: #27272a;
+        --border-default: #3f3f46;
+        --border-strong: #52525b;
+
+        --text-primary: #fafafa;
+        --text-secondary: #a1a1aa;
+        --text-tertiary: #71717a;
+        --text-quaternary: #52525b;
+
+        --accent-primary: #3b82f6;
+        --accent-primary-hover: #60a5fa;
+        --accent-primary-light: #1e3a5f;
+
+        --success-bg: #14532d;
+        --success-text: #86efac;
+        --success-border: #166534;
+
+        --warning-bg: #713f12;
+        --warning-text: #fcd34d;
+        --warning-border: #92400e;
+
+        --error-bg: #7f1d1d;
+        --error-text: #fca5a5;
+        --error-border: #991b1b;
+
+        --info-bg: #1e3a5f;
+        --info-text: #93c5fd;
+        --info-border: #1e40af;
+      }
+
       * { box-sizing: border-box; }
 
       body {
@@ -209,6 +248,24 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
       }
 
       .lang-button:hover {
+        background: var(--bg-hover);
+        border-color: var(--border-strong);
+      }
+
+      .dark-mode-toggle {
+        padding: 8px;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--border-default);
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        cursor: pointer;
+        transition: all var(--transition-fast);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .dark-mode-toggle:hover {
         background: var(--bg-hover);
         border-color: var(--border-strong);
       }
@@ -741,6 +798,15 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
               </svg>
               <span id="footerGithubText">GitHub</span>
             </a>
+            <button class="dark-mode-toggle" id="darkModeToggle" type="button" aria-label="Toggle dark mode">
+              <svg class="sun-icon" style="width:16px;height:16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="5"/>
+                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+              </svg>
+              <svg class="moon-icon" style="width:16px;height:16px;display:none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+              </svg>
+            </button>
             <button class="lang-button" id="langButton">中文</button>
           </div>
         </header>
