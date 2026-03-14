@@ -174,9 +174,11 @@ export function runAITask(
     const timeoutMs =
       config.aiCommand === 'codex'
         ? config.codexTimeoutMs
-        : config.aiCommand === 'codebuddy'
-          ? config.codebuddyTimeoutMs
-        : config.claudeTimeoutMs;
+        : config.aiCommand === 'cursor'
+          ? config.cursorTimeoutMs
+          : config.aiCommand === 'codebuddy'
+            ? config.codebuddyTimeoutMs
+            : config.claudeTimeoutMs;
 
     const startRun = () => {
       activeHandle = toolAdapter.run(
@@ -284,10 +286,12 @@ export function runAITask(
           skipPermissions,
           permissionMode,
           timeoutMs,
-          model: sessionManager.getModel(ctx.userId, ctx.threadId) ?? config.claudeModel,
+          model: sessionManager.getModel(ctx.userId, ctx.threadId)
+            ?? (config.aiCommand === 'cursor' ? config.cursorModel : config.claudeModel),
           chatId: ctx.chatId,
-          ...(config.useSdkMode ? {} : { hookPort: config.hookPort }),
+          ...(config.aiCommand === 'claude' && config.useSdkMode ? {} : { hookPort: config.hookPort }),
           ...(config.aiCommand === 'codex' && config.codexProxy ? { proxy: config.codexProxy } : {}),
+          ...(config.aiCommand === 'cursor' && config.cursorProxy ? { proxy: config.cursorProxy } : {}),
         }
       );
       return activeHandle;

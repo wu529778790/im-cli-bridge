@@ -39,8 +39,10 @@ interface WebConfigPayload {
     claudeModel: string;
     claudeProxy: string;
     codexTimeoutMs: number;
+    cursorTimeoutMs: number;
     codebuddyTimeoutMs: number;
     cursorCliPath: string;
+    cursorModel: string;
     codexCliPath: string;
     codebuddyCliPath: string;
     codexProxy: string;
@@ -195,8 +197,10 @@ function buildInitialPayload(file: FileConfig): WebConfigPayload {
       claudeModel: file.tools?.claude?.model ?? claudeEnv.ANTHROPIC_MODEL ?? "",
       claudeProxy: file.tools?.claude?.proxy ?? "",
       codexTimeoutMs: file.tools?.codex?.timeoutMs ?? 600000,
+      cursorTimeoutMs: file.tools?.cursor?.timeoutMs ?? 600000,
       codebuddyTimeoutMs: file.tools?.codebuddy?.timeoutMs ?? 600000,
-      cursorCliPath: file.tools?.cursor?.cliPath ?? "agent",
+      cursorCliPath: file.tools?.cursor?.cliPath ?? "cursor",
+      cursorModel: file.tools?.cursor?.model ?? "auto",
       codexCliPath: file.tools?.codex?.cliPath ?? "codex",
       codebuddyCliPath: file.tools?.codebuddy?.cliPath ?? "codebuddy",
       codexProxy: file.tools?.codex?.proxy ?? "",
@@ -226,6 +230,7 @@ function validatePayload(payload: WebConfigPayload): string[] {
   if (!clean(payload.ai.claudeWorkDir)) errors.push("Default work directory is required.");
   if (!Number.isFinite(payload.ai.claudeTimeoutMs) || payload.ai.claudeTimeoutMs <= 0) errors.push("Claude timeout must be positive.");
   if (!Number.isFinite(payload.ai.codexTimeoutMs) || payload.ai.codexTimeoutMs <= 0) errors.push("Codex timeout must be positive.");
+  if (!Number.isFinite(payload.ai.cursorTimeoutMs) || payload.ai.cursorTimeoutMs <= 0) errors.push("Cursor timeout must be positive.");
   if (!Number.isFinite(payload.ai.codebuddyTimeoutMs) || payload.ai.codebuddyTimeoutMs <= 0) errors.push("CodeBuddy timeout must be positive.");
   if (!Number.isFinite(payload.ai.hookPort) || payload.ai.hookPort <= 0) errors.push("Hook port must be positive.");
   return errors;
@@ -315,13 +320,14 @@ function createProbeConfig(values: Partial<Config>): Config {
     dingtalkAllowedUserIds: [],
     aiCommand: "claude",
     claudeCliPath: "claude",
-    cursorCliPath: "agent",
+    cursorCliPath: "cursor",
     codexCliPath: "codex",
     claudeWorkDir: process.cwd(),
     claudeSkipPermissions: true,
     defaultPermissionMode: "ask",
     claudeTimeoutMs: 600000,
     codexTimeoutMs: 600000,
+    cursorTimeoutMs: 600000,
     codebuddyTimeoutMs: 600000,
     hookPort: 35801,
     logDir: "",
@@ -483,9 +489,11 @@ function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConf
       },
       cursor: {
         ...existing.tools?.cursor,
-        cliPath: clean(payload.ai.cursorCliPath) ?? "agent",
+        cliPath: clean(payload.ai.cursorCliPath) ?? "cursor",
         skipPermissions: existing.tools?.cursor?.skipPermissions ?? payload.ai.claudeSkipPermissions,
         proxy: clean(payload.ai.cursorProxy),
+        timeoutMs: payload.ai.cursorTimeoutMs,
+        model: clean(payload.ai.cursorModel),
       },
       codex: {
         ...existing.tools?.codex,

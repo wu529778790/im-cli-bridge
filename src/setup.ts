@@ -106,7 +106,7 @@ function printManualInstructions(configPath: string): void {
       "skipPermissions": true,
       "timeoutMs": 600000
     },
-    "cursor": { "cliPath": "agent", "skipPermissions": true },
+    "cursor": { "cliPath": "cursor", "skipPermissions": true, "model": "auto" },
     "codex": { "cliPath": "codex", "workDir": "${process.cwd().replace(/\\/g, "/")}", "skipPermissions": true, "proxy": "http://127.0.0.1:7890" },
     "codebuddy": { "cliPath": "codebuddy", "skipPermissions": true, "timeoutMs": 600000 }
   },
@@ -916,7 +916,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
       },
       cursor: {
         ...baseTools.cursor,
-        cliPath: baseTools.cursor?.cliPath ?? "agent",
+        cliPath: baseTools.cursor?.cliPath ?? "cursor",
         skipPermissions: baseTools.cursor?.skipPermissions ?? baseTools.claude?.skipPermissions ?? true,
       },
       codex: {

@@ -6,7 +6,7 @@ try {
 
 import { readFileSync, writeFileSync, accessSync, constants, existsSync, mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { join, dirname, isAbsolute } from 'node:path';
+import { join, dirname, isAbsolute, basename } from 'node:path';
 import { homedir } from 'node:os';
 import type { LogLevel } from './logger.js';
 import { APP_HOME } from './constants.js';
@@ -57,13 +57,18 @@ export interface Config {
   codebuddyCliPath: string;
   /** Codex 访问 chatgpt.com 的代理（如 http://127.0.0.1:7890） */
   codexProxy?: string;
+  /** Cursor 访问 API 的代理（如 http://127.0.0.1:7890，CLI 非官方支持） */
+  cursorProxy?: string;
+  claudeTimeoutMs: number;
+  codexTimeoutMs: number;
+  cursorTimeoutMs: number;
+  codebuddyTimeoutMs: number;
   claudeWorkDir: string;
   claudeSkipPermissions: boolean;
   defaultPermissionMode: 'ask' | 'accept-edits' | 'plan' | 'yolo';
-  claudeTimeoutMs: number;
-  codexTimeoutMs: number;
-  codebuddyTimeoutMs: number;
   claudeModel?: string;
+  /** Cursor 专用模型，如 auto（自动选择）、Claude 4 Sonnet 等 */
+  cursorModel?: string;
   hookPort: number;
   logDir: string;
   logLevel: LogLevel;
@@ -181,7 +186,11 @@ export interface FileToolCursor {
   cliPath?: string;
   /** 是否跳过权限确认（默认 true，与 tools.claude 共用权限服务器） */
   skipPermissions?: boolean;
+  /** HTTP/HTTPS 代理（CLI 非官方支持，部分环境可能生效） */
   proxy?: string;
+  timeoutMs?: number;
+  /** 模型名，如 auto、Claude 4 Sonnet、gpt-5.2 等，见 agent --list-models */
+  model?: string;
 }
 
 export interface FileToolCodex {
@@ -285,8 +294,11 @@ function migrateToNewConfigFormat(raw: Record<string, unknown>): Record<string, 
     },
     cursor: {
       ...tcur,
-      cliPath: tcur.cliPath ?? raw.cursorCliPath ?? 'agent',
+      cliPath: tcur.cliPath ?? raw.cursorCliPath ?? 'cursor',
       skipPermissions: tcur.skipPermissions ?? raw.claudeSkipPermissions ?? true,
+      proxy: tcur.proxy,
+      timeoutMs: tcur.timeoutMs ?? raw.claudeTimeoutMs ?? 600000,
+      model: tcur.model ?? raw.cursorModel ?? 'auto',
     },
     codex: {
       ...tcod,
@@ -656,6 +668,7 @@ export function loadConfig(): Config {
 
   const claudeCliPath = process.env.CLAUDE_CLI_PATH ?? tc.cliPath ?? 'claude';
   const codexProxy = process.env.CODEX_PROXY ?? tcod.proxy;
+  const cursorProxy = process.env.CURSOR_PROXY ?? tcur.proxy;
   let codexCliPath = process.env.CODEX_CLI_PATH ?? tcod.cliPath ?? 'codex';
   if (process.platform === 'win32' && codexCliPath === 'codex') {
     const npmPaths = [
@@ -672,14 +685,63 @@ export function loadConfig(): Config {
       }
     }
   }
-  let cursorCliPath = process.env.CURSOR_CLI_PATH ?? tcur.cliPath ?? 'agent';
-  if (process.platform === 'win32' && cursorCliPath === 'agent') {
-    const winAgentPath = join(process.env.LOCALAPPDATA || '', 'cursor-agent', 'agent.cmd');
-    try {
-      accessSync(winAgentPath, constants.F_OK);
-      cursorCliPath = winAgentPath;
-    } catch {
-      /* 使用默认 agent */
+  let cursorCliPath = process.env.CURSOR_CLI_PATH ?? tcur.cliPath ?? 'cursor';
+  const agentPaths = [
+    join(process.env.APPDATA || '', 'npm', 'agent.cmd'),
+    join(process.env.LOCALAPPDATA || '', 'npm', 'agent.cmd'),
+    join(process.env.LOCALAPPDATA || '', 'cursor-agent', 'agent.cmd'),
+    join(process.env.LOCALAPPDATA || '', 'Programs', 'cursor-agent', 'agent.cmd'),
+    join(process.env.USERPROFILE || '', '.cursor', 'bin', 'agent.cmd'),
+  ];
+  if (process.platform === 'win32') {
+    // agent 需解析为完整路径，否则 spawn 报 ENOENT（Node 子进程 PATH 可能不包含 npm）
+    if (cursorCliPath === 'agent' || basename(cursorCliPath).toLowerCase() === 'agent') {
+      for (const p of agentPaths) {
+        try {
+          accessSync(p, constants.F_OK);
+          cursorCliPath = p;
+          break;
+        } catch {
+          /* 尝试下一个路径 */
+        }
+      }
+      // 若已知路径均未找到，尝试 where agent 解析（用户 PATH 中的 agent）
+      if (cursorCliPath === 'agent') {
+        try {
+          const out = execFileSync('where', ['agent'], { encoding: 'utf-8', windowsHide: true });
+          const first = out.split(/\r?\n/)[0]?.trim();
+          if (first && existsSync(first)) cursorCliPath = first;
+        } catch {
+          /* where 失败则保持 agent，后续校验会提示安装 */
+        }
+      }
+    }
+    if (cursorCliPath === 'cursor') {
+      for (const p of agentPaths) {
+        try {
+          accessSync(p, constants.F_OK);
+          cursorCliPath = p;
+          break;
+        } catch {
+          /* 尝试下一个路径 */
+        }
+      }
+    }
+    if (cursorCliPath === 'cursor') {
+      const cursorIdePaths = [
+        join(process.env.APPDATA || '', 'npm', 'cursor.cmd'),
+        join(process.env.LOCALAPPDATA || '', 'npm', 'cursor.cmd'),
+        join(process.env.ProgramFiles || 'C:\\Program Files', 'cursor', 'resources', 'app', 'bin', 'cursor.cmd'),
+      ];
+      for (const p of cursorIdePaths) {
+        try {
+          accessSync(p, constants.F_OK);
+          cursorCliPath = p;
+          break;
+        } catch {
+          /* 尝试下一个路径 */
+        }
+      }
     }
   }
   let codebuddyCliPath = process.env.CODEBUDDY_CLI_PATH ?? tcb.cliPath ?? 'codebuddy';
@@ -721,6 +783,10 @@ export function loadConfig(): Config {
     process.env.CODEX_TIMEOUT_MS !== undefined
       ? parseInt(process.env.CODEX_TIMEOUT_MS, 10) || 600000
       : tcod.timeoutMs ?? 600000;
+  const cursorTimeoutMs =
+    process.env.CURSOR_TIMEOUT_MS !== undefined
+      ? parseInt(process.env.CURSOR_TIMEOUT_MS, 10) || 600000
+      : tcur.timeoutMs ?? 600000;
   const codebuddyTimeoutMs =
     process.env.CODEBUDDY_TIMEOUT_MS !== undefined
       ? parseInt(process.env.CODEBUDDY_TIMEOUT_MS, 10) || 600000
@@ -868,25 +934,24 @@ export function loadConfig(): Config {
       } catch {
         const installGuide = [
         '',
-        '━━━ Cursor CLI 未安装 ━━━',
+        '━━━ Cursor Agent CLI 未安装 ━━━',
         '',
-        '使用 Cursor 需要先安装 Cursor Agent CLI。',
+        'open-im 需要独立的 Cursor Agent CLI（agent 命令），不是 Cursor IDE 自带的 cursor.cmd。',
         '',
-        '安装方法：',
+        '安装方法（在 PowerShell 中执行）：',
         '',
-        '  macOS/Linux: curl https://cursor.com/install -fsSL | bash',
-        '  Windows: irm \'https://cursor.com/install?win32=true\' | iex',
+        '  irm \'https://cursor.com/install?win32=true\' | iex',
         '',
-        '安装后运行 agent --version 验证。',
+        '安装后运行 agent -p "hello" 验证。',
         '',
       ].join('\n');
       throw new Error(installGuide);
       }
     }
-    // 提示 Cursor 认证：需 agent login 或 CURSOR_API_KEY
+    // 提示 Cursor 认证：需 cursor agent login 或 CURSOR_API_KEY
     if (!process.env.CURSOR_API_KEY) {
       console.warn(
-        '\n⚠ Cursor 模式：未检测到 CURSOR_API_KEY。首次使用请先运行 agent login，\n' +
+        '\n⚠ Cursor 模式：未检测到 CURSOR_API_KEY。首次使用请先运行 cursor agent login，\n' +
         '  或在 ~/.open-im/config.json 的 env 中添加 "CURSOR_API_KEY": "你的 API Key"。\n'
       );
     }
@@ -1056,13 +1121,16 @@ export function loadConfig(): Config {
     codexCliPath,
     codebuddyCliPath,
     codexProxy,
+    cursorProxy,
     claudeWorkDir,
     claudeSkipPermissions,
     defaultPermissionMode,
     claudeTimeoutMs,
     codexTimeoutMs,
+    cursorTimeoutMs,
     codebuddyTimeoutMs,
     claudeModel: process.env.CLAUDE_MODEL ?? tc.model,
+    cursorModel: process.env.CURSOR_MODEL ?? tcur.model ?? 'auto',
     hookPort,
     logDir,
     logLevel,
