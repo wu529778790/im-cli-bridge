@@ -14,6 +14,19 @@
 - 会话隔离：每个用户独立维护本地会话，`/new` 可重置
 - 常用命令：支持 `/help`、`/new`、`/cd`、`/pwd`、`/status`
 
+## 覆盖矩阵
+
+能力等级说明：`Native` 表示平台内原生支持，`Fallback` 表示有降级方案或文本兜底，`None` 表示当前暂不支持。
+
+| 平台 | 文本输入 | 图片输入 | 文件输入 | 语音输入 | 视频输入 | 流式回复 | 图片回复 | 卡片回复 |
+| ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |
+| Telegram | Native | Native | Native | Native | Native | Native | Native | Native |
+| 飞书 | Native | Native | Native | Fallback | Fallback | Native | Native | Native |
+| QQ | Native | Fallback | Fallback | Fallback | Fallback | None | Fallback | Fallback |
+| 企业微信 | Native | Fallback | Fallback | Fallback | Fallback | Native | Native | Native |
+| 钉钉 | Native | Fallback | Fallback | Fallback | Fallback | Native | Fallback | Native |
+| 微信（测试中） | Native | Fallback | Fallback | Fallback | Fallback | Native | Fallback | Native |
+
 ## 环境要求
 
 - Node.js >= 20

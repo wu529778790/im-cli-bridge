@@ -6,6 +6,7 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         { key: "dingtalk", label: "DingTalk", fields: ["aiCommand", "clientId", "clientSecret", "cardTemplateId", "allowedUserIds"], testFields: ["clientId", "clientSecret"] },
       ];
       const platformKeys = platformDefinitions.map((platform) => platform.key);
+      const aiTools = ["claude", "codex", "cursor", "codebuddy"];
       const ids = platformDefinitions.flatMap((platform) => ["enabled", ...platform.fields].map((field) => platform.key + "-" + field)).concat(["ai-aiCommand","ai-claudeCliPath","ai-claudeWorkDir","ai-claudeSkipPermissions","ai-claudeTimeoutMs","ai-codexTimeoutMs","ai-codebuddyTimeoutMs","ai-claudeModel","ai-cursorCliPath","ai-codexCliPath","ai-codebuddyCliPath","ai-codexProxy","ai-hookPort","ai-logLevel","ai-useSdkMode"]);
       const el = (id) => document.getElementById(id);
       const storageKey = "open-im-web-lang";
@@ -25,6 +26,7 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
       const setChecked = (id, value) => { const node = el(id); if (node) node.checked = Boolean(value); };
       const setMessage = (text, type="") => { const node = el("message"); node.textContent = text; node.className = ("message " + type).trim(); };
       const setBusy = (busy) => ["validateButton","saveButton","startButton","stopButton","langButton"].forEach((id) => { el(id).disabled = busy; });
+      const getActiveAiTool = () => el("ai-aiCommand").value || "claude";
       const readPlatformConfig = (platform) => platform.testFields.reduce((config, field) => {
         config[field] = getValue(platform.key + "-" + field);
         return config;
@@ -54,6 +56,14 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         el("aiHint").textContent = t("aiHint");
         el("aiHint").style.display = t("aiHint") ? "block" : "none";
         el("claudeNote").textContent = t("claudeNote");
+        setText("aiCommonTitle", t("aiCommonTitle"));
+        setText("aiCommonHint", t("aiCommonHint"));
+        setText("aiToolConfigTitle", t("aiToolConfigTitle"));
+        setText("aiToolConfigHint", t("aiToolConfigHint"));
+        setText("ai-claudeSectionLabel", "Claude");
+        setText("ai-codexSectionLabel", "Codex");
+        setText("ai-cursorSectionLabel", "Cursor");
+        setText("ai-codebuddySectionLabel", "CodeBuddy");
         setText("telegram-enabled-label", t("enabled"));
         setText("feishu-enabled-label", t("enabled"));
         setText("qq-enabled-label", t("enabled"));
@@ -123,6 +133,9 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         el("ai-claudeModel").placeholder = t("optional");
         setText("ai-claudeSkipPermissions-label", t("autoApprove"));
         setText("ai-useSdkMode-label", t("sdkMode"));
+        document.querySelectorAll("[data-tool]").forEach((button) => {
+          button.textContent = button.getAttribute("data-tool");
+        });
         el("validateButton").textContent = t("validate");
         el("saveButton").textContent = t("save");
         el("startButton").textContent = t("start");
@@ -156,6 +169,20 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         el("navAiBtn").textContent = t("aiTitle");
         el("navServiceBtn").textContent = t("serviceTitle");
       }
+      function updateAiToolVisibility() {
+        const activeTool = getActiveAiTool();
+        aiTools.forEach((tool) => {
+          const panel = document.querySelector('[data-tool-panel="' + tool + '"]');
+          if (panel) {
+            panel.hidden = tool !== activeTool;
+          }
+        });
+        document.querySelectorAll("[data-tool]").forEach((button) => {
+          button.classList.toggle("active", button.getAttribute("data-tool") === activeTool);
+        });
+        const toolLabels = { claude: "Claude", codex: "Codex", cursor: "Cursor", codebuddy: "CodeBuddy" };
+        el("aiConfigSummary").textContent = t("aiConfigSummary", { tool: toolLabels[activeTool] || activeTool });
+      }
       function updateVisualState() {
         const enabled = [];
         platformDefinitions.forEach((platform) => {
@@ -167,6 +194,7 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         el("liveSummary").textContent = enabled.length
           ? t("summaryEnabled", { platforms: enabled.join(t("listSeparator")), tool: aiTool })
           : t("summaryEmpty", { tool: aiTool });
+        updateAiToolVisibility();
       }
       async function updateDashboard() {
         try {
@@ -327,6 +355,14 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
             node.addEventListener("input", updateVisualState);
             node.addEventListener("change", updateVisualState);
           }
+        });
+        document.querySelectorAll("[data-tool]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const tool = button.getAttribute("data-tool");
+            if (!tool) return;
+            setValue("ai-aiCommand", tool);
+            updateVisualState();
+          });
         });
       }
       async function validate() { setBusy(true); try { await request("/api/config/validate", { method: "POST", body: JSON.stringify(payload()) }); setMessage(t("validationOk"), "success"); } catch (error) { setMessage(error.message || String(error), "error"); } finally { setBusy(false); } }
