@@ -130,7 +130,6 @@ jobs:
       - run: npm run build
 
       - run: npm test
-        continue-on-error: true
 
       - name: Publish to npm
         if: github.event.inputs.dry_run != 'true'
