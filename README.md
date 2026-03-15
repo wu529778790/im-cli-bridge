@@ -59,10 +59,18 @@ The config file is stored at `~/.open-im/config.json` by default.
 
 ## Graphical Config Page
 
-- Default URL: `http://127.0.0.1:39282`
-- `open-im start` also serves the local configuration page
-- `open-im dev` only opens the page automatically when setup is incomplete
-- If configuration already exists and you want to open the page manually, use `open-im start`
+Open the config page at **http://127.0.0.1:39282** (or the URL shown after `open-im start`). The page includes:
+
+- **Dashboard** – Configured / Enabled platform count and service status (Idle or Running)
+- **Platforms** – Enable and configure Telegram, Feishu, QQ, WeCom, and DingTalk (credentials, proxy, per-platform AI tool, allowed user IDs). Each platform has a “Test Configuration” button.
+- **AI Tooling** – **General**: default AI tool (Claude / Codex / CodeBuddy), work directory, hook port, log level. **Per-tool tabs**: Claude (CLI path, timeout, proxy, config path, ANTHROPIC_* fields), Codex (CLI path, timeout, proxy), CodeBuddy (CLI path, timeout).
+- **Service control** – Validate config, Save, Start bridge, Stop bridge.
+
+WeChat is not in the web UI; configure it in `~/.open-im/config.json` or via `open-im init` if needed.
+
+- `open-im start` serves the config page and the bridge.
+- `open-im dev` opens the page automatically only when setup is incomplete.
+- To open the page when config already exists, run `open-im start` and visit the URL above.
 
 ## Session Behavior
 
@@ -267,7 +275,7 @@ Notes on DingTalk: the current implementation uses a hybrid model of "Stream Mod
 
 - Plain text replies in a session are sent through `sessionWebhook`
 - If `cardTemplateId` is configured, the app will try AI assistant `prepare/update/finish` streaming cards; if that fails, it falls back to plain text. In custom bot or regular group scenarios, the interactive card API may return `param.error`, so single-message streaming updates are not available there yet
-- Startup and shutdown notifications are sent to the most recently active DingTalk conversation. After a cold start, if no DingTalk conversation has interacted with the service yet, there is no target to notify
+- Startup and shutdown notifications are not sent to DingTalk (the OpenAPI robot API does not support proactive messages in the same way). Other platforms (e.g. Telegram, Feishu, WeCom) still receive lifecycle notifications when configured
 
 DingTalk AI card templates are already compatible with the official "Search Result Card" template and use the variables `lastMessage`, `content`, `resources`, `users`, and `flowStatus`. If you use that template, no template changes are required for streaming updates.
 

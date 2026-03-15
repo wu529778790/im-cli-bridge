@@ -59,10 +59,18 @@ open-im start
 
 ## 图形化配置页面
 
-- 默认地址：`http://127.0.0.1:39282`
-- `open-im start` 会同时提供本地配置页面
+在浏览器中打开 **http://127.0.0.1:39282**（或执行 `open-im start` 后提示的地址），页面结构如下：
+
+- **概览** – 已配置/已启用平台数量、服务状态（未启动或运行中）
+- **平台配置** – 启用并填写 Telegram、飞书、QQ、企业微信、钉钉的凭证（Bot Token/App ID/Secret、代理、该平台使用的 AI 工具、白名单用户 ID）。每个平台提供「校验配置」按钮
+- **AI 工具配置** – **公共**：默认 AI 工具（Claude / Codex / CodeBuddy）、工作目录、Hook 端口、日志级别。**分工具**：Claude（CLI 路径、超时、代理、配置路径、ANTHROPIC_* 等）、Codex（CLI 路径、超时、代理）、CodeBuddy（CLI 路径、超时）
+- **服务控制** – 校验配置、保存、启动桥接、停止桥接
+
+微信暂不在网页中配置，如需使用请在 `~/.open-im/config.json` 中手动配置或通过 `open-im init` 引导。
+
+- `open-im start` 会同时启动桥接服务并提供该配置页
 - `open-im dev` 仅在未完成配置时自动打开页面
-- 已有配置但想手动打开时，使用 `open-im start`
+- 已有配置但想手动打开时，执行 `open-im start` 后访问上述地址即可
 
 ## 会话说明
 
@@ -267,7 +275,7 @@ codebuddy login
 
 - 会话内普通文本回复默认走 `sessionWebhook`
 - 若配置了 `cardTemplateId`，会尝试 AI 助理 `prepare/update/finish` 流式卡片；失败则 fallback 为普通文本（自定义机器人/普通群场景下互动卡片 API 报 `param.error`，暂不支持单条流式更新）
-- 启动/关闭通知会发给最近一次已互动的钉钉会话；如果服务冷启动后还没有任何钉钉会话互动过，则没有可用目标可发
+- 启动/关闭通知不会发给钉钉（OpenAPI 机器人接口不支持主动发消息）；其他已配置平台（如 Telegram、飞书、企业微信）仍会收到生命周期通知
 
 钉钉 AI 卡片模板：已适配官方「搜索结果卡片」模板，使用变量 `lastMessage`、`content`、`resources`、`users`、`flowStatus`。若使用该模板，无需修改模板即可实现流式更新。
 
