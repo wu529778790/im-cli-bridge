@@ -1,7 +1,7 @@
 {
   "name": "@wu529778790/open-im",
   "version": "1.6.5-beta.0",
-  "description": "Multi-platform IM bridge for AI CLI tools (Claude, Codex, Cursor, CodeBuddy)",
+  "description": "Multi-platform IM bridge for AI CLI tools (Claude, Codex, CodeBuddy)",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -43,9 +43,6 @@
   "homepage": "https://github.com/wu529778790/open-im#readme",
   "bugs": {
     "url": "https://github.com/wu529778790/open-im/issues"
-  },
-  "optionalDependencies": {
-    "node-pty": "^1.1.0"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.72",
