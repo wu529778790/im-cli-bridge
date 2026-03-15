@@ -34,7 +34,7 @@ vi.mock('node:child_process', () => ({
 
 import { loadConfig, loadFileConfig } from './config.js';
 
-describe('Cursor config defaults', () => {
+describe('config', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     readFileSyncMock.mockImplementation(() => {
@@ -42,54 +42,10 @@ describe('Cursor config defaults', () => {
     });
     existsSyncMock.mockReturnValue(true);
     accessSyncMock.mockImplementation(() => undefined);
-    execFileSyncMock.mockImplementation(() => Buffer.from('cursor'));
-    delete process.env.CURSOR_CLI_PATH;
-    delete process.env.AI_COMMAND;
   });
 
-  it('defaults Cursor CLI path to cursor for runtime config', () => {
-    process.env.AI_COMMAND = 'cursor';
-    process.env.TELEGRAM_BOT_TOKEN = 'test-token';
-
-    const config = loadConfig();
-
-    // 无显式配置时使用 cursor；Windows 下可能解析为 npm 或安装路径
-    expect(config.cursorCliPath === 'cursor' || config.cursorCliPath.endsWith('cursor.cmd')).toBe(true);
-  });
-
-  it('migrates old cursorCliPath-less configs to cursor', () => {
-    readFileSyncMock.mockReturnValue(
-      JSON.stringify({
-        aiCommand: 'cursor',
-        claudeCliPath: 'claude',
-        claudeWorkDir: 'D:/coding/open-im',
-        claudeSkipPermissions: true,
-      }),
-    );
-
+  it('loadFileConfig returns empty object when config file is missing', () => {
     const file = loadFileConfig();
-
-    expect(file.tools?.cursor?.cliPath).toBe('cursor');
-    expect(writeFileSyncMock).toHaveBeenCalled();
-  });
-
-  it('preserves explicit legacy agent cursor configs', () => {
-    readFileSyncMock.mockReturnValue(
-      JSON.stringify({
-        aiCommand: 'cursor',
-        platforms: { telegram: { enabled: true } },
-        telegramBotToken: 'test-token',
-        tools: {
-          cursor: {
-            cliPath: 'agent',
-            skipPermissions: true,
-          },
-        },
-      }),
-    );
-
-    const config = loadConfig();
-
-    expect(config.cursorCliPath).toBe('agent');
+    expect(file).toEqual({});
   });
 });

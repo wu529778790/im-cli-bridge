@@ -85,7 +85,7 @@ Config loading order (environment variables take precedence):
 Key config options:
 - `enabledPlatforms` - Array of enabled platforms ('telegram' | 'feishu' | 'wechat')
 - `allowedUserIds` - Whitelist of user IDs (empty = all users)
-- `aiCommand` - Which AI tool to use (claude/codex/cursor)
+- `aiCommand` - Which AI tool to use (claude/codex/codebuddy)
 - `tools.claude.cliPath` - Path to Claude CLI executable
 - `tools.claude.workDir` - Default working directory
 - `tools.claude.skipPermissions` - Auto-approve tool permissions (default: true)

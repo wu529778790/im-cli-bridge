@@ -2,7 +2,6 @@ import { getConfiguredAiCommands, type Config } from '../config.js';
 import type { ToolAdapter } from './tool-adapter.interface.js';
 import { ClaudeAdapter } from './claude-adapter.js';
 import { ClaudeSDKAdapter } from './claude-sdk-adapter.js';
-import { CursorAdapter } from './cursor-adapter.js';
 import { CodexAdapter } from './codex-adapter.js';
 import { CodeBuddyAdapter } from './codebuddy-adapter.js';
 
@@ -22,12 +21,6 @@ export function initAdapters(config: Config): void {
           idleTimeoutMs: 2 * 60 * 1000,
         }));
       }
-      continue;
-    }
-
-    if (aiCommand === 'cursor') {
-      console.log('Cursor CLI adapter enabled');
-      adapters.set('cursor', new CursorAdapter(config.cursorCliPath));
       continue;
     }
 

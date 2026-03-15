@@ -94,36 +94,3 @@ describe("getHealthPlatformSnapshot", () => {
     expect(snapshot.qq.message).toContain("configured");
   });
 });
-
-describe("Cursor web config defaults", () => {
-  it("surfaces cursor as the default CLI path in initial config", async () => {
-    vi.resetModules();
-    const { startWebConfigServer } = await import("./config-web.js");
-
-    const server = await startWebConfigServer({ mode: "init", cwd: process.cwd(), persistent: true });
-    if (!server.url) {
-      await server.close();
-      throw new Error("Web config server failed to bind (url empty)");
-    }
-    // 使用原生 fetch（可能被 testPlatformConfig 的 vi.fn 覆盖），改用 http.get
-    const { get } = await import("node:http");
-    const body = await new Promise<{ payload: { ai: { cursorCliPath: string } } }>((resolve, reject) => {
-      get(`${server.url}/api/config`, (res) => {
-        let data = "";
-        res.on("data", (chunk) => { data += chunk; });
-        res.on("end", () => {
-          try {
-            resolve(JSON.parse(data) as { payload: { ai: { cursorCliPath: string } } });
-          } catch (e) {
-            reject(e);
-          }
-        });
-      }).on("error", reject);
-    });
-
-    await server.close();
-
-    // 无显式配置时为 cursor；Windows 下可能解析为安装路径
-    expect(body?.payload?.ai?.cursorCliPath === "cursor" || body?.payload?.ai?.cursorCliPath?.endsWith("cursor.cmd")).toBe(true);
-  });
-});

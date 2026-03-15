@@ -13,7 +13,7 @@ interface CardOptions {
   status: CardStatus;
   note?: string;
   thinking?: string;
-  /** AI 工具标识（claude/cursor/codex），用于生成标题 */
+  /** AI 工具标识（claude/codex/codebuddy），用于生成标题 */
   toolName?: string;
 }
 

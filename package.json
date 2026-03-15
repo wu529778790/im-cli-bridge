@@ -44,6 +44,9 @@
   "bugs": {
     "url": "https://github.com/wu529778790/open-im/issues"
   },
+  "optionalDependencies": {
+    "node-pty": "^1.1.0"
+  },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.72",
     "@larksuiteoapi/node-sdk": "^1.59.0",

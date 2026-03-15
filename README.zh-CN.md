@@ -2,12 +2,12 @@
 
 [English](./README.md)
 
-多平台 IM 桥接工具，把 Telegram、飞书、企业微信、钉钉、QQ、微信接到 AI CLI 工具（Claude Code、Codex、Cursor、CodeBuddy），方便在手机或聊天窗口里远程使用 AI 编程助手。
+多平台 IM 桥接工具，把 Telegram、飞书、企业微信、钉钉、QQ、微信接到 AI CLI 工具（Claude Code、Codex、CodeBuddy），方便在手机或聊天窗口里远程使用 AI 编程助手。
 
 ## 功能特性
 
 - 多平台：支持 Telegram、飞书、企业微信、钉钉、QQ、微信（测试中），可同时启用
-- 多 AI 工具：支持 Claude、Codex、Cursor、CodeBuddy
+- 多 AI 工具：支持 Claude、Codex、CodeBuddy
 - 按平台分配 AI：根级 `aiCommand` 作为默认值，`platforms.<name>.aiCommand` 可为不同 IM 单独指定 AI 工具
 - 流式输出：实时回传 AI 回复与工具执行进度（目前钉钉暂未实现流式传输）
 - 图形化配置页面 / CLI 配置引导
@@ -84,7 +84,7 @@ open-im start
     },
     "feishu": {
       "enabled": true,
-      "aiCommand": "cursor"
+      "aiCommand": "codex"
     },
     "qq": {
       "enabled": true,
@@ -94,7 +94,7 @@ open-im start
 }
 ```
 
-这个配置下，Telegram 会走 Codex，飞书会走 Cursor，QQ 会走 CodeBuddy，其他未单独指定 `aiCommand` 的平台仍然使用 Claude。
+这个配置下，Telegram 会走 Codex，飞书会走 Codex，QQ 会走 CodeBuddy，其他未单独指定 `aiCommand` 的平台仍然使用 Claude。
 
 ### Claude
 
@@ -151,10 +151,6 @@ codebuddy login
       "skipPermissions": true,
       "timeoutMs": 600000
     },
-    "cursor": {
-      "cliPath": "agent",
-      "skipPermissions": true
-    },
     "codex": {
       "cliPath": "codex",
       "workDir": "D:/coding/open-im",
@@ -177,7 +173,7 @@ codebuddy login
     },
     "feishu": {
       "enabled": false,
-      "aiCommand": "cursor",
+      "aiCommand": "codex",
       "allowedUserIds": [],
       "appId": "YOUR_FEISHU_APP_ID",
       "appSecret": "YOUR_FEISHU_APP_SECRET"
@@ -219,14 +215,13 @@ codebuddy login
 
 | 变量 | 说明 |
 | ---- | ---- |
-| `AI_COMMAND` | 选择 `claude` / `codex` / `cursor` / `codebuddy` |
+| `AI_COMMAND` | 选择 `claude` / `codex` / `codebuddy` |
 | `CLAUDE_WORK_DIR` | 默认会话目录 |
 | `LOG_DIR` | 日志目录 |
 | `LOG_LEVEL` | 日志级别 |
 | `HOOK_PORT` | 权限服务端口 |
 | `CODEX_PROXY` | Codex 访问 `chatgpt.com` 的代理 |
 | `OPENAI_API_KEY` | Codex API Key，可替代 `codex login` |
-| `CURSOR_API_KEY` | Cursor API Key，可替代 `agent login` |
 | `CODEBUDDY_CLI_PATH` | 覆盖 CodeBuddy CLI 路径 |
 | `CODEBUDDY_TIMEOUT_MS` | 覆盖 CodeBuddy 超时 |
 | `CODEBUDDY_SKIP_PERMISSIONS` | 覆盖 CodeBuddy 的跳过权限确认行为 |
@@ -303,8 +298,6 @@ codebuddy login
 **钉钉无法回复**：确认应用已启用机器人 Stream Mode，并检查 `DINGTALK_CLIENT_ID`、`DINGTALK_CLIENT_SECRET` 或 `platforms.dingtalk` 配置是否正确。
 
 **钉钉没有流式更新**：`prepare` 失败时 fallback 为普通文本回复。自定义机器人/普通群场景下，AI 助理和互动卡片 API 均不可用，仅支持单条文本回复。
-
-**Cursor 报 `Authentication required`**：先执行 `agent login`，或在 `env` 中设置 `CURSOR_API_KEY`。
 
 **Codex 报 `stream disconnected` / `error sending request`**：无法访问 `chatgpt.com`，请配置 `tools.codex.proxy` 或环境变量 `CODEX_PROXY`。
 

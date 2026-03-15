@@ -8,7 +8,7 @@ import { APP_HOME } from '../constants.js';
 const log = createLogger('Session');
 const SESSIONS_FILE = join(APP_HOME, 'data', 'sessions.json');
 
-type ToolId = 'claude' | 'codex' | 'cursor' | 'codebuddy';
+type ToolId = 'claude' | 'codex' | 'codebuddy';
 type ToolSessionIds = Partial<Record<ToolId, string>>;
 
 interface UserSession {
@@ -143,12 +143,12 @@ export class SessionManager {
 
   /**
    * 服务启动时调用：清除所有用户的 CLI sessionId。
-   * Cursor/Codex/CodeBuddy 的 session 是进程级别的，服务重启后旧 session 一定无效。
+   * Codex/CodeBuddy 的 session 是进程级别的，服务重启后旧 session 一定无效。
    */
   clearAllCliSessionIds(): void {
     let changed = false;
     for (const [, s] of this.sessions) {
-      for (const toolId of ['codex', 'cursor', 'codebuddy'] as const) {
+      for (const toolId of ['codex', 'codebuddy'] as const) {
         if (this.getToolSessionId(s, toolId) !== undefined) {
           this.clearToolSessionId(s, toolId);
           changed = true;
@@ -156,7 +156,7 @@ export class SessionManager {
       }
       if (s.threads) {
         for (const t of Object.values(s.threads)) {
-          for (const toolId of ['codex', 'cursor', 'codebuddy'] as const) {
+          for (const toolId of ['codex', 'codebuddy'] as const) {
             if (t.sessionIds?.[toolId] !== undefined) {
               delete t.sessionIds[toolId];
               changed = true;
@@ -166,14 +166,14 @@ export class SessionManager {
       }
     }
     for (const key of [...this.convSessionMap.keys()]) {
-      if (key.endsWith(':codex') || key.endsWith(':cursor') || key.endsWith(':codebuddy')) {
+      if (key.endsWith(':codex') || key.endsWith(':codebuddy')) {
         this.convSessionMap.delete(key);
         changed = true;
       }
     }
     if (changed) {
       this.flushSync();
-      log.info('Cleared CLI session IDs for codex/cursor/codebuddy on startup');
+      log.info('Cleared CLI session IDs for codex/codebuddy on startup');
     }
   }
 
@@ -354,7 +354,7 @@ export class SessionManager {
   }
 
   private clearConvSessionMappings(userId: string, convId: string): void {
-    for (const toolId of ['claude', 'codex', 'cursor', 'codebuddy'] as const) {
+    for (const toolId of ['claude', 'codex', 'codebuddy'] as const) {
       this.convSessionMap.delete(this.getConvSessionKey(userId, convId, toolId));
     }
   }

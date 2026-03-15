@@ -417,6 +417,28 @@ export function ackMessage(messageId: string, result: unknown = { ok: true }): v
   }
 }
 
+/** 从 axios/请求错误中提取是否 429 限流 */
+function is429(err: unknown): boolean {
+  const o = err as { response?: { status?: number }; status?: number };
+  return o?.response?.status === 429 || o?.status === 429;
+}
+
+/** 钉钉初始化错误简短描述，避免把整份 axios response 打屏 */
+export function formatDingTalkInitError(err: unknown): string {
+  if (err instanceof Error && !(err as unknown as { response?: unknown }).response) {
+    return err.message;
+  }
+  const o = err as { response?: { status?: number; data?: { Code?: string; Message?: string } }; message?: string };
+  const status = o?.response?.status;
+  const data = o?.response?.data;
+  if (status === 429 || data?.Code === 'Throttling') {
+    const msg = typeof data?.Message === 'string' ? data.Message : '请求被限流';
+    return `钉钉网关限流(429): ${msg}。请稍后重试或减少连接/重启频率。`;
+  }
+  if (typeof o?.message === 'string') return o.message;
+  return String(err).slice(0, 200);
+}
+
 export async function initDingTalk(
   cfg: Config,
   eventHandler: (data: DWClientDownStream) => Promise<void>,
@@ -444,8 +466,25 @@ export async function initDingTalk(
     }
   });
 
-  await client.connect();
-  log.info('DingTalk stream client connected');
+  const maxTries = 3;
+  const retryDelayMs = 60_000;
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= maxTries; attempt++) {
+    try {
+      await client.connect();
+      log.info('DingTalk stream client connected');
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (is429(err) && attempt < maxTries) {
+        log.warn(`DingTalk gateway 429 (attempt ${attempt}/${maxTries}), retrying in ${retryDelayMs / 1000}s...`);
+        await new Promise((r) => setTimeout(r, retryDelayMs));
+        continue;
+      }
+      throw new Error(formatDingTalkInitError(err));
+    }
+  }
+  throw new Error(formatDingTalkInitError(lastErr));
 }
 
 export function stopDingTalk(): void {

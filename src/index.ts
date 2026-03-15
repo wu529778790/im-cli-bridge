@@ -22,7 +22,7 @@ import { sendTextReply as sendWeChatTextReply } from "./wechat/message-sender.js
 import { initWeWork, stopWeWork } from "./wework/client.js";
 import { setupWeWorkHandlers } from "./wework/event-handler.js";
 import { sendProactiveTextReply as sendWeWorkTextReply } from "./wework/message-sender.js";
-import { initDingTalk, stopDingTalk } from "./dingtalk/client.js";
+import { initDingTalk, stopDingTalk, formatDingTalkInitError } from "./dingtalk/client.js";
 import { setupDingTalkHandlers } from "./dingtalk/event-handler.js";
 import { initAdapters, cleanupAdapters } from "./adapters/registry.js";
 import { SessionManager } from "./session/session-manager.js";
@@ -183,7 +183,7 @@ export async function main() {
   initPermissionModes();
 
   // 当配置为跳过权限时，设置 CC_SKIP_PERMISSIONS 让权限服务器自动放行
-  // 否则 Cursor/Claude 请求工具权限时会卡住等待用户 /allow
+  // 否则 Claude 请求工具权限时会卡住等待用户 /allow
   if (config.claudeSkipPermissions) {
     process.env.CC_SKIP_PERMISSIONS = 'true';
     log.info('skipPermissions 已启用，权限请求将自动放行');
@@ -225,7 +225,7 @@ export async function main() {
 
   const sessionManager = new SessionManager(config.claudeWorkDir);
 
-  // CLI 工具（Cursor/Codex）的 session 是进程级别的，服务重启后一定无效。
+  // CLI 工具（Codex/CodeBuddy）的 session 是进程级别的，服务重启后一定无效。
   // 启动时仅清除 CLI 工具自己的 sessionId，保留 Claude 的持久上下文。
   sessionManager.clearAllCliSessionIds();
 
@@ -296,7 +296,7 @@ export async function main() {
       await initDingTalk(config, dingtalkHandle.handleEvent);
       successfulPlatforms.push("dingtalk");
     } catch (err) {
-      log.error("Failed to initialize DingTalk:", err);
+      log.error("Failed to initialize DingTalk:", formatDingTalkInitError(err));
     }
   }
 

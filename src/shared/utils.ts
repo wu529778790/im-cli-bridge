@@ -10,7 +10,6 @@ export function escapePathForMarkdown(path: string): string {
 export const AI_TOOL_DISPLAY_NAMES: Record<string, string> = {
   claude: 'Claude Code',
   codex: 'Codex',
-  cursor: 'Cursor',
   codebuddy: 'CodeBuddy',
 };
 

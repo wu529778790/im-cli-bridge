@@ -51,7 +51,7 @@ describe("config web page assembly", () => {
       (match) => match[1],
     );
 
-    expect(tools).toEqual(["claude", "codex", "cursor", "codebuddy"]);
+    expect(tools).toEqual(["claude", "codex", "codebuddy"]);
     for (const tool of tools) {
       expect(PAGE_HTML).toContain(`data-tool="${tool}"`);
       expect(PAGE_HTML).toContain(`data-tool-panel="${tool}"`);

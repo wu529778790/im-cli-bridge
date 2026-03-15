@@ -37,7 +37,6 @@ interface ExistingConfig {
   aiCommand?: string;
   tools?: {
     claude?: { cliPath?: string; workDir?: string; skipPermissions?: boolean; timeoutMs?: number; model?: string };
-    cursor?: { cliPath?: string; skipPermissions?: boolean };
     codex?: { cliPath?: string; workDir?: string; skipPermissions?: boolean; proxy?: string };
     codebuddy?: { cliPath?: string; skipPermissions?: boolean; timeoutMs?: number };
   };
@@ -106,7 +105,6 @@ function printManualInstructions(configPath: string): void {
       "skipPermissions": true,
       "timeoutMs": 600000
     },
-    "cursor": { "cliPath": "cursor", "skipPermissions": true, "model": "auto" },
     "codex": { "cliPath": "codex", "workDir": "${process.cwd().replace(/\\/g, "/")}", "skipPermissions": true, "proxy": "http://127.0.0.1:7890" },
     "codebuddy": { "cliPath": "codebuddy", "skipPermissions": true, "timeoutMs": 600000 }
   },
@@ -646,7 +644,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
   const wcIds = existing?.platforms?.wechat?.allowedUserIds?.join(", ") ?? "";
   const wwIds = existing?.platforms?.wework?.allowedUserIds?.join(", ") ?? "";
   const dtIds = existing?.platforms?.dingtalk?.allowedUserIds?.join(", ") ?? "";
-  const aiIdx = ["claude", "codex", "cursor", "codebuddy"].indexOf(existing?.aiCommand ?? "claude");
+  const aiIdx = ["claude", "codex", "codebuddy"].indexOf(existing?.aiCommand ?? "claude");
 
   const commonPrompts: prompts.PromptObject[] = [];
   if (selectedPlatforms.includes("qq")) {
@@ -705,7 +703,6 @@ export async function runInteractiveSetup(): Promise<boolean> {
       choices: [
         { title: "claude-code", value: "claude" },
         { title: "codex", value: "codex" },
-        { title: "cursor", value: "cursor" },
         { title: "codebuddy", value: "codebuddy" },
       ],
       initial: aiIdx >= 0 ? aiIdx : 0,
@@ -855,7 +852,6 @@ export async function runInteractiveSetup(): Promise<boolean> {
     claudeWorkDir: _cwd,
     claudeSkipPermissions: _csp,
     claudeCliPath: _ccp,
-    cursorCliPath: _curp,
     claudeTimeoutMs: _ctm,
     claudeModel: _cm,
     ...baseRest
@@ -913,11 +909,6 @@ export async function runInteractiveSetup(): Promise<boolean> {
         workDir,
         skipPermissions: baseTools.claude?.skipPermissions ?? true,
         timeoutMs: baseTools.claude?.timeoutMs ?? 600000,
-      },
-      cursor: {
-        ...baseTools.cursor,
-        cliPath: baseTools.cursor?.cliPath ?? "cursor",
-        skipPermissions: baseTools.cursor?.skipPermissions ?? baseTools.claude?.skipPermissions ?? true,
       },
       codex: {
         ...baseTools.codex,

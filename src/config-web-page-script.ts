@@ -6,11 +6,11 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         { key: "dingtalk", label: "DingTalk", fields: ["aiCommand", "clientId", "clientSecret", "cardTemplateId", "allowedUserIds"], testFields: ["clientId", "clientSecret"], requiredFields: ["clientId", "clientSecret"] },
       ];
       const platformKeys = platformDefinitions.map((platform) => platform.key);
-      const aiTools = ["claude", "codex", "cursor", "codebuddy"];
+      const aiTools = ["claude", "codex", "codebuddy"];
       const STORAGE_KEY_LANG = "open-im-web-lang";
       const STORAGE_KEY_DARK_MODE = "open-im-web-dark-mode";
       const POLLING_INTERVAL = 10000;
-      const toolLabels = { claude: "Claude", codex: "Codex", cursor: "Cursor", codebuddy: "CodeBuddy" };
+      const toolLabels = { claude: "Claude", codex: "Codex", codebuddy: "CodeBuddy" };
 
       // Dark mode handling
       const getSystemDarkMode = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -209,10 +209,6 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           { id: "ai-codexCliPath-label", key: "codexCli" },
           { id: "ai-codexTimeoutMs-label", key: "codexTimeout" },
           { id: "ai-codexProxy-label", key: "codexProxy" },
-          { id: "ai-cursorCliPath-label", key: "cursorCli" },
-          { id: "ai-cursorModel-label", key: "cursorModel" },
-          { id: "ai-cursorTimeoutMs-label", key: "cursorTimeout" },
-          { id: "ai-cursorProxy-label", key: "cursorProxy" },
           { id: "ai-codebuddyCliPath-label", key: "codebuddyCli" },
           { id: "ai-codebuddyTimeoutMs-label", key: "codebuddyTimeout" },
           { id: "ai-hookPort-label", key: "hookPort" },
@@ -424,10 +420,6 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         { id: "ai-codexCliPath", key: "codexCliPath" },
         { id: "ai-codexTimeoutMs", key: "codexTimeoutMs" },
         { id: "ai-codexProxy", key: "codexProxy" },
-        { id: "ai-cursorCliPath", key: "cursorCliPath" },
-        { id: "ai-cursorModel", key: "cursorModel" },
-        { id: "ai-cursorTimeoutMs", key: "cursorTimeoutMs" },
-        { id: "ai-cursorProxy", key: "cursorProxy" },
         { id: "ai-codebuddyCliPath", key: "codebuddyCliPath" },
         { id: "ai-codebuddyTimeoutMs", key: "codebuddyTimeoutMs" },
         { id: "ai-hookPort", key: "hookPort" },
@@ -672,10 +664,6 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           codebuddyTimeoutMs: getNumber("ai-codebuddyTimeoutMs"),
           codexCliPath: getValue("ai-codexCliPath"),
           codexProxy: getValue("ai-codexProxy"),
-          cursorCliPath: getValue("ai-cursorCliPath"),
-          cursorModel: getValue("ai-cursorModel"),
-          cursorTimeoutMs: getNumber("ai-cursorTimeoutMs"),
-          cursorProxy: getValue("ai-cursorProxy"),
           codebuddyCliPath: getValue("ai-codebuddyCliPath"),
           hookPort: getNumber("ai-hookPort"),
           logLevel: getValue("ai-logLevel"),

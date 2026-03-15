@@ -297,6 +297,11 @@ export async function sendFinalMessages(
     const shouldFallbackToText =
       !!state && (state.expired || Date.now() - state.createdAt >= STREAM_SAFE_TTL_MS);
 
+    if (!shouldFallbackToText && state && contentToSend.length > 0) {
+      // 先发一条「输出中」带正文，再发 finish 的最终条，避免企微端一直停在「思考中」不刷新
+      await updateMessage(chatId, streamId, contentToSend, 'streaming', note, toolId, reqId);
+    }
+
     if (state) {
       state.closed = true;
       state.pendingUpdate = undefined;
