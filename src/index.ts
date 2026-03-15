@@ -160,7 +160,7 @@ export async function main() {
       err.message.includes(CLAUDE_API_CRED_ERROR) &&
       process.stdin.isTTY
     ) {
-      console.log("\n检测到未配置 Claude API 凭证，启动配置向导...\n");
+      log.info("检测到未配置 Claude API 凭证，启动配置向导...");
       const saved = await runClaudeApiSetup();
       if (!saved) process.exit(1);
       config = loadConfig();
@@ -315,9 +315,6 @@ export async function main() {
 
   const startedAt = Date.now();
 
-  // 防止重复发送关闭通知
-  let shutdownNotificationSent = false;
-
   const shutdown = async () => {
     log.info("Shutting down...");
     const uptimeSec = Math.floor((Date.now() - startedAt) / 1000);
@@ -367,7 +364,7 @@ const isEntry =
   process.argv[1]?.replace(/\\/g, "/").endsWith("/index.ts");
 if (isEntry) {
   main().catch((err) => {
-    console.error("Fatal error:", err);
+    log.error("Fatal error:", err);
     closeLogger();
     process.exit(1);
   });

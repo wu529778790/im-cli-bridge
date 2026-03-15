@@ -8,8 +8,10 @@ import { readFileSync, writeFileSync, accessSync, constants, existsSync, mkdirSy
 import { execFileSync } from 'node:child_process';
 import { join, dirname, isAbsolute, basename } from 'node:path';
 import { homedir } from 'node:os';
-import type { LogLevel } from './logger.js';
+import { createLogger, type LogLevel } from './logger.js';
 import { APP_HOME } from './constants.js';
+
+const log = createLogger('config');
 
 export type Platform = 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework';
 
@@ -409,7 +411,7 @@ export function saveClaudeSettingsEnv(env: Record<string, string>): void {
     // 写入文件
     writeFileSync(claudeSettingsPath, JSON.stringify(existing, null, 2), 'utf-8');
   } catch (error) {
-    console.error('[config] Failed to save Claude settings:', error);
+    log.error('Failed to save Claude settings:', error);
     throw new Error(`Failed to save Claude settings: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
@@ -774,9 +776,9 @@ export function loadConfig(): Config {
       }
     }
     if (!hasCodexAuth()) {
-      console.warn(
-        '\n⚠ Codex 模式：未检测到 OPENAI_API_KEY 或 Codex 登录态。首次使用请先运行 codex login，\n' +
-        '  或在 ~/.open-im/config.json 的 env 中添加 "OPENAI_API_KEY": "你的 API Key"。\n'
+      log.warn(
+        'Codex 模式：未检测到 OPENAI_API_KEY 或 Codex 登录态。首次使用请先运行 codex login，' +
+        '或在 ~/.open-im/config.json 的 env 中添加 "OPENAI_API_KEY": "你的 API Key"。'
       );
     }
   }

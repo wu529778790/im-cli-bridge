@@ -4,7 +4,9 @@ import { ClaudeAdapter } from './claude-adapter.js';
 import { ClaudeSDKAdapter } from './claude-sdk-adapter.js';
 import { CodexAdapter } from './codex-adapter.js';
 import { CodeBuddyAdapter } from './codebuddy-adapter.js';
+import { createLogger } from '../logger.js';
 
+const log = createLogger('Registry');
 const adapters = new Map<string, ToolAdapter>();
 
 export function initAdapters(config: Config): void {
@@ -12,10 +14,10 @@ export function initAdapters(config: Config): void {
   for (const aiCommand of getConfiguredAiCommands(config)) {
     if (aiCommand === 'claude') {
       if (config.useSdkMode) {
-        console.log('Claude Agent SDK adapter enabled');
+        log.info('Claude Agent SDK adapter enabled');
         adapters.set('claude', new ClaudeSDKAdapter());
       } else {
-        console.log('Claude CLI adapter enabled');
+        log.info('Claude CLI adapter enabled');
         adapters.set('claude', new ClaudeAdapter(config.claudeCliPath, {
           useProcessPool: true,
           idleTimeoutMs: 2 * 60 * 1000,
@@ -25,13 +27,13 @@ export function initAdapters(config: Config): void {
     }
 
     if (aiCommand === 'codex') {
-      console.log('Codex CLI adapter enabled');
+      log.info('Codex CLI adapter enabled');
       adapters.set('codex', new CodexAdapter(config.codexCliPath));
       continue;
     }
 
     if (aiCommand === 'codebuddy') {
-      console.log('CodeBuddy CLI adapter enabled');
+      log.info('CodeBuddy CLI adapter enabled');
       adapters.set('codebuddy', new CodeBuddyAdapter(config.codebuddyCliPath));
     }
   }

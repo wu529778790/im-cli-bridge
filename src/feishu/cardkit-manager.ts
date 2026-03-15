@@ -9,6 +9,23 @@ import { withRetry, NonRetryableError } from '../shared/retry.js';
 
 const log = createLogger('CardKit');
 
+/** 飞书 SDK Client 的 CardKit / IM 扩展（SDK 类型未导出时使用） */
+interface FeishuClientWithCardKit {
+  cardkit?: {
+    v1: {
+      card: {
+        create(opts: { data: { type: string; data: string } }): Promise<{ data?: { card_id?: string }; code?: number; msg?: string }>;
+        settings(opts: { path: { card_id: string }; data: { settings: string; sequence: number } }): Promise<{ code?: number; msg?: string }>;
+        update(opts: unknown): Promise<{ code?: number; msg?: string }>;
+      };
+      cardElement: {
+        content(opts: { path: { card_id: string; element_id: string }; data: { content: string; sequence: number } }): Promise<{ code?: number; msg?: string }>;
+      };
+    };
+  };
+  im?: { v1?: { message?: { create(opts: unknown): Promise<{ data?: { message_id?: string } }> } }; message?: { create(opts: unknown): Promise<{ data?: { message_id?: string } }> } };
+}
+
 interface CardSession {
   cardId: string;
   sequence: number;
@@ -56,8 +73,8 @@ function nextSeq(cardId: string): number {
 /** 创建 CardKit 卡片实例 */
 export async function createCard(cardJson: string): Promise<string> {
   ensureCleanupTimer();
-  const client = getClient();
-  const res = await (client as any).cardkit.v1.card.create({
+  const client = getClient() as FeishuClientWithCardKit;
+  const res = await client.cardkit!.v1.card.create({
     data: { type: 'card_json', data: cardJson },
   });
 
@@ -85,8 +102,8 @@ export async function enableStreaming(cardId: string): Promise<void> {
     const s = sessions.get(cardId);
     if (s?.completed) return;
 
-    const client = getClient();
-    const res = await (client as any).cardkit.v1.card.settings({
+    const client = getClient() as FeishuClientWithCardKit;
+    const res = await client.cardkit!.v1.card.settings({
       path: { card_id: cardId },
       data: {
         settings: JSON.stringify({ streaming_mode: true }),
@@ -113,9 +130,9 @@ export async function streamContent(
   elementId: string,
   content: string
 ): Promise<void> {
-  const client = getClient();
+  const client = getClient() as FeishuClientWithCardKit;
   const call = async (s: number) => {
-    return await (client as any).cardkit.v1.cardElement.content({
+    return await client.cardkit!.v1.cardElement.content({
       path: { card_id: cardId, element_id: elementId },
       data: { content, sequence: s },
     });
@@ -176,8 +193,8 @@ export async function streamContent(
 /** 全量更新卡片（完成/错误状态） */
 export async function updateCardFull(cardId: string, cardJson: string): Promise<void> {
   await withRetry(async () => {
-    const client = getClient();
-    const res = await (client as any).cardkit.v1.card.update({
+    const client = getClient() as FeishuClientWithCardKit;
+    const res = await client.cardkit!.v1.card.update({
       path: { card_id: cardId },
       data: {
         card: { type: 'card_json', data: cardJson },
@@ -197,9 +214,11 @@ export async function updateCardFull(cardId: string, cardJson: string): Promise<
 
 /** 通过 card_id 发送卡片消息到聊天 */
 export async function sendCardMessage(chatId: string, cardId: string): Promise<string> {
-  const client = getClient() as any;
+  const client = getClient() as FeishuClientWithCardKit;
   const content = JSON.stringify({ type: 'card', data: { card_id: cardId } });
-  const res = await (client.im.v1?.message ?? client.im.message).create({
+  const im = client.im?.v1?.message ?? client.im?.message;
+  if (!im) throw new Error('Feishu IM message API not available');
+  const res = await im.create({
     params: { receive_id_type: 'chat_id' },
     data: {
       receive_id: chatId,
@@ -222,10 +241,10 @@ export async function disableStreaming(cardId: string): Promise<void> {
   try {
     await withRetry(
       async () => {
-        const client = getClient();
+        const client = getClient() as FeishuClientWithCardKit;
         const seq = nextSeq(cardId);
         if (seq === -1) return;
-        const res = await (client as any).cardkit.v1.card.settings({
+        const res = await client.cardkit!.v1.card.settings({
           path: { card_id: cardId },
           data: {
             settings: JSON.stringify({ streaming_mode: false }),

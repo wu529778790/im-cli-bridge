@@ -8,7 +8,9 @@ import { CONFIG_PATH, getClaudeConfigHome, loadClaudeSettingsEnv, saveClaudeSett
 import { PAGE_HTML } from "./config-web-page.js";
 import { getServiceStatus, startBackgroundService, stopBackgroundService } from "./service-control.js";
 import { initWeWork, stopWeWork } from "./wework/client.js";
+import { createLogger } from "./logger.js";
 
+const log = createLogger("ConfigWeb");
 type WebFlowMode = "init" | "start" | "dev";
 type WebFlowResult = "saved" | "cancel";
 const TEST_TIMEOUT_MS = 10000;
@@ -790,7 +792,7 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
 export async function runWebConfigFlow(options: { mode: WebFlowMode; cwd: string }): Promise<WebFlowResult> {
   const started = await startWebConfigServer(options);
   openBrowser(started.url);
-  console.log(`Opened local configuration page: ${started.url}`);
-  console.log(process.env.OPEN_IM_NO_BROWSER === "1" ? "Browser launch disabled. Open the URL manually." : "Save the configuration in your browser to continue.");
+  log.info(`Opened local configuration page: ${started.url}`);
+  log.info(process.env.OPEN_IM_NO_BROWSER === "1" ? "Browser launch disabled. Open the URL manually." : "Save the configuration in your browser to continue.");
   return started.waitForResult;
 }

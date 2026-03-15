@@ -22,6 +22,7 @@
     "dashboard": "node dist/cli.js dashboard",
     "test": "vitest run",
     "test:watch": "vitest watch",
+    "lint": "eslint src",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
@@ -45,7 +46,7 @@
     "url": "https://github.com/wu529778790/open-im/issues"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.72",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.76",
     "@larksuiteoapi/node-sdk": "^1.59.0",
     "dingtalk-stream": "^2.1.4",
     "prompts": "^2.4.2",
@@ -55,14 +56,18 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.15.0",
     "@types/node": "^20.0.0",
     "@types/prompts": "^2.4.9",
     "@types/qrcode-terminal": "^0.12.2",
     "@types/ws": "^8.5.13",
-    "dotenv": "^16.0.0",
+    "dotenv": "^17.3.1",
+    "eslint": "^9.15.0",
+    "globals": "^15.12.0",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0",
-    "vitest": "4.0.18"
+    "typescript-eslint": "^8.15.0",
+    "vitest": "^4.1.0"
   },
   "engines": {
     "node": ">=20"

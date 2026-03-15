@@ -446,8 +446,8 @@ export async function runInteractiveSetup(): Promise<boolean> {
     const fsAppId = feishuResp.appId?.trim() || existing?.platforms?.feishu?.appId;
     const fsAppSecret = feishuResp.appSecret?.trim() || existing?.platforms?.feishu?.appSecret;
     if (fsAppId && fsAppSecret) {
-      (config.platforms as any).feishu = {
-        ...(config.platforms as any).feishu,
+      (config.platforms as ExistingConfig["platforms"])!.feishu = {
+        ...(config.platforms as ExistingConfig["platforms"])?.feishu,
         enabled: true,
         appId: fsAppId,
         appSecret: fsAppSecret,
@@ -585,7 +585,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
     const wwCorpId = weworkResp.corpId?.trim() || existing?.platforms?.wework?.corpId;
     const wwSecret = weworkResp.secret?.trim() || existing?.platforms?.wework?.secret;
     if (wwCorpId && wwSecret) {
-      (config.platforms as any).wework = {
+      (config.platforms as ExistingConfig["platforms"])!.wework = {
         enabled: true,
         corpId: wwCorpId,
         secret: wwSecret,
@@ -626,7 +626,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
     const dtClientSecret = dingtalkResp.clientSecret?.trim() || existing?.platforms?.dingtalk?.clientSecret;
     const dtCardTemplateId = dingtalkResp.cardTemplateId?.trim() || existing?.platforms?.dingtalk?.cardTemplateId;
     if (dtClientId && dtClientSecret) {
-      (config.platforms as any).dingtalk = {
+      (config.platforms as ExistingConfig["platforms"])!.dingtalk = {
         enabled: true,
         clientId: dtClientId,
         clientSecret: dtClientSecret,
@@ -929,54 +929,59 @@ export async function runInteractiveSetup(): Promise<boolean> {
     },
   };
 
+  type Platforms = NonNullable<ExistingConfig["platforms"]>;
+  const outPlatforms = out.platforms as Platforms;
+  const configPlatforms = config.platforms as Platforms | undefined;
+  const basePlatforms = base?.platforms;
+
   if (selectedPlatforms.includes("telegram")) {
-    (out.platforms as any).telegram = {
-      ...(base?.platforms?.telegram as object),
+    outPlatforms.telegram = {
+      ...basePlatforms?.telegram,
       enabled: true,
-      botToken: (config as any).telegramBotToken ?? base?.platforms?.telegram?.botToken,
+      botToken: (config as { telegramBotToken?: string }).telegramBotToken ?? basePlatforms?.telegram?.botToken,
       allowedUserIds: telegramIds,
     };
-  } else if (base?.platforms?.telegram) {
-    (out.platforms as any).telegram = {
-      ...base.platforms.telegram,
-      allowedUserIds: telegramIds.length > 0 ? telegramIds : (base.platforms.telegram as any).allowedUserIds,
+  } else if (basePlatforms?.telegram) {
+    outPlatforms.telegram = {
+      ...basePlatforms.telegram,
+      allowedUserIds: telegramIds.length > 0 ? telegramIds : basePlatforms.telegram.allowedUserIds ?? [],
     };
   } else {
-    (out.platforms as any).telegram = { enabled: false, allowedUserIds: telegramIds };
+    outPlatforms.telegram = { enabled: false, allowedUserIds: telegramIds };
   }
 
   if (selectedPlatforms.includes("feishu")) {
-    (out.platforms as any).feishu = {
-      ...(base?.platforms?.feishu as object),
+    outPlatforms.feishu = {
+      ...basePlatforms?.feishu,
       enabled: true,
-      appId: (config.platforms as any).feishu?.appId,
-      appSecret: (config.platforms as any).feishu?.appSecret,
+      appId: configPlatforms?.feishu?.appId,
+      appSecret: configPlatforms?.feishu?.appSecret,
       allowedUserIds: feishuIds,
     };
-  } else if (base?.platforms?.feishu) {
-    (out.platforms as any).feishu = {
-      ...base.platforms.feishu,
-      allowedUserIds: feishuIds.length > 0 ? feishuIds : (base.platforms.feishu as any).allowedUserIds,
+  } else if (basePlatforms?.feishu) {
+    outPlatforms.feishu = {
+      ...basePlatforms.feishu,
+      allowedUserIds: feishuIds.length > 0 ? feishuIds : basePlatforms.feishu.allowedUserIds ?? [],
     };
   } else {
-    (out.platforms as any).feishu = { enabled: false, allowedUserIds: feishuIds };
+    outPlatforms.feishu = { enabled: false, allowedUserIds: feishuIds };
   }
 
   if (selectedPlatforms.includes("qq")) {
-    (out.platforms as any).qq = {
-      ...(base?.platforms?.qq as object),
+    outPlatforms.qq = {
+      ...basePlatforms?.qq,
       enabled: true,
-      appId: (config.platforms as any).qq?.appId,
-      secret: (config.platforms as any).qq?.secret,
+      appId: configPlatforms?.qq?.appId,
+      secret: configPlatforms?.qq?.secret,
       allowedUserIds: qqIdsFinal,
     };
-  } else if (base?.platforms?.qq) {
-    (out.platforms as any).qq = {
-      ...base.platforms.qq,
-      allowedUserIds: qqIdsFinal.length > 0 ? qqIdsFinal : (base.platforms.qq as any).allowedUserIds,
+  } else if (basePlatforms?.qq) {
+    outPlatforms.qq = {
+      ...basePlatforms.qq,
+      allowedUserIds: qqIdsFinal.length > 0 ? qqIdsFinal : basePlatforms.qq.allowedUserIds ?? [],
     };
   } else {
-    (out.platforms as any).qq = { enabled: false, allowedUserIds: qqIdsFinal };
+    outPlatforms.qq = { enabled: false, allowedUserIds: qqIdsFinal };
   }
 
   if (selectedPlatforms.includes("wechat")) {
@@ -994,48 +999,48 @@ export async function runInteractiveSetup(): Promise<boolean> {
       wsUrl: wcConfig?.wsUrl ?? base?.platforms?.wechat?.wsUrl,
       allowedUserIds: wechatIds,
     };
-  } else if (base?.platforms?.wechat) {
-    (out.platforms as any).wechat = {
-      ...base.platforms.wechat,
-      allowedUserIds: wechatIds.length > 0 ? wechatIds : (base.platforms.wechat as any).allowedUserIds,
+  } else if (basePlatforms?.wechat) {
+    outPlatforms.wechat = {
+      ...basePlatforms.wechat,
+      allowedUserIds: wechatIds.length > 0 ? wechatIds : basePlatforms.wechat.allowedUserIds ?? [],
     };
   } else {
-    (out.platforms as any).wechat = { enabled: false, allowedUserIds: wechatIds };
+    outPlatforms.wechat = { enabled: false, allowedUserIds: wechatIds };
   }
 
   if (selectedPlatforms.includes("wework")) {
-    (out.platforms as any).wework = {
-      ...(base?.platforms?.wework as object),
+    outPlatforms.wework = {
+      ...basePlatforms?.wework,
       enabled: true,
-      corpId: (config.platforms as any).wework?.corpId,
-      secret: (config.platforms as any).wework?.secret,
+      corpId: configPlatforms?.wework?.corpId,
+      secret: configPlatforms?.wework?.secret,
       allowedUserIds: weworkIds,
     };
-  } else if (base?.platforms?.wework) {
-    (out.platforms as any).wework = {
-      ...base.platforms.wework,
-      allowedUserIds: weworkIds.length > 0 ? weworkIds : (base.platforms.wework as any).allowedUserIds,
+  } else if (basePlatforms?.wework) {
+    outPlatforms.wework = {
+      ...basePlatforms.wework,
+      allowedUserIds: weworkIds.length > 0 ? weworkIds : basePlatforms.wework.allowedUserIds ?? [],
     };
   } else {
-    (out.platforms as any).wework = { enabled: false, allowedUserIds: weworkIds };
+    outPlatforms.wework = { enabled: false, allowedUserIds: weworkIds };
   }
 
   if (selectedPlatforms.includes("dingtalk")) {
-    (out.platforms as any).dingtalk = {
-      ...(base?.platforms?.dingtalk as object),
+    outPlatforms.dingtalk = {
+      ...basePlatforms?.dingtalk,
       enabled: true,
-      clientId: (config.platforms as any).dingtalk?.clientId,
-      clientSecret: (config.platforms as any).dingtalk?.clientSecret,
-      cardTemplateId: (config.platforms as any).dingtalk?.cardTemplateId,
+      clientId: configPlatforms?.dingtalk?.clientId,
+      clientSecret: configPlatforms?.dingtalk?.clientSecret,
+      cardTemplateId: configPlatforms?.dingtalk?.cardTemplateId,
       allowedUserIds: dingtalkIds,
     };
-  } else if (base?.platforms?.dingtalk) {
-    (out.platforms as any).dingtalk = {
-      ...base.platforms.dingtalk,
-      allowedUserIds: dingtalkIds.length > 0 ? dingtalkIds : (base.platforms.dingtalk as any).allowedUserIds,
+  } else if (basePlatforms?.dingtalk) {
+    outPlatforms.dingtalk = {
+      ...basePlatforms.dingtalk,
+      allowedUserIds: dingtalkIds.length > 0 ? dingtalkIds : basePlatforms.dingtalk.allowedUserIds ?? [],
     };
   } else {
-    (out.platforms as any).dingtalk = { enabled: false, allowedUserIds: dingtalkIds };
+    outPlatforms.dingtalk = { enabled: false, allowedUserIds: dingtalkIds };
   }
 
   const dir = dirname(configPath);

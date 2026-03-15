@@ -5,7 +5,9 @@ import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import { createLogger } from "./logger.js";
 
+const log = createLogger("CheckUpdate");
 const require = createRequire(import.meta.url);
 const { version: CURRENT_VERSION } = require("../package.json") as { version: string };
 
@@ -51,7 +53,7 @@ function runGlobalUpdate(): boolean {
 
 async function confirmUpdate(latest: string): Promise<boolean> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    console.log(`\n📦 检测到新版本 v${latest}，可手动更新: npm install -g ${PKG_NAME}@latest`);
+    log.info(`检测到新版本 v${latest}，可手动更新: npm install -g ${PKG_NAME}@latest`);
     return false;
   }
 
@@ -79,12 +81,12 @@ export async function checkAndUpdate(): Promise<{ updated: boolean; latest?: str
     return { updated: false, latest };
   }
 
-  console.log(`\n📦 检测到新版本 v${latest}（当前 v${CURRENT_VERSION}），正在更新...`);
+  log.info(`检测到新版本 v${latest}（当前 v${CURRENT_VERSION}），正在更新...`);
   const ok = runGlobalUpdate();
   if (ok) {
-    console.log(`\n✅ 已更新到 v${latest}，继续按最新版本启动服务...\n`);
+    log.info(`已更新到 v${latest}，继续按最新版本启动服务...`);
     return { updated: true, latest };
   }
-  console.log("\n⚠️ 自动更新失败，请手动执行: npm install -g @wu529778790/open-im@latest");
+  log.warn("自动更新失败，请手动执行: npm install -g @wu529778790/open-im@latest");
   return { updated: false };
 }

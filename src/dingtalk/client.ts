@@ -135,7 +135,7 @@ export async function downloadRobotMessageFile(
 
   const contentType = response.headers.get('content-type') ?? undefined;
   const contentDisposition = response.headers.get('content-disposition') ?? '';
-  const filenameMatch = /filename\*=UTF-8''([^;]+)|filename="?([^\";]+)"?/i.exec(contentDisposition);
+  const filenameMatch = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(contentDisposition);
   const filename = filenameMatch?.[1] ?? filenameMatch?.[2];
   const buffer = Buffer.from(await response.arrayBuffer());
 

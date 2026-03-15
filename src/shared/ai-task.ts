@@ -122,6 +122,8 @@ export function runAITask(
       resolve();
     };
 
+    // Declared before assignment so closures can capture it; object is assigned below
+    // eslint-disable-next-line prefer-const -- assigned once after closures are defined
     let taskState: TaskRunState;
 
     const throttledUpdate = (content: string, force = false) => {

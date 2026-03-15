@@ -4,11 +4,14 @@
  */
 
 import { createInterface } from 'node:readline';
+import { createLogger } from '../../logger.js';
 import type { QClawEnvironment, LoginCredentials } from './types.js';
 import { QClawAPI } from './qclaw-api.js';
 import { getDeviceGuid } from './device-guid.js';
 import { getEnvironment } from './environments.js';
 import { performDeviceBinding } from './device-bind.js';
+
+const log = createLogger('WeChatLogin');
 
 function nested(obj: unknown, ...keys: string[]): unknown {
   let cur: unknown = obj;
@@ -31,21 +34,20 @@ function buildAuthUrl(state: string, env: QClawEnvironment): string {
 }
 
 async function displayQrCode(url: string): Promise<void> {
-  console.log('\n' + '='.repeat(64));
-  console.log('请用微信扫描下方二维码登录');
-  console.log('='.repeat(64));
+  log.info('请用微信扫描下方二维码登录');
+  log.info('='.repeat(64));
 
   try {
     const { generate } = await import('qrcode-terminal');
-    if (generate) generate(url, { small: true }, (qrcode: string) => console.log(qrcode));
+    if (generate) generate(url, { small: true }, (qrcode: string) => log.info(qrcode));
   } catch {
-    console.log('\n(未安装 qrcode-terminal，无法在终端显示二维码)');
-    console.log('可运行: npm install qrcode-terminal');
+    log.info('(未安装 qrcode-terminal，无法在终端显示二维码)');
+    log.info('可运行: npm install qrcode-terminal');
   }
 
-  console.log('\n或在浏览器中打开以下链接：');
-  console.log(url);
-  console.log('='.repeat(64) + '\n');
+  log.info('或在浏览器中打开以下链接：');
+  log.info(url);
+  log.info('='.repeat(64));
 }
 
 function readLine(prompt: string): Promise<string> {
@@ -59,9 +61,9 @@ function readLine(prompt: string): Promise<string> {
 }
 
 async function waitForAuthCode(): Promise<string> {
-  console.log('微信扫码授权后，浏览器会跳转到新页面，地址栏 URL 形如：');
-  console.log('https://security.guanjia.qq.com/login?code=0a1B2c...&state=xxx');
-  console.log('\n请复制 code= 后面的值（到 & 之前），或直接粘贴完整 URL。\n');
+  log.info('微信扫码授权后，浏览器会跳转到新页面，地址栏 URL 形如：');
+  log.info('https://security.guanjia.qq.com/login?code=0a1B2c...&state=xxx');
+  log.info('请复制 code= 后面的值（到 & 之前），或直接粘贴完整 URL。');
 
   const raw = await readLine('请粘贴 code 值或完整 URL: ');
   if (!raw) return '';
@@ -110,7 +112,7 @@ export async function performWeChatLogin(
   const api = new QClawAPI(env, guid);
 
   // 1. 获取 state
-  console.log('[微信登录] 步骤 1/5: 获取登录 state...');
+  log.info('步骤 1/5: 获取登录 state...');
   let state = String(Math.floor(Math.random() * 10000));
   const stateResult = await api.getWxLoginState();
   if (stateResult.success) {
@@ -119,19 +121,19 @@ export async function performWeChatLogin(
   }
 
   // 2. 显示二维码
-  console.log('[微信登录] 步骤 2/5: 生成微信登录二维码...');
+  log.info('步骤 2/5: 生成微信登录二维码...');
   const authUrl = buildAuthUrl(state, env);
   await displayQrCode(authUrl);
 
   // 3. 等待 code
-  console.log('[微信登录] 步骤 3/5: 等待微信扫码授权...');
+  log.info('步骤 3/5: 等待微信扫码授权...');
   const code = await waitForAuthCode();
   if (!code) {
     throw new Error('未获取到授权 code');
   }
 
   // 4. 用 code 换 token
-  console.log(`[微信登录] 步骤 4/5: 用授权码登录 (code=${code.substring(0, 10)}...)`);
+  log.info(`步骤 4/5: 用授权码登录 (code=${code.substring(0, 10)}...)`);
   const loginResult = await api.wxLogin(code, state);
   if (!loginResult.success) {
     throw new Error(`登录失败: ${loginResult.message ?? '未知错误'}`);
@@ -154,10 +156,10 @@ export async function performWeChatLogin(
   api.userId = String(userInfo.user_id ?? '');
 
   const nickname = (userInfo.nickname as string) ?? 'unknown';
-  console.log(`[微信登录] 登录成功! 用户: ${nickname}`);
+  log.info(`登录成功! 用户: ${nickname}`);
 
   // 5. 设备绑定（服务端要求先绑定才接受 WebSocket，顺序不可颠倒）
-  console.log('[微信登录] 步骤 5/5: 设备绑定...');
+  log.info('步骤 5/5: 设备绑定...');
   const credentials: LoginCredentials = {
     channelToken,
     jwtToken,
@@ -168,19 +170,16 @@ export async function performWeChatLogin(
   };
   const bindResult = await performDeviceBinding(api, {
     showQr: async (url) => {
-      console.log('\n' + '='.repeat(64));
-      console.log('【设备绑定】请复制下方链接，在微信中发给「文件传输助手」后点击打开：');
-      console.log('='.repeat(64));
-      console.log(url);
-      console.log('='.repeat(64) + '\n');
+      log.info('【设备绑定】请复制下方链接，在微信中发给「文件传输助手」后点击打开：');
+      log.info(url);
     },
   });
 
   if (bindResult.success) {
-    console.log(`[微信登录] ${bindResult.message}`);
+    log.info(bindResult.message);
   } else {
-    console.warn(`[微信登录] ${bindResult.message}`);
-    console.warn('[微信登录] 可稍后重新登录完成绑定。');
+    log.warn(bindResult.message);
+    log.warn('可稍后重新登录完成绑定。');
   }
 
   return {

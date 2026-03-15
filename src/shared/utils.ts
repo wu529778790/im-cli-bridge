@@ -170,7 +170,7 @@ export function preprocessMarkdownForTelegram(content: string): string {
       if (part.startsWith('```') && part.endsWith('```')) {
         return part;
       }
-      return part.replace(/([_*\[\]`])/g, '\\$1');
+      return part.replace(/([_*[\]`])/g, '\\$1');
     })
     .join('');
 }
