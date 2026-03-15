@@ -10,7 +10,6 @@ export function escapePathForMarkdown(path: string): string {
 export const AI_TOOL_DISPLAY_NAMES: Record<string, string> = {
   claude: 'Claude Code',
   codex: 'Codex',
-  cursor: 'Cursor',
   codebuddy: 'CodeBuddy',
 };
 
@@ -171,7 +170,7 @@ export function preprocessMarkdownForTelegram(content: string): string {
       if (part.startsWith('```') && part.endsWith('```')) {
         return part;
       }
-      return part.replace(/([_*\[\]`])/g, '\\$1');
+      return part.replace(/([_*[\]`])/g, '\\$1');
     })
     .join('');
 }

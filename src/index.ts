@@ -22,14 +22,13 @@ import { sendTextReply as sendWeChatTextReply } from "./wechat/message-sender.js
 import { initWeWork, stopWeWork } from "./wework/client.js";
 import { setupWeWorkHandlers } from "./wework/event-handler.js";
 import { sendProactiveTextReply as sendWeWorkTextReply } from "./wework/message-sender.js";
-import { initDingTalk, stopDingTalk } from "./dingtalk/client.js";
+import { initDingTalk, stopDingTalk, formatDingTalkInitError } from "./dingtalk/client.js";
 import { setupDingTalkHandlers } from "./dingtalk/event-handler.js";
 import { initAdapters, cleanupAdapters } from "./adapters/registry.js";
 import { SessionManager } from "./session/session-manager.js";
 import {
   loadActiveChats,
   getActiveChatId,
-  getDingTalkActiveTarget,
   flushActiveChats,
 } from "./shared/active-chats.js";
 import { initLogger, createLogger, closeLogger } from "./logger.js";
@@ -47,12 +46,14 @@ const { version: APP_VERSION } = require("../package.json") as {
 const log = createLogger("Main");
 
 async function sendLifecycleNotification(platform: string, message: string) {
+  // DingTalk 不支持主动发消息（OpenAPI 需 robotCode 等，易报 robot 不存在），跳过启动/关闭通知
+  if (platform === "dingtalk") return;
+
   const telegramChatId = getActiveChatId("telegram");
   const feishuChatId = getActiveChatId("feishu");
   const qqChatId = getActiveChatId("qq");
   const wechatChatId = getActiveChatId("wechat");
   const weworkChatId = getActiveChatId("wework");
-  const dingtalkTarget = getDingTalkActiveTarget();
 
   const sendPromises: Promise<void>[] = [];
 
@@ -93,16 +94,6 @@ async function sendLifecycleNotification(platform: string, message: string) {
       sendWeWorkTextReply(weworkChatId, message).catch((err) => {
         log.debug("Failed to send WeWork notification:", err);
       }),
-    );
-  }
-
-  if (platform === "dingtalk" && dingtalkTarget) {
-    sendPromises.push(
-      import("./dingtalk/message-sender.js")
-        .then(({ sendProactiveTextReply }) => sendProactiveTextReply(dingtalkTarget, message))
-        .catch((err) => {
-          log.debug("Failed to send DingTalk notification:", err);
-        }),
     );
   }
 
@@ -169,7 +160,7 @@ export async function main() {
       err.message.includes(CLAUDE_API_CRED_ERROR) &&
       process.stdin.isTTY
     ) {
-      console.log("\n检测到未配置 Claude API 凭证，启动配置向导...\n");
+      log.info("检测到未配置 Claude API 凭证，启动配置向导...");
       const saved = await runClaudeApiSetup();
       if (!saved) process.exit(1);
       config = loadConfig();
@@ -183,7 +174,7 @@ export async function main() {
   initPermissionModes();
 
   // 当配置为跳过权限时，设置 CC_SKIP_PERMISSIONS 让权限服务器自动放行
-  // 否则 Cursor/Claude 请求工具权限时会卡住等待用户 /allow
+  // 否则 Claude 请求工具权限时会卡住等待用户 /allow
   if (config.claudeSkipPermissions) {
     process.env.CC_SKIP_PERMISSIONS = 'true';
     log.info('skipPermissions 已启用，权限请求将自动放行');
@@ -195,6 +186,29 @@ export async function main() {
   const actualPort = startPermissionServer(config.hookPort);
   log.info(`Permission server listening on port ${actualPort}`);
 
+  // 尽早启动 shutdown 并写入 port 文件，使 open-im start 的 8s 就绪超时能通过（平台初始化可能较慢）
+  let shutdownServer: ReturnType<typeof createServer> | null = null;
+  await new Promise<void>((resolve, reject) => {
+    shutdownServer = createServer((req, res) => {
+      if (req.url === "/shutdown" || req.url === "/") {
+        res.writeHead(200, { "Content-Type": "text/plain" });
+        res.end("ok");
+        shutdown().catch(() => process.exit(1));
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+    shutdownServer!.listen(SHUTDOWN_PORT, "127.0.0.1", () => {
+      const portFile = join(APP_HOME, "open-im.port");
+      const dir = dirname(portFile);
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      writeFileSync(portFile, String(SHUTDOWN_PORT), "utf-8");
+      resolve();
+    });
+    shutdownServer!.on("error", reject);
+  });
+
   log.info("Starting open-im bridge...");
   log.info(`AI 工具: ${getConfiguredAiCommands(config).join(", ")}`);
   log.info(`默认会话目录: ${config.claudeWorkDir}`);
@@ -202,7 +216,7 @@ export async function main() {
 
   const sessionManager = new SessionManager(config.claudeWorkDir);
 
-  // CLI 工具（Cursor/Codex）的 session 是进程级别的，服务重启后一定无效。
+  // CLI 工具（Codex/CodeBuddy）的 session 是进程级别的，服务重启后一定无效。
   // 启动时仅清除 CLI 工具自己的 sessionId，保留 Claude 的持久上下文。
   sessionManager.clearAllCliSessionIds();
 
@@ -273,7 +287,7 @@ export async function main() {
       await initDingTalk(config, dingtalkHandle.handleEvent);
       successfulPlatforms.push("dingtalk");
     } catch (err) {
-      log.error("Failed to initialize DingTalk:", err);
+      log.error("Failed to initialize DingTalk:", formatDingTalkInitError(err));
     }
   }
 
@@ -300,9 +314,6 @@ export async function main() {
   }
 
   const startedAt = Date.now();
-
-  // 防止重复发送关闭通知
-  let shutdownNotificationSent = false;
 
   const shutdown = async () => {
     log.info("Shutting down...");
@@ -346,24 +357,6 @@ export async function main() {
 
   process.on("SIGINT", () => shutdown().catch(() => process.exit(1)));
   process.on("SIGTERM", () => shutdown().catch(() => process.exit(1)));
-
-  // 优雅关闭 HTTP 服务：stop 命令通过此端口触发 shutdown（Windows 下 SIGTERM 不可靠）
-  const shutdownServer = createServer((req, res) => {
-    if (req.url === "/shutdown" || req.url === "/") {
-      res.writeHead(200, { "Content-Type": "text/plain" });
-      res.end("ok");
-      shutdown().catch(() => process.exit(1));
-    } else {
-      res.writeHead(404);
-      res.end();
-    }
-  });
-  shutdownServer.listen(SHUTDOWN_PORT, "127.0.0.1", () => {
-    const portFile = join(APP_HOME, "open-im.port");
-    const dir = dirname(portFile);
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    writeFileSync(portFile, String(SHUTDOWN_PORT), "utf-8");
-  });
 }
 
 const isEntry =
@@ -371,7 +364,7 @@ const isEntry =
   process.argv[1]?.replace(/\\/g, "/").endsWith("/index.ts");
 if (isEntry) {
   main().catch((err) => {
-    console.error("Fatal error:", err);
+    log.error("Fatal error:", err);
     closeLogger();
     process.exit(1);
   });

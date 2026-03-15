@@ -277,8 +277,14 @@ export async function sendFinalMessages(
   toolId = 'claude',
   reqId?: string
 ): Promise<void> {
+  const contentToSend = fullContent?.trim() || '(无输出)';
+  const reqIdUsed = getReqId(reqId);
+  if (!reqIdUsed) {
+    log.warn(`sendFinalMessages: no req_id, streamId=${streamId}, contentLen=${contentToSend.length}`);
+  }
+  log.info(`sendFinalMessages: streamId=${streamId}, contentLen=${contentToSend.length}, reqId=${reqIdUsed ? 'ok' : 'missing'}`);
   const title = getToolTitle(toolId, 'done');
-  const parts = splitLongContent(fullContent, MAX_WEWORK_MESSAGE_LENGTH);
+  const parts = splitLongContent(contentToSend, MAX_WEWORK_MESSAGE_LENGTH);
   const finalMessage = formatWeWorkMessage(
     title,
     parts[0],
@@ -290,6 +296,11 @@ export async function sendFinalMessages(
     const state = streamStates.get(streamId);
     const shouldFallbackToText =
       !!state && (state.expired || Date.now() - state.createdAt >= STREAM_SAFE_TTL_MS);
+
+    if (!shouldFallbackToText && state && contentToSend.length > 0) {
+      // 先发一条「输出中」带正文，再发 finish 的最终条，避免企微端一直停在「思考中」不刷新
+      await updateMessage(chatId, streamId, contentToSend, 'streaming', note, toolId, reqId);
+    }
 
     if (state) {
       state.closed = true;

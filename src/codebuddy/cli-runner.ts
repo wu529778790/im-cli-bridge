@@ -287,7 +287,7 @@ export function runCodeBuddy(
 
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
   let idleTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
-  let stdoutState = { buffer: '' };
+  const stdoutState = { buffer: '' };
 
   const clearTimers = () => {
     if (timeoutHandle) {

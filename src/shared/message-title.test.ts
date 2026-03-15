@@ -15,8 +15,8 @@ describe("buildMessageTitle", () => {
   });
 
   it("can append the Feishu brand suffix", () => {
-    expect(buildMessageTitle("cursor", "done", { brandSuffix: true })).toBe(
-      `Cursor - \u5b8c\u6210${OPEN_IM_BRAND_SUFFIX}`,
+    expect(buildMessageTitle("codebuddy", "done", { brandSuffix: true })).toBe(
+      `CodeBuddy - \u5b8c\u6210${OPEN_IM_BRAND_SUFFIX}`,
     );
   });
 

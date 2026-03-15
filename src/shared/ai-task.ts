@@ -122,6 +122,8 @@ export function runAITask(
       resolve();
     };
 
+    // Declared before assignment so closures can capture it; object is assigned below
+    // eslint-disable-next-line prefer-const -- assigned once after closures are defined
     let taskState: TaskRunState;
 
     const throttledUpdate = (content: string, force = false) => {
@@ -171,15 +173,13 @@ export function runAITask(
         : undefined;
     }
 
-    const toolId = toolAdapter.toolId as 'claude' | 'codex' | 'cursor' | 'codebuddy';
+    const toolId = toolAdapter.toolId as 'claude' | 'codex' | 'codebuddy';
     const timeoutMs =
       toolId === 'codex'
         ? config.codexTimeoutMs
-        : toolId === 'cursor'
-          ? config.cursorTimeoutMs
-          : toolId === 'codebuddy'
-            ? config.codebuddyTimeoutMs
-            : config.claudeTimeoutMs;
+        : toolId === 'codebuddy'
+          ? config.codebuddyTimeoutMs
+          : config.claudeTimeoutMs;
 
     const startRun = () => {
       activeHandle = toolAdapter.run(
@@ -251,13 +251,31 @@ export function runAITask(
               `Empty AI output for user ${ctx.userId}, platform=${ctx.platform}, taskKey=${ctx.taskKey}`
             );
           }
+          const sendCompleteWithRetry = async (attempt = 1): Promise<void> => {
+            const maxAttempts = 2;
+            try {
+              await platformAdapter.sendComplete(output, note, thinkingText || undefined);
+            } catch (err) {
+              log.error(`Failed to send complete (attempt ${attempt}/${maxAttempts}):`, err);
+              if (attempt < maxAttempts) {
+                await new Promise((r) => setTimeout(r, 2000));
+                return sendCompleteWithRetry(attempt + 1);
+              }
+              try {
+                await platformAdapter.sendError(
+                  '回复发送失败（网络异常），请重试。若多次出现可检查本机网络或稍后再试。'
+                );
+              } catch (sendErr) {
+                log.error('Failed to send error fallback:', sendErr);
+              }
+            }
+          };
           try {
-            await platformAdapter.sendComplete(output, note, thinkingText || undefined);
-          } catch (err) {
-            log.error('Failed to send complete:', err);
+            await sendCompleteWithRetry();
+          } finally {
+            cleanup();
+            resolve();
           }
-          cleanup();
-          resolve();
         },
         onError: async (error) => {
           if (settled) return;
@@ -287,12 +305,10 @@ export function runAITask(
           skipPermissions,
           permissionMode,
           timeoutMs,
-          model: sessionManager.getModel(ctx.userId, ctx.threadId)
-            ?? (toolId === 'cursor' ? config.cursorModel : config.claudeModel),
+          model: sessionManager.getModel(ctx.userId, ctx.threadId) ?? config.claudeModel,
           chatId: ctx.chatId,
           ...(toolId === 'claude' && config.useSdkMode ? {} : { hookPort: config.hookPort }),
           ...(toolId === 'codex' && config.codexProxy ? { proxy: config.codexProxy } : {}),
-          ...(toolId === 'cursor' && config.cursorProxy ? { proxy: config.cursorProxy } : {}),
         }
       );
       return activeHandle;

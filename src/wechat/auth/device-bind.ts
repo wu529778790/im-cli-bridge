@@ -2,7 +2,10 @@
  * 设备绑定：生成企微客服链接，用户在微信中打开后才有对话入口
  */
 
+import { createLogger } from '../../logger.js';
 import type { QClawAPI } from './qclaw-api.js';
+
+const log = createLogger('WeChatDeviceBind');
 
 function nested(obj: unknown, ...keys: string[]): unknown {
   let cur: unknown = obj;
@@ -30,7 +33,7 @@ export async function performDeviceBinding(
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const showQr = options?.showQr;
 
-  console.log('[微信登录] 正在调用 4018 接口生成绑定链接...');
+  log.info('正在调用 4018 接口生成绑定链接...');
   let linkResult;
   try {
     linkResult = await Promise.race([
@@ -55,19 +58,16 @@ export async function performDeviceBinding(
     (nested(linkData, 'resp', 'data', 'url') as string) ||
     '';
   if (!bindUrl) {
-    console.warn('[微信登录] 4018 响应结构:', JSON.stringify(linkData, null, 2).slice(0, 500));
+    log.warn('4018 响应结构:', JSON.stringify(linkData, null, 2).slice(0, 500));
     return { success: false, message: '生成绑定链接失败，未返回 URL。服务端响应结构可能已变更' };
   }
 
   if (showQr) {
     await showQr(bindUrl);
   } else {
-    console.log('\n' + '='.repeat(64));
-    console.log('【设备绑定】请复制下方链接，在企微/微信中打开：');
-    console.log('  → 打开后会进入客服会话，后续发消息必须在此会话中进行');
-    console.log('='.repeat(64));
-    console.log(bindUrl);
-    console.log('='.repeat(64) + '\n');
+    log.info('【设备绑定】请复制下方链接，在企微/微信中打开：');
+    log.info('打开后会进入客服会话，后续发消息必须在此会话中进行');
+    log.info(bindUrl);
   }
 
   const deadline = Date.now() + timeoutMs;

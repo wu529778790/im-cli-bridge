@@ -189,7 +189,6 @@ export function setupTelegramHandlers(
     const createStreamUpdateWrapper = () => {
       let lastUpdateTime = 0;
       let lastContentLength = 0;
-      let pendingUpdate: ReturnType<typeof setTimeout> | null = null;
       let updateInProgress = false;
       let scheduledContent: string | null = null;
       let scheduledToolNote: string | undefined;

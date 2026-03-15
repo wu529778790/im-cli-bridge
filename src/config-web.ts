@@ -8,7 +8,9 @@ import { CONFIG_PATH, getClaudeConfigHome, loadClaudeSettingsEnv, saveClaudeSett
 import { PAGE_HTML } from "./config-web-page.js";
 import { getServiceStatus, startBackgroundService, stopBackgroundService } from "./service-control.js";
 import { initWeWork, stopWeWork } from "./wework/client.js";
+import { createLogger } from "./logger.js";
 
+const log = createLogger("ConfigWeb");
 type WebFlowMode = "init" | "start" | "dev";
 type WebFlowResult = "saved" | "cancel";
 const TEST_TIMEOUT_MS = 10000;
@@ -21,14 +23,14 @@ export interface StartedWebConfigServer {
 
 interface WebConfigPayload {
   platforms: {
-    telegram: { enabled: boolean; aiCommand: "" | "claude" | "codex" | "cursor" | "codebuddy"; botToken: string; proxy: string; allowedUserIds: string };
-    feishu: { enabled: boolean; aiCommand: "" | "claude" | "codex" | "cursor" | "codebuddy"; appId: string; appSecret: string; allowedUserIds: string };
-    qq: { enabled: boolean; aiCommand: "" | "claude" | "codex" | "cursor" | "codebuddy"; appId: string; secret: string; allowedUserIds: string };
-    wework: { enabled: boolean; aiCommand: "" | "claude" | "codex" | "cursor" | "codebuddy"; corpId: string; secret: string; allowedUserIds: string };
-    dingtalk: { enabled: boolean; aiCommand: "" | "claude" | "codex" | "cursor" | "codebuddy"; clientId: string; clientSecret: string; cardTemplateId: string; allowedUserIds: string };
+    telegram: { enabled: boolean; aiCommand: "" | "claude" | "codex" | "codebuddy"; botToken: string; proxy: string; allowedUserIds: string };
+    feishu: { enabled: boolean; aiCommand: "" | "claude" | "codex" | "codebuddy"; appId: string; appSecret: string; allowedUserIds: string };
+    qq: { enabled: boolean; aiCommand: "" | "claude" | "codex" | "codebuddy"; appId: string; secret: string; allowedUserIds: string };
+    wework: { enabled: boolean; aiCommand: "" | "claude" | "codex" | "codebuddy"; corpId: string; secret: string; allowedUserIds: string };
+    dingtalk: { enabled: boolean; aiCommand: "" | "claude" | "codex" | "codebuddy"; clientId: string; clientSecret: string; cardTemplateId: string; allowedUserIds: string };
   };
   ai: {
-    aiCommand: "claude" | "codex" | "cursor" | "codebuddy";
+    aiCommand: "claude" | "codex" | "codebuddy";
     claudeCliPath: string;
     claudeWorkDir: string;
     claudeSkipPermissions: boolean;
@@ -39,14 +41,10 @@ interface WebConfigPayload {
     claudeModel: string;
     claudeProxy: string;
     codexTimeoutMs: number;
-    cursorTimeoutMs: number;
     codebuddyTimeoutMs: number;
-    cursorCliPath: string;
-    cursorModel: string;
     codexCliPath: string;
     codebuddyCliPath: string;
     codexProxy: string;
-    cursorProxy: string;
     defaultPermissionMode?: "ask" | "accept-edits" | "plan" | "yolo";
     hookPort: number;
     logDir?: string;
@@ -148,35 +146,35 @@ function buildInitialPayload(file: FileConfig): WebConfigPayload {
     platforms: {
       telegram: {
         enabled: file.platforms?.telegram?.enabled ?? Boolean(file.platforms?.telegram?.botToken),
-        aiCommand: (file.platforms?.telegram?.aiCommand as "" | "claude" | "codex" | "cursor" | "codebuddy" | undefined) ?? "",
+        aiCommand: (file.platforms?.telegram?.aiCommand as "" | "claude" | "codex" | "codebuddy" | undefined) ?? "",
         botToken: file.platforms?.telegram?.botToken ?? "",
         proxy: file.platforms?.telegram?.proxy ?? "",
         allowedUserIds: (file.platforms?.telegram?.allowedUserIds ?? []).join(", "),
       },
       feishu: {
         enabled: file.platforms?.feishu?.enabled ?? Boolean(file.platforms?.feishu?.appId && file.platforms?.feishu?.appSecret),
-        aiCommand: (file.platforms?.feishu?.aiCommand as "" | "claude" | "codex" | "cursor" | "codebuddy" | undefined) ?? "",
+        aiCommand: (file.platforms?.feishu?.aiCommand as "" | "claude" | "codex" | "codebuddy" | undefined) ?? "",
         appId: file.platforms?.feishu?.appId ?? "",
         appSecret: file.platforms?.feishu?.appSecret ?? "",
         allowedUserIds: (file.platforms?.feishu?.allowedUserIds ?? []).join(", "),
       },
       qq: {
         enabled: file.platforms?.qq?.enabled ?? Boolean(file.platforms?.qq?.appId && file.platforms?.qq?.secret),
-        aiCommand: (file.platforms?.qq?.aiCommand as "" | "claude" | "codex" | "cursor" | "codebuddy" | undefined) ?? "",
+        aiCommand: (file.platforms?.qq?.aiCommand as "" | "claude" | "codex" | "codebuddy" | undefined) ?? "",
         appId: file.platforms?.qq?.appId ?? "",
         secret: file.platforms?.qq?.secret ?? "",
         allowedUserIds: (file.platforms?.qq?.allowedUserIds ?? []).join(", "),
       },
       wework: {
         enabled: file.platforms?.wework?.enabled ?? Boolean(file.platforms?.wework?.corpId && file.platforms?.wework?.secret),
-        aiCommand: (file.platforms?.wework?.aiCommand as "" | "claude" | "codex" | "cursor" | "codebuddy" | undefined) ?? "",
+        aiCommand: (file.platforms?.wework?.aiCommand as "" | "claude" | "codex" | "codebuddy" | undefined) ?? "",
         corpId: file.platforms?.wework?.corpId ?? "",
         secret: file.platforms?.wework?.secret ?? "",
         allowedUserIds: (file.platforms?.wework?.allowedUserIds ?? []).join(", "),
       },
       dingtalk: {
         enabled: file.platforms?.dingtalk?.enabled ?? Boolean(file.platforms?.dingtalk?.clientId && file.platforms?.dingtalk?.clientSecret),
-        aiCommand: (file.platforms?.dingtalk?.aiCommand as "" | "claude" | "codex" | "cursor" | "codebuddy" | undefined) ?? "",
+        aiCommand: (file.platforms?.dingtalk?.aiCommand as "" | "claude" | "codex" | "codebuddy" | undefined) ?? "",
         clientId: file.platforms?.dingtalk?.clientId ?? "",
         clientSecret: file.platforms?.dingtalk?.clientSecret ?? "",
         cardTemplateId: file.platforms?.dingtalk?.cardTemplateId ?? "",
@@ -184,7 +182,7 @@ function buildInitialPayload(file: FileConfig): WebConfigPayload {
       },
     },
     ai: {
-      aiCommand: (file.aiCommand as "claude" | "codex" | "cursor" | "codebuddy") ?? "claude",
+      aiCommand: (file.aiCommand as "claude" | "codex" | "codebuddy") ?? "claude",
       claudeCliPath: file.tools?.claude?.cliPath ?? "claude",
       claudeWorkDir: file.tools?.claude?.workDir ?? process.cwd(),
       claudeSkipPermissions: file.tools?.claude?.skipPermissions ?? true,
@@ -197,14 +195,10 @@ function buildInitialPayload(file: FileConfig): WebConfigPayload {
       claudeModel: file.tools?.claude?.model ?? claudeEnv.ANTHROPIC_MODEL ?? "",
       claudeProxy: file.tools?.claude?.proxy ?? "",
       codexTimeoutMs: file.tools?.codex?.timeoutMs ?? 600000,
-      cursorTimeoutMs: file.tools?.cursor?.timeoutMs ?? 600000,
       codebuddyTimeoutMs: file.tools?.codebuddy?.timeoutMs ?? 600000,
-      cursorCliPath: file.tools?.cursor?.cliPath ?? "cursor",
-      cursorModel: file.tools?.cursor?.model ?? "auto",
       codexCliPath: file.tools?.codex?.cliPath ?? "codex",
       codebuddyCliPath: file.tools?.codebuddy?.cliPath ?? "codebuddy",
       codexProxy: file.tools?.codex?.proxy ?? "",
-      cursorProxy: file.tools?.cursor?.proxy ?? "",
     defaultPermissionMode: file.defaultPermissionMode ?? "ask",
       hookPort: file.hookPort ?? 35801,
       logDir: file.logDir ?? "",
@@ -230,7 +224,6 @@ function validatePayload(payload: WebConfigPayload): string[] {
   if (!clean(payload.ai.claudeWorkDir)) errors.push("Default work directory is required.");
   if (!Number.isFinite(payload.ai.claudeTimeoutMs) || payload.ai.claudeTimeoutMs <= 0) errors.push("Claude timeout must be positive.");
   if (!Number.isFinite(payload.ai.codexTimeoutMs) || payload.ai.codexTimeoutMs <= 0) errors.push("Codex timeout must be positive.");
-  if (!Number.isFinite(payload.ai.cursorTimeoutMs) || payload.ai.cursorTimeoutMs <= 0) errors.push("Cursor timeout must be positive.");
   if (!Number.isFinite(payload.ai.codebuddyTimeoutMs) || payload.ai.codebuddyTimeoutMs <= 0) errors.push("CodeBuddy timeout must be positive.");
   if (!Number.isFinite(payload.ai.hookPort) || payload.ai.hookPort <= 0) errors.push("Hook port must be positive.");
   return errors;
@@ -320,14 +313,12 @@ function createProbeConfig(values: Partial<Config>): Config {
     dingtalkAllowedUserIds: [],
     aiCommand: "claude",
     claudeCliPath: "claude",
-    cursorCliPath: "cursor",
     codexCliPath: "codex",
     claudeWorkDir: process.cwd(),
     claudeSkipPermissions: true,
     defaultPermissionMode: "ask",
     claudeTimeoutMs: 600000,
     codexTimeoutMs: 600000,
-    cursorTimeoutMs: 600000,
     codebuddyTimeoutMs: 600000,
     hookPort: 35801,
     logDir: "",
@@ -487,14 +478,6 @@ function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConf
         proxy: clean(payload.ai.claudeProxy),
         // model is now saved to ~/.claude/settings.json as ANTHROPIC_MODEL
       },
-      cursor: {
-        ...existing.tools?.cursor,
-        cliPath: clean(payload.ai.cursorCliPath) ?? "cursor",
-        skipPermissions: existing.tools?.cursor?.skipPermissions ?? payload.ai.claudeSkipPermissions,
-        proxy: clean(payload.ai.cursorProxy),
-        timeoutMs: payload.ai.cursorTimeoutMs,
-        model: clean(payload.ai.cursorModel),
-      },
       codex: {
         ...existing.tools?.codex,
         cliPath: clean(payload.ai.codexCliPath) ?? "codex",
@@ -515,7 +498,7 @@ function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConf
       telegram: {
         ...existing.platforms?.telegram,
         enabled: payload.platforms.telegram.enabled,
-        aiCommand: clean(payload.platforms.telegram.aiCommand) as "claude" | "codex" | "cursor" | "codebuddy" | undefined,
+        aiCommand: clean(payload.platforms.telegram.aiCommand) as "claude" | "codex" | "codebuddy" | undefined,
         botToken: clean(payload.platforms.telegram.botToken),
         proxy: clean(payload.platforms.telegram.proxy),
         allowedUserIds: splitCsv(payload.platforms.telegram.allowedUserIds),
@@ -523,7 +506,7 @@ function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConf
       feishu: {
         ...existing.platforms?.feishu,
         enabled: payload.platforms.feishu.enabled,
-        aiCommand: clean(payload.platforms.feishu.aiCommand) as "claude" | "codex" | "cursor" | "codebuddy" | undefined,
+        aiCommand: clean(payload.platforms.feishu.aiCommand) as "claude" | "codex" | "codebuddy" | undefined,
         appId: clean(payload.platforms.feishu.appId),
         appSecret: clean(payload.platforms.feishu.appSecret),
         allowedUserIds: splitCsv(payload.platforms.feishu.allowedUserIds),
@@ -531,7 +514,7 @@ function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConf
       qq: {
         ...existing.platforms?.qq,
         enabled: payload.platforms.qq.enabled,
-        aiCommand: clean(payload.platforms.qq.aiCommand) as "claude" | "codex" | "cursor" | "codebuddy" | undefined,
+        aiCommand: clean(payload.platforms.qq.aiCommand) as "claude" | "codex" | "codebuddy" | undefined,
         appId: clean(payload.platforms.qq.appId),
         secret: clean(payload.platforms.qq.secret),
         allowedUserIds: splitCsv(payload.platforms.qq.allowedUserIds),
@@ -539,7 +522,7 @@ function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConf
       wework: {
         ...existing.platforms?.wework,
         enabled: payload.platforms.wework.enabled,
-        aiCommand: clean(payload.platforms.wework.aiCommand) as "claude" | "codex" | "cursor" | "codebuddy" | undefined,
+        aiCommand: clean(payload.platforms.wework.aiCommand) as "claude" | "codex" | "codebuddy" | undefined,
         corpId: clean(payload.platforms.wework.corpId),
         secret: clean(payload.platforms.wework.secret),
         allowedUserIds: splitCsv(payload.platforms.wework.allowedUserIds),
@@ -547,7 +530,7 @@ function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConf
       dingtalk: {
         ...existing.platforms?.dingtalk,
         enabled: payload.platforms.dingtalk.enabled,
-        aiCommand: clean(payload.platforms.dingtalk.aiCommand) as "claude" | "codex" | "cursor" | "codebuddy" | undefined,
+        aiCommand: clean(payload.platforms.dingtalk.aiCommand) as "claude" | "codex" | "codebuddy" | undefined,
         clientId: clean(payload.platforms.dingtalk.clientId),
         clientSecret: clean(payload.platforms.dingtalk.clientSecret),
         cardTemplateId: clean(payload.platforms.dingtalk.cardTemplateId),
@@ -809,7 +792,7 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
 export async function runWebConfigFlow(options: { mode: WebFlowMode; cwd: string }): Promise<WebFlowResult> {
   const started = await startWebConfigServer(options);
   openBrowser(started.url);
-  console.log(`Opened local configuration page: ${started.url}`);
-  console.log(process.env.OPEN_IM_NO_BROWSER === "1" ? "Browser launch disabled. Open the URL manually." : "Save the configuration in your browser to continue.");
+  log.info(`Opened local configuration page: ${started.url}`);
+  log.info(process.env.OPEN_IM_NO_BROWSER === "1" ? "Browser launch disabled. Open the URL manually." : "Save the configuration in your browser to continue.");
   return started.waitForResult;
 }

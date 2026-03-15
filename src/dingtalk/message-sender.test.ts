@@ -117,8 +117,8 @@ describe('DingTalk message sender', () => {
     const sender = await import('./message-sender.js');
     sender.configureDingTalkMessageSender({ cardTemplateId: 'tpl-error' });
 
-    const messageId = await sender.sendThinkingMessage('cid-4', undefined, 'cursor');
-    await sender.sendErrorMessage('cid-4', messageId, '爆了', 'cursor');
+    const messageId = await sender.sendThinkingMessage('cid-4', undefined, 'codex');
+    await sender.sendErrorMessage('cid-4', messageId, '爆了', 'codex');
 
     expect(updateStreamingCardMock).toHaveBeenCalledWith(
       'ctx-error',
@@ -128,7 +128,7 @@ describe('DingTalk message sender', () => {
         note: '执行失败',
         status: 'error',
         flowStatus: 5,
-        toolName: 'Cursor',
+        toolName: 'Codex',
       }),
     );
     expect(finishStreamingCardMock).toHaveBeenCalledWith('ctx-error');

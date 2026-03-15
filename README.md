@@ -2,12 +2,12 @@
 
 [中文](./README.zh-CN.md)
 
-Multi-platform IM bridge for AI CLI tools. Connect Telegram, Feishu, WeCom, DingTalk, QQ, and WeChat to Claude Code, Codex, Cursor, and CodeBuddy so you can use your coding assistant remotely from a phone or chat window.
+Multi-platform IM bridge for AI CLI tools. Connect Telegram, Feishu, WeCom, DingTalk, QQ, and WeChat to Claude Code, Codex, and CodeBuddy so you can use your coding assistant remotely from a phone or chat window.
 
 ## Features
 
 - Multi-platform support: Telegram, Feishu, WeCom, DingTalk, QQ, and WeChat (experimental), with multiple platforms enabled at the same time
-- Multiple AI tools: Claude, Codex, Cursor, and CodeBuddy
+- Multiple AI tools: Claude, Codex, and CodeBuddy
 - Per-platform AI routing: each IM platform can use a different AI tool, with `aiCommand` as the global default and `platforms.<name>.aiCommand` as the override
 - Streaming replies: relay AI output and tool execution progress in real time (DingTalk streaming is not fully supported yet)
 - Graphical configuration page and CLI setup flow
@@ -84,7 +84,7 @@ Example:
     },
     "feishu": {
       "enabled": true,
-      "aiCommand": "cursor"
+      "aiCommand": "codex"
     },
     "qq": {
       "enabled": true,
@@ -94,7 +94,7 @@ Example:
 }
 ```
 
-In that setup, Telegram uses Codex, Feishu uses Cursor, QQ uses CodeBuddy, and any platform without its own `aiCommand` continues using Claude.
+In that setup, Telegram uses Codex, Feishu uses Codex, QQ uses CodeBuddy, and any platform without its own `aiCommand` continues using Claude.
 
 ### Claude
 
@@ -151,10 +151,6 @@ The following is valid JSON and can be saved directly as `~/.open-im/config.json
       "skipPermissions": true,
       "timeoutMs": 600000
     },
-    "cursor": {
-      "cliPath": "agent",
-      "skipPermissions": true
-    },
     "codex": {
       "cliPath": "codex",
       "workDir": "D:/coding/open-im",
@@ -177,7 +173,7 @@ The following is valid JSON and can be saved directly as `~/.open-im/config.json
     },
     "feishu": {
       "enabled": false,
-      "aiCommand": "cursor",
+      "aiCommand": "codex",
       "allowedUserIds": [],
       "appId": "YOUR_FEISHU_APP_ID",
       "appSecret": "YOUR_FEISHU_APP_SECRET"
@@ -219,14 +215,13 @@ The following is valid JSON and can be saved directly as `~/.open-im/config.json
 
 | Variable | Description |
 | ---- | ---- |
-| `AI_COMMAND` | Select `claude`, `codex`, `cursor`, or `codebuddy` |
+| `AI_COMMAND` | Select `claude`, `codex`, or `codebuddy` |
 | `CLAUDE_WORK_DIR` | Default session working directory |
 | `LOG_DIR` | Log directory |
 | `LOG_LEVEL` | Log level |
 | `HOOK_PORT` | Permission service port |
 | `CODEX_PROXY` | Proxy used by Codex to access `chatgpt.com` |
 | `OPENAI_API_KEY` | Codex API key, can replace `codex login` |
-| `CURSOR_API_KEY` | Cursor API key, can replace `agent login` |
 | `CODEBUDDY_CLI_PATH` | Override CodeBuddy CLI path |
 | `CODEBUDDY_TIMEOUT_MS` | Override CodeBuddy timeout |
 | `CODEBUDDY_SKIP_PERMISSIONS` | Override CodeBuddy skip-permissions behavior |
@@ -303,8 +298,6 @@ DingTalk AI card templates are already compatible with the official "Search Resu
 **DingTalk cannot reply**: make sure bot Stream Mode is enabled for the app, then verify `DINGTALK_CLIENT_ID`, `DINGTALK_CLIENT_SECRET`, or `platforms.dingtalk`.
 
 **DingTalk has no streaming updates**: when `prepare` fails, the app falls back to plain text replies. In custom bot or regular group scenarios, neither the AI assistant API nor the interactive card API is available, so only single plain text replies are supported.
-
-**Cursor shows `Authentication required`**: run `agent login` first, or set `CURSOR_API_KEY` in `env`.
 
 **Codex shows `stream disconnected` or `error sending request`**: `chatgpt.com` is not reachable. Configure `tools.codex.proxy` or set `CODEX_PROXY`.
 

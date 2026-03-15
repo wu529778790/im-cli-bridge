@@ -875,7 +875,6 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                       <option value="">(default)</option>
                       <option value="claude">claude</option>
                       <option value="codex">codex</option>
-                      <option value="cursor">cursor</option>
                       <option value="codebuddy">codebuddy</option>
                     </select>
                   </div>
@@ -918,7 +917,6 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                       <option value="">(default)</option>
                       <option value="claude">claude</option>
                       <option value="codex">codex</option>
-                      <option value="cursor">cursor</option>
                       <option value="codebuddy">codebuddy</option>
                     </select>
                   </div>
@@ -960,7 +958,6 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                       <option value="">(default)</option>
                       <option value="claude">claude</option>
                       <option value="codex">codex</option>
-                      <option value="cursor">cursor</option>
                       <option value="codebuddy">codebuddy</option>
                     </select>
                   </div>
@@ -1002,7 +999,6 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                       <option value="">(default)</option>
                       <option value="claude">claude</option>
                       <option value="codex">codex</option>
-                      <option value="cursor">cursor</option>
                       <option value="codebuddy">codebuddy</option>
                     </select>
                   </div>
@@ -1048,7 +1044,6 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                       <option value="">(default)</option>
                       <option value="claude">claude</option>
                       <option value="codex">codex</option>
-                      <option value="cursor">cursor</option>
                       <option value="codebuddy">codebuddy</option>
                     </select>
                   </div>
@@ -1084,7 +1079,6 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                     <select id="ai-aiCommand" class="form-select">
                       <option value="claude">claude</option>
                       <option value="codex">codex</option>
-                      <option value="cursor">cursor</option>
                       <option value="codebuddy">codebuddy</option>
                     </select>
                   </div>
@@ -1114,7 +1108,6 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                   <div class="tabs" id="aiToolSwitcher">
                     <button class="tab active" data-tool="claude" type="button">Claude</button>
                     <button class="tab" data-tool="codex" type="button">Codex</button>
-                    <button class="tab" data-tool="cursor" type="button">Cursor</button>
                     <button class="tab" data-tool="codebuddy" type="button">CodeBuddy</button>
                   </div>
                 </div>
@@ -1167,27 +1160,6 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                     <div class="form-group">
                       <label class="form-label" id="ai-codexProxy-label">Proxy (optional)</label>
                       <input id="ai-codexProxy" class="form-input mono" type="text" />
-                    </div>
-                  </div>
-
-                  <div id="ai-tool-cursor" class="ai-tool-panel" data-tool-panel="cursor">
-                    <div class="form-group">
-                      <label class="form-label" id="ai-cursorCliPath-label">CLI Path</label>
-                      <input id="ai-cursorCliPath" class="form-input mono" type="text" />
-                    </div>
-                    <div class="form-group">
-                      <label class="form-label" id="ai-cursorModel-label">Model</label>
-                      <input id="ai-cursorModel" class="form-input mono" type="text" placeholder="auto" />
-                      <div class="form-hint" id="ai-cursorModel-hint">如 auto、Claude 4 Sonnet 等，agent --list-models 查看</div>
-                    </div>
-                    <div class="form-group">
-                      <label class="form-label" id="ai-cursorTimeoutMs-label">Timeout (ms)</label>
-                      <input id="ai-cursorTimeoutMs" class="form-input" type="number" min="1" />
-                    </div>
-                    <div class="form-group">
-                      <label class="form-label" id="ai-cursorProxy-label">Proxy (optional)</label>
-                      <input id="ai-cursorProxy" class="form-input mono" type="text" />
-                      <div class="form-hint" id="ai-cursorProxy-hint">HTTP proxy for API requests (e.g., http://127.0.0.1:7890)</div>
                     </div>
                   </div>
 
