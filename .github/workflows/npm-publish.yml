@@ -137,12 +137,15 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           CHANNEL="${{ github.event.inputs.release_channel || 'stable' }}"
 
-          if [ "${{ github.event_name }}" = "push" ] || [ "$CHANNEL" = "stable" ]; then
+          # Detect if version is a prerelease (contains -alpha, -beta, -rc)
+          if [[ "$VERSION" =~ -alpha\.|-beta\.|-rc\. ]]; then
+            # Extract prerelease channel from version (e.g., "beta" from "1.0.0-beta.5")
+            VERSION_CHANNEL=$(echo "$VERSION" | sed -n 's/.*-\([^.]*\)\.[0-9]*/\1/p')
+            echo "Publishing prerelease version $VERSION with npm tag $VERSION_CHANNEL"
+            npm publish --access public --tag "$VERSION_CHANNEL"
+          else
             echo "Publishing stable version $VERSION"
             npm publish --access public
-          else
-            echo "Publishing $CHANNEL version $VERSION with npm tag $CHANNEL"
-            npm publish --access public --tag "$CHANNEL"
           fi
 
       - name: Dry run (no publish)

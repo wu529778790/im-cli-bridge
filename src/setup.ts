@@ -851,7 +851,6 @@ export async function runInteractiveSetup(): Promise<boolean> {
     feishuAppSecret: ___,
     claudeWorkDir: _cwd,
     claudeSkipPermissions: _csp,
-    claudeCliPath: _ccp,
     claudeTimeoutMs: _ctm,
     claudeModel: _cm,
     ...baseRest

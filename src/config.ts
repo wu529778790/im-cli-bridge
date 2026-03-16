@@ -53,7 +53,6 @@ export interface Config {
   dingtalkAllowedUserIds: string[];
 
   aiCommand: AiCommand;
-  claudeCliPath: string;
   codexCliPath: string;
   codebuddyCliPath: string;
   /** Codex 访问 chatgpt.com 的代理（如 http://127.0.0.1:7890） */
@@ -68,8 +67,6 @@ export interface Config {
   hookPort: number;
   logDir: string;
   logLevel: LogLevel;
-  /** 是否使用 Agent SDK（进程内执行，无 spawn 开销，响应更快） */
-  useSdkMode: boolean;
 
   platforms: {
     telegram?: {
@@ -170,7 +167,6 @@ export interface FilePlatformDingtalk {
 }
 
 export interface FileToolClaude {
-  cliPath?: string;
   workDir?: string;
   skipPermissions?: boolean;
   timeoutMs?: number;
@@ -221,7 +217,6 @@ export interface FileConfig {
   hookPort?: number;
   logDir?: string;
   logLevel?: LogLevel;
-  useSdkMode?: boolean;
 }
 
 export const CONFIG_PATH = join(APP_HOME, 'config.json');
@@ -232,7 +227,7 @@ const CODEX_AUTH_PATHS = [
 ];
 
 const OLD_ROOT_KEYS = [
-  'claudeWorkDir', 'claudeSkipPermissions', 'claudeCliPath',
+  'claudeWorkDir', 'claudeSkipPermissions',
   'claudeTimeoutMs', 'claudeModel',
 ] as const;
 
@@ -269,7 +264,6 @@ function migrateToNewConfigFormat(raw: Record<string, unknown>): Record<string, 
   migrated.tools = {
     claude: {
       ...tc,
-      cliPath: tc.cliPath ?? raw.claudeCliPath ?? 'claude',
       workDir: tc.workDir ?? raw.claudeWorkDir ?? process.cwd(),
       skipPermissions: tc.skipPermissions ?? raw.claudeSkipPermissions ?? true,
       timeoutMs: tc.timeoutMs ?? raw.claudeTimeoutMs ?? 600000,
@@ -633,7 +627,6 @@ export function loadConfig(): Config {
   const tcod = file.tools?.codex ?? {};
   const tcb = file.tools?.codebuddy ?? {};
 
-  const claudeCliPath = process.env.CLAUDE_CLI_PATH ?? tc.cliPath ?? 'claude';
   const codexProxy = process.env.CODEX_PROXY ?? tcod.proxy;
   let codexCliPath = process.env.CODEX_CLI_PATH ?? tcod.cliPath ?? 'codex';
   if (process.platform === 'win32' && codexCliPath === 'codex') {
@@ -698,17 +691,9 @@ export function loadConfig(): Config {
       ? parseInt(process.env.HOOK_PORT, 10) || 35801
       : file.hookPort ?? 35801;
 
-  // 当使用 Claude 时，强制使用 SDK 模式（更快，无需安装 CLI）
-  // 使用其他工具（codex/codebuddy）时，才根据配置决定
-  const useSdkMode = aiCommand === 'claude' || (
-    process.env.USE_SDK_MODE !== undefined
-      ? process.env.USE_SDK_MODE === 'true'
-      : file.useSdkMode ?? true
-  );
-
   // 6. 校验 Claude API 凭证（SDK 模式需要）
   // 支持：官方 API Key、Auth Token、或自定义 API（第三方模型等，BASE_URL + token）
-  if (aiCommand === 'claude' && useSdkMode) {
+  if (aiCommand === 'claude') {
     const hasCreds = !!(
       process.env.ANTHROPIC_API_KEY ||
       process.env.ANTHROPIC_AUTH_TOKEN ||
@@ -810,47 +795,6 @@ export function loadConfig(): Config {
           '  npm install -g @tencent-ai/codebuddy-code',
           '',
           '安装后运行 codebuddy --version 验证，再执行 codebuddy login 登录。',
-          '',
-        ].join('\n');
-        throw new Error(installGuide);
-      }
-    }
-  }
-
-  // 9. 校验 Claude CLI（SDK 模式不需要 CLI）
-  if (aiCommand === 'claude' && !useSdkMode) {
-    if (isAbsolute(claudeCliPath) || claudeCliPath.includes('/') || claudeCliPath.includes('\\')) {
-      try {
-        accessSync(claudeCliPath, constants.F_OK | constants.X_OK);
-      } catch {
-        throw new Error(`Claude CLI 不可执行: ${claudeCliPath}`);
-      }
-    } else {
-      // 检查命令是否存在（Windows 用 where，Unix 用 which）
-      const checkCommand = process.platform === 'win32' ? 'where' : 'which';
-      try {
-        execFileSync(checkCommand, [claudeCliPath], {
-          stdio: 'pipe',
-          windowsHide: process.platform === 'win32',
-        });
-      } catch {
-        const installGuide = [
-          '',
-          '━━━ Claude CLI 未安装 ━━━',
-          '',
-          'open-im 需要 Claude Code CLI 才能运行。',
-          '',
-          '安装方法：',
-          '',
-          '  npm install -g @anthropic-ai/claude-code',
-          '',
-          '或者：',
-          '  1. 访问 https://claude.ai/download',
-          '  2. 下载并安装 Claude Code',
-          '',
-          '安装后重新运行，例如：',
-          '  open-im dev',
-          '  或 open-im start',
           '',
         ].join('\n');
         throw new Error(installGuide);
@@ -976,7 +920,6 @@ export function loadConfig(): Config {
     weworkAllowedUserIds,
     dingtalkAllowedUserIds,
     aiCommand,
-    claudeCliPath,
     codexCliPath,
     codebuddyCliPath,
     codexProxy,
@@ -990,7 +933,6 @@ export function loadConfig(): Config {
     hookPort,
     logDir,
     logLevel,
-    useSdkMode,
     platforms,
   };
 }

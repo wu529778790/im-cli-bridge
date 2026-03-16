@@ -236,11 +236,13 @@ export class CommandHandler {
   }
 
   private getAiVersion(aiCommand: 'claude' | 'codex' | 'codebuddy'): Promise<string> {
+    if (aiCommand === 'claude') {
+      // Claude 使用 SDK，返回 SDK 版本
+      return Promise.resolve('SDK Mode');
+    }
     const cmd = aiCommand === 'codex'
       ? this.deps.config.codexCliPath
-      : aiCommand === 'codebuddy'
-        ? this.deps.config.codebuddyCliPath
-        : this.deps.config.claudeCliPath;
+      : this.deps.config.codebuddyCliPath;
     return new Promise((resolve) => {
       execFile(cmd, ['--version'], { timeout: 5000 }, (err, stdout) => {
         resolve(err ? '未知' : (stdout?.toString().trim() || '未知'));

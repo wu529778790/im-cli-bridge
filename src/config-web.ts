@@ -31,7 +31,6 @@ interface WebConfigPayload {
   };
   ai: {
     aiCommand: "claude" | "codex" | "codebuddy";
-    claudeCliPath: string;
     claudeWorkDir: string;
     claudeSkipPermissions: boolean;
     claudeTimeoutMs: number;
@@ -49,7 +48,6 @@ interface WebConfigPayload {
     hookPort: number;
     logDir?: string;
     logLevel: "default" | "DEBUG" | "INFO" | "WARN" | "ERROR";
-    useSdkMode: boolean;
   };
 }
 
@@ -183,7 +181,6 @@ function buildInitialPayload(file: FileConfig): WebConfigPayload {
     },
     ai: {
       aiCommand: (file.aiCommand as "claude" | "codex" | "codebuddy") ?? "claude",
-      claudeCliPath: file.tools?.claude?.cliPath ?? "claude",
       claudeWorkDir: file.tools?.claude?.workDir ?? process.cwd(),
       claudeSkipPermissions: file.tools?.claude?.skipPermissions ?? true,
       claudeTimeoutMs: file.tools?.claude?.timeoutMs ?? 600000,
@@ -203,7 +200,6 @@ function buildInitialPayload(file: FileConfig): WebConfigPayload {
       hookPort: file.hookPort ?? 35801,
       logDir: file.logDir ?? "",
       logLevel: (file.logLevel as "DEBUG" | "INFO" | "WARN" | "ERROR") ?? "default",
-      useSdkMode: file.useSdkMode ?? true,
     },
   };
 }
@@ -312,7 +308,6 @@ function createProbeConfig(values: Partial<Config>): Config {
     weworkAllowedUserIds: [],
     dingtalkAllowedUserIds: [],
     aiCommand: "claude",
-    claudeCliPath: "claude",
     codexCliPath: "codex",
     claudeWorkDir: process.cwd(),
     claudeSkipPermissions: true,
@@ -323,7 +318,6 @@ function createProbeConfig(values: Partial<Config>): Config {
     hookPort: 35801,
     logDir: "",
     logLevel: "INFO",
-    useSdkMode: true,
     codebuddyCliPath: "codebuddy",
     platforms: {},
     ...values,
@@ -467,11 +461,9 @@ function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConf
     hookPort: payload.ai.hookPort,
     logDir: payload.ai.logDir === undefined ? existing.logDir : clean(payload.ai.logDir),
     logLevel: payload.ai.logLevel === "default" ? undefined : payload.ai.logLevel,
-    useSdkMode: payload.ai.useSdkMode,
     tools: {
       claude: {
         ...existing.tools?.claude,
-        cliPath: clean(payload.ai.claudeCliPath) ?? "claude",
         workDir: clean(payload.ai.claudeWorkDir) ?? process.cwd(),
         skipPermissions: payload.ai.claudeSkipPermissions,
         timeoutMs: payload.ai.claudeTimeoutMs,

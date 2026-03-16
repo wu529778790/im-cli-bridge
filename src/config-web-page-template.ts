@@ -1114,10 +1114,6 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                 <div class="ai-card-body">
                   <div id="ai-tool-claude" class="ai-tool-panel active" data-tool-panel="claude">
                     <div class="form-group">
-                      <label class="form-label" id="ai-claudeCliPath-label">CLI Path</label>
-                      <input id="ai-claudeCliPath" class="form-input mono" type="text" />
-                    </div>
-                    <div class="form-group">
                       <label class="form-label" id="ai-claudeTimeoutMs-label">Timeout (ms)</label>
                       <input id="ai-claudeTimeoutMs" class="form-input" type="number" min="1" />
                     </div>
