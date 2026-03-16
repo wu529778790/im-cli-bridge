@@ -185,16 +185,20 @@ export function runAITask(
           : config.claudeTimeoutMs;
 
     const startRun = () => {
+      log.info(`[AITask] Starting: userId=${ctx.userId}, initialSessionId=${currentSessionId ?? 'new'}, prompt="${prompt.slice(0, 50)}..."`);
+
       activeHandle = toolAdapter.run(
         prompt,
         currentSessionId,
         ctx.workDir,
         {
         onSessionId: (id) => {
+          log.info(`[AITask] SessionId callback: old=${currentSessionId ?? 'none'}, new=${id}, aiCommand=${aiCommand}, userId=${ctx.userId}`);
           currentSessionId = id;
           // 使用 aiCommand 而不是 toolId，确保与查询时使用相同的 key
           if (ctx.threadId) sessionManager.setSessionIdForThread(ctx.userId, ctx.threadId, aiCommand, id);
           else if (ctx.convId) sessionManager.setSessionIdForConv(ctx.userId, ctx.convId, aiCommand, id);
+          else log.info(`[AITask] No threadId or convId, sessionId not persisted to storage`);
         },
         onSessionInvalid: () => {
           if (ctx.convId) sessionManager.clearSessionForConv(ctx.userId, ctx.convId, aiCommand);
