@@ -47,7 +47,6 @@ describe("runAITask", () => {
           claudeTimeoutMs: 600000,
           claudeSkipPermissions: false,
           claudeModel: "",
-          useSdkMode: true,
           hookPort: 35801,
           codexProxy: "",
         } as never,

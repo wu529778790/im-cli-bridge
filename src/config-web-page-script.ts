@@ -199,7 +199,6 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           { id: "aiCommonTitle", key: "aiCommonTitle" },
           { id: "ai-aiCommand-label", key: "aiTool" },
           { id: "ai-claudeWorkDir-label", key: "workDir" },
-          { id: "ai-claudeCliPath-label", key: "claudeCli" },
           { id: "ai-claudeTimeoutMs-label", key: "claudeTimeout" },
           { id: "ai-claudeConfigPath-label", key: "claudeConfigPath" },
           { id: "ai-claudeAuthToken-label", key: "claudeAuthToken" },
@@ -410,7 +409,6 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
       const AI_FIELD_MAPPINGS = [
         { id: "ai-aiCommand", key: "aiCommand" },
         { id: "ai-claudeWorkDir", key: "claudeWorkDir" },
-        { id: "ai-claudeCliPath", key: "claudeCliPath" },
         { id: "ai-claudeTimeoutMs", key: "claudeTimeoutMs" },
         { id: "ai-claudeConfigPath", key: "claudeConfigPath" },
         { id: "ai-claudeAuthToken", key: "claudeAuthToken" },
@@ -651,7 +649,6 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         ])),
         ai: {
           aiCommand: getValue("ai-aiCommand"),
-          claudeCliPath: getValue("ai-claudeCliPath"),
           claudeWorkDir: getValue("ai-claudeWorkDir"),
           claudeSkipPermissions: true,
           claudeTimeoutMs: getNumber("ai-claudeTimeoutMs"),
@@ -667,7 +664,6 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           codebuddyCliPath: getValue("ai-codebuddyCliPath"),
           hookPort: getNumber("ai-hookPort"),
           logLevel: getValue("ai-logLevel"),
-          useSdkMode: true,
         },
       });
 

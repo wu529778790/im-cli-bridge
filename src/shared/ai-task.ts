@@ -307,7 +307,6 @@ export function runAITask(
           timeoutMs,
           model: sessionManager.getModel(ctx.userId, ctx.threadId) ?? config.claudeModel,
           chatId: ctx.chatId,
-          ...(toolId === 'claude' && config.useSdkMode ? {} : { hookPort: config.hookPort }),
           ...(toolId === 'codex' && config.codexProxy ? { proxy: config.codexProxy } : {}),
         }
       );

@@ -86,13 +86,11 @@ Key config options:
 - `enabledPlatforms` - Array of enabled platforms ('telegram' | 'feishu' | 'wechat')
 - `allowedUserIds` - Whitelist of user IDs (empty = all users)
 - `aiCommand` - Which AI tool to use (claude/codex/codebuddy)
-- `tools.claude.cliPath` - Path to Claude CLI executable
 - `tools.claude.workDir` - Default working directory
 - `tools.claude.skipPermissions` - Auto-approve tool permissions (default: true)
-- `claudeTimeoutMs` - Claude CLI timeout (default: 600000)
+- `claudeTimeoutMs` - Claude timeout (default: 600000)
 - `logDir` - Log directory (default: `~/.open-im/logs`)
 - `logLevel` - Log level (INFO/DEBUG/WARN/ERROR)
-- `useSdkMode` - For non-Claude tools only; Claude always uses SDK mode (faster, no CLI required)
 
 ### Important Design Decisions
 

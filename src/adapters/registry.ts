@@ -1,6 +1,5 @@
 import { getConfiguredAiCommands, type Config } from '../config.js';
 import type { ToolAdapter } from './tool-adapter.interface.js';
-import { ClaudeAdapter } from './claude-adapter.js';
 import { ClaudeSDKAdapter } from './claude-sdk-adapter.js';
 import { CodexAdapter } from './codex-adapter.js';
 import { CodeBuddyAdapter } from './codebuddy-adapter.js';
@@ -13,16 +12,8 @@ export function initAdapters(config: Config): void {
   adapters.clear();
   for (const aiCommand of getConfiguredAiCommands(config)) {
     if (aiCommand === 'claude') {
-      if (config.useSdkMode) {
-        log.info('Claude Agent SDK adapter enabled');
-        adapters.set('claude', new ClaudeSDKAdapter());
-      } else {
-        log.info('Claude CLI adapter enabled');
-        adapters.set('claude', new ClaudeAdapter(config.claudeCliPath, {
-          useProcessPool: true,
-          idleTimeoutMs: 2 * 60 * 1000,
-        }));
-      }
+      log.info('Claude Agent SDK adapter enabled');
+      adapters.set('claude', new ClaudeSDKAdapter());
       continue;
     }
 
@@ -44,7 +35,6 @@ export function getAdapter(aiCommand: string): ToolAdapter | undefined {
 }
 
 export function cleanupAdapters(): void {
-  ClaudeAdapter.destroy();
   ClaudeSDKAdapter.destroy();
   adapters.clear();
 }
