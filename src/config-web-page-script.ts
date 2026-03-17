@@ -201,9 +201,6 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           { id: "ai-claudeWorkDir-label", key: "workDir" },
           { id: "ai-claudeTimeoutMs-label", key: "claudeTimeout" },
           { id: "ai-claudeConfigPath-label", key: "claudeConfigPath" },
-          { id: "ai-claudeAuthToken-label", key: "claudeAuthToken" },
-          { id: "ai-claudeBaseUrl-label", key: "claudeBaseUrl" },
-          { id: "ai-claudeModel-label", key: "claudeModel" },
           { id: "ai-claudeProxy-label", key: "claudeProxy" },
           { id: "ai-codexCliPath-label", key: "codexCli" },
           { id: "ai-codexTimeoutMs-label", key: "codexTimeout" },
@@ -405,15 +402,37 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         return body;
       }
 
+      async function editClaudeSettings() {
+        try {
+          const data = await request("/api/claude/settings");
+          const current = (data.contents || "").trim() || "{\n}\n";
+          const edited = window.prompt("Edit ~/.claude/settings.json", current);
+          if (edited == null) return;
+
+          // Validate JSON before sending
+          try {
+            JSON.parse(edited);
+          } catch (err) {
+            setMessage("Invalid JSON: " + (err && err.message ? err.message : String(err)), "error");
+            return;
+          }
+
+          await request("/api/claude/settings", {
+            method: "POST",
+            body: JSON.stringify({ contents: edited }),
+          });
+          setMessage("Claude settings.json saved.", "success");
+        } catch (error) {
+          setMessage(error.message || String(error), "error");
+        }
+      }
+
       // Fill form with data
       const AI_FIELD_MAPPINGS = [
         { id: "ai-aiCommand", key: "aiCommand" },
         { id: "ai-claudeWorkDir", key: "claudeWorkDir" },
         { id: "ai-claudeTimeoutMs", key: "claudeTimeoutMs" },
         { id: "ai-claudeConfigPath", key: "claudeConfigPath" },
-        { id: "ai-claudeAuthToken", key: "claudeAuthToken" },
-        { id: "ai-claudeBaseUrl", key: "claudeBaseUrl" },
-        { id: "ai-claudeModel", key: "claudeModel" },
         { id: "ai-claudeProxy", key: "claudeProxy" },
         { id: "ai-codexCliPath", key: "codexCliPath" },
         { id: "ai-codexTimeoutMs", key: "codexTimeoutMs" },
@@ -498,6 +517,14 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
             input.addEventListener("change", updateVisualState);
           }
         });
+
+        // Claude settings.json raw editor (advanced)
+        const claudeConfigLabel = el("ai-claudeConfigPath-label");
+        if (claudeConfigLabel) {
+          claudeConfigLabel.style.cursor = "pointer";
+          claudeConfigLabel.title = "Click to edit ~/.claude/settings.json (advanced)";
+          claudeConfigLabel.addEventListener("click", editClaudeSettings);
+        }
 
         // AI tool switcher
         document.querySelectorAll(".tab[data-tool]").forEach((tab) => {
@@ -652,9 +679,6 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           claudeWorkDir: getValue("ai-claudeWorkDir"),
           claudeTimeoutMs: getNumber("ai-claudeTimeoutMs"),
           claudeConfigPath: getValue("ai-claudeConfigPath"),
-          claudeAuthToken: getValue("ai-claudeAuthToken"),
-          claudeBaseUrl: getValue("ai-claudeBaseUrl"),
-          claudeModel: getValue("ai-claudeModel"),
           claudeProxy: getValue("ai-claudeProxy"),
           codexTimeoutMs: getNumber("ai-codexTimeoutMs"),
           codebuddyTimeoutMs: getNumber("ai-codebuddyTimeoutMs"),
