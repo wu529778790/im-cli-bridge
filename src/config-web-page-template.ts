@@ -1127,7 +1127,22 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                       <input id="ai-claudeConfigPath" class="form-input mono" type="text" readonly style="background: var(--bg-secondary);" />
                       <div class="form-hint" id="ai-claudeConfigPath-hint">Environment variables are saved to ~/.claude/settings.json</div>
                     </div>
-                    <!-- ANTHROPIC_* fields removed; edit ~/.claude/settings.json directly via Config File Location label -->
+                    <div class="form-group">
+                      <details id="claudeSettingsContainer">
+                        <summary class="form-label" style="cursor: pointer;">Edit ~/.claude/settings.json (advanced)</summary>
+                        <div class="form-hint" style="margin-top: 8px; margin-bottom: 8px;">
+                          JSON will be auto-formatted; invalid JSON 会提示错误。
+                        </div>
+                        <textarea
+                          id="claudeSettingsEditor"
+                          class="form-input mono"
+                          style="min-height: 200px; white-space: pre; font-family: var(--font-mono);"
+                        ></textarea>
+                        <div class="form-hint" style="margin-top: 4px;">
+                          折叠/展开以隐藏或查看完整配置。
+                        </div>
+                      </details>
+                    </div>
                   </div>
 
                   <div id="ai-tool-codex" class="ai-tool-panel" data-tool-panel="codex">
