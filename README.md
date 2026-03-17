@@ -76,48 +76,95 @@ WeChat is not in the web UI; configure it in `~/.open-im/config.json` or via `op
 
 ### On a headless server (no GUI)
 
-Many servers do not have a desktop environment or browser. In that case, trying to auto-launch a browser (`xdg-open`, `open`, `start`) is unnecessary and may even fail. Use this pattern instead:
+Many servers do not have a desktop environment or browser. In that case, trying to auto-launch a browser (`xdg-open`, `open`, `start`) is unnecessary and may even fail. Use these patterns instead.
 
-- **1) Disable automatic browser launch**
+#### 1) Disable automatic browser launch
 
-  On the server:
+On the server:
+
+```bash
+export OPEN_IM_NO_BROWSER=1
+open-im start
+```
+
+This starts the bridge and the config web server in the background without attempting to open a browser.
+
+#### 2) Verify that the config page is listening on the server
+
+On the server:
+
+```bash
+ss -lntp | grep 39282        # or: netstat -lntp | grep 39282
+curl -v http://127.0.0.1:39282/
+```
+
+If you see a `LISTEN` line for `127.0.0.1:39282` and `curl` returns HTML, the config UI is running.
+
+#### 3) Safest option: SSH tunnel to local browser
+
+Instead of exposing port 39282 to the public internet, use SSH port forwarding:
+
+```bash
+# On your local machine:
+ssh -L 39282:127.0.0.1:39282 user@your-server-ip
+```
+
+Then open in your local browser:
+
+```text
+http://127.0.0.1:39282/
+```
+
+This safely tunnels the config page from the server to your local browser.
+
+#### 4) Optional: Remote access with one-time login link
+
+If you want to open the config UI directly from another device without SSH tunneling, you can bind the web config server to all interfaces and use a one-time login URL:
+
+- **Bind to all interfaces and keep the browser closed on the server:**
 
   ```bash
   export OPEN_IM_NO_BROWSER=1
+  export OPEN_IM_WEB_HOST=0.0.0.0
   open-im start
   ```
 
-  This starts the bridge and the config web server in the background without attempting to open a browser.
+  - By default, `OPEN_IM_WEB_HOST` is `127.0.0.1` (local only).
+  - Setting it to `0.0.0.0` makes the config page listen on all interfaces.
 
-- **2) Verify that the config page is listening on the server**
-
-  On the server:
-
-  ```bash
-  ss -lntp | grep 39282        # or: netstat -lntp | grep 39282
-  curl -v http://127.0.0.1:39282/
-  ```
-
-  If you see a `LISTEN` line for `127.0.0.1:39282` and `curl` returns HTML, the config UI is running.
-
-- **3) Access the config UI from your local machine via SSH tunnel**
-
-  Instead of exposing port 39282 to the public internet, use SSH port forwarding:
-
-  ```bash
-  # On your local machine:
-  ssh -L 39282:127.0.0.1:39282 user@your-server-ip
-  ```
-
-  Then open in your local browser:
+- **On startup, open-im will log a one-time login URL**, for example:
 
   ```text
-  http://127.0.0.1:39282/
+  ━━━━━━━━ Web Config Login ━━━━━━━━
+  Host binding : 0.0.0.0
+  Login URL    : http://127.0.0.1:39282/?login_token=xxxx
+  Note: replace 127.0.0.1 with your server IP or hostname when opening from another device.
+  This login link is valid for approximately 15 minutes and can be used only once.
+  After login, subsequent requests will use a short-lived session cookie.
   ```
 
-  This safely tunnels the config page from the server to your local browser.
+- **From your laptop/phone**, replace `127.0.0.1` with the server IP or hostname and open the URL in a browser:
 
-> If you really want to expose the config UI directly, you can change the listener in `config-web.ts` from `server.listen(port, "127.0.0.1", ...)` to `0.0.0.0` and open port 39282 in your firewall / security group. For security reasons, SSH tunneling is strongly recommended instead.
+  ```text
+  http://your-server-ip:39282/?login_token=xxxx
+  ```
+
+  The first successful visit:
+
+  - Consumes the one-time `login_token` (subsequent uses will fail with 401);
+  - Creates a short-lived session and sets a `openim_session` cookie in your browser;
+  - Redirects you to the config page without query parameters.
+
+  After that, as long as the `openim_session` cookie is valid and the process is still running, you can continue visiting:
+
+  ```text
+  http://your-server-ip:39282/
+  ```
+
+> Security notes:
+>
+> - Binding `OPEN_IM_WEB_HOST=0.0.0.0` exposes the config port on all interfaces. Always combine this with firewall rules / security groups and consider fronting the port with HTTPS + auth via a reverse proxy.
+> - When in doubt, prefer SSH tunneling (step 3) over direct exposure.
 
 ## Session Behavior
 

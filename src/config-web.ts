@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { URL } from "node:url";
+import { randomBytes } from "node:crypto";
 import { DWClient } from "dingtalk-stream";
 import type { Config } from "./config.js";
 import { WEB_CONFIG_PORT } from "./constants.js";
@@ -15,10 +16,119 @@ type WebFlowMode = "init" | "start" | "dev";
 type WebFlowResult = "saved" | "cancel";
 const TEST_TIMEOUT_MS = 10000;
 
+// --- Web config auth: one-time login token + in-memory session ---
+
+interface LoginTokenInfo {
+  expiresAt: number;
+}
+
+interface SessionInfo {
+  expiresAt: number;
+  remoteAddr?: string;
+  userAgent?: string;
+}
+
+const pendingLogins = new Map<string, LoginTokenInfo>();
+const activeSessions = new Map<string, SessionInfo>();
+
+function getWebConfigHost(): string {
+  const envHost = process.env.OPEN_IM_WEB_HOST?.trim();
+  if (envHost) return envHost;
+  return "127.0.0.1";
+}
+
+function generateRandomToken(bytes = 32): string {
+  return randomBytes(bytes).toString("base64url");
+}
+
+function cleanupExpiredAuth(now: number): void {
+  for (const [token, info] of pendingLogins) {
+    if (info.expiresAt <= now) pendingLogins.delete(token);
+  }
+  for (const [sessionId, info] of activeSessions) {
+    if (info.expiresAt <= now) activeSessions.delete(sessionId);
+  }
+}
+
+function createLoginToken(ttlMs: number): string {
+  const now = Date.now();
+  cleanupExpiredAuth(now);
+  const token = generateRandomToken(32);
+  pendingLogins.set(token, { expiresAt: now + ttlMs });
+  return token;
+}
+
+function createSession(request: IncomingMessage, ttlMs: number): string {
+  const now = Date.now();
+  cleanupExpiredAuth(now);
+  const sessionId = generateRandomToken(32);
+  const remoteAddr = (request.socket as { remoteAddress?: string }).remoteAddress;
+  const userAgent = typeof request.headers["user-agent"] === "string" ? request.headers["user-agent"] : undefined;
+  activeSessions.set(sessionId, {
+    expiresAt: now + ttlMs,
+    remoteAddr,
+    userAgent,
+  });
+  return sessionId;
+}
+
+function parseCookies(request: IncomingMessage): Record<string, string> {
+  const header = request.headers.cookie;
+  if (!header) return {};
+  const cookies: Record<string, string> = {};
+  const parts = header.split(";");
+  for (const part of parts) {
+    const [rawKey, ...rest] = part.split("=");
+    const key = rawKey.trim();
+    if (!key) continue;
+    const value = rest.join("=").trim();
+    cookies[key] = decodeURIComponent(value);
+  }
+  return cookies;
+}
+
+function getSessionIdFromRequest(request: IncomingMessage): string | null {
+  const cookies = parseCookies(request);
+  const sessionId = cookies.openim_session;
+  return sessionId && typeof sessionId === "string" && sessionId.length > 0 ? sessionId : null;
+}
+
+function isSessionValid(request: IncomingMessage): boolean {
+  const sessionId = getSessionIdFromRequest(request);
+  if (!sessionId) return false;
+  const info = activeSessions.get(sessionId);
+  if (!info) return false;
+  const now = Date.now();
+  if (info.expiresAt <= now) {
+    activeSessions.delete(sessionId);
+    return false;
+  }
+  // Optional: tie session to basic client fingerprint (remote address)
+  const remoteAddr = (request.socket as { remoteAddress?: string }).remoteAddress;
+  if (info.remoteAddr && remoteAddr && remoteAddr !== info.remoteAddr) {
+    return false;
+  }
+  return true;
+}
+
+function buildSessionCookie(sessionId: string, ttlMs: number): string {
+  const maxAgeSec = Math.floor(ttlMs / 1000);
+  const parts = [
+    `openim_session=${encodeURIComponent(sessionId)}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    `Max-Age=${maxAgeSec}`,
+  ];
+  // 不设置 Secure，方便本地 http 使用；如果放在 https 反代后，可以在代理层加 Secure
+  return parts.join("; ");
+}
+
 export interface StartedWebConfigServer {
   close: () => Promise<void>;
   url: string;
   waitForResult: Promise<WebFlowResult>;
+  loginUrl?: string;
 }
 
 interface WebConfigPayload {
@@ -580,6 +690,7 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
     };
   });
 
+  const host = getWebConfigHost();
   const server = createServer(async (request, response) => {
       const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
       const finishFlow = (result: WebFlowResult) => {
@@ -587,6 +698,49 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
         server.close();
         settle(result);
       };
+
+      // Auth gating:
+      // - 当仅绑定 127.0.0.1 时，保持完全本地免登录（向后兼容）
+      // - 当绑定到 0.0.0.0 或其他地址时，启用一次性登录 + Session Cookie 机制
+      const isLocalOnly = host === "127.0.0.1";
+      const hasLoginTokenFeature = !isLocalOnly;
+
+      if (hasLoginTokenFeature) {
+        const loginToken = requestUrl.searchParams.get("login_token");
+        if (loginToken) {
+          const info = pendingLogins.get(loginToken);
+          const now = Date.now();
+          if (info && info.expiresAt > now) {
+            // 有效的一次性登录 token：创建会话，设置 Cookie，并重定向到去掉 login_token 的 URL
+            pendingLogins.delete(loginToken);
+            const sessionTtlMs = 24 * 60 * 60 * 1000; // 24 小时
+            const sessionId = createSession(request, sessionTtlMs);
+            const cookie = buildSessionCookie(sessionId, sessionTtlMs);
+
+            requestUrl.searchParams.delete("login_token");
+            const redirectPath = requestUrl.pathname + (requestUrl.search ? requestUrl.search : "");
+
+            response.writeHead(302, {
+              Location: redirectPath || "/",
+              "Set-Cookie": cookie,
+            });
+            response.end();
+            return;
+          }
+
+          // 无效或过期的一次性 token
+          response.writeHead(401, { "content-type": "text/plain; charset=utf-8" });
+          response.end("Invalid or expired login link. Please generate a new one from the server.");
+          return;
+        }
+
+        // 其他请求：必须已有有效 session
+        if (!isSessionValid(request)) {
+          response.writeHead(401, { "content-type": "text/plain; charset=utf-8" });
+          response.end("Unauthorized. Please open the latest login URL from the server output.");
+          return;
+        }
+      }
 
       if (request.method === "GET" && requestUrl.pathname === "/") {
         response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
@@ -753,7 +907,7 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
       }
       reject(error);
     });
-    server.listen(port, "127.0.0.1", () => resolve());
+    server.listen(port, host, () => resolve());
   });
 
   const address = server.address();
@@ -778,6 +932,27 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
     if (timer) clearTimeout(timer);
   });
 
+  let loginUrlForReturn: string | undefined;
+
+  // 当绑定到非 127.0.0.1（例如 0.0.0.0）时，为远程访问生成一次性登录链接
+  if (host !== "127.0.0.1") {
+    const loginTtlMs = 15 * 60 * 1000; // 15 分钟内有效
+    const loginToken = createLoginToken(loginTtlMs);
+    const displayHost = host === "0.0.0.0" ? "127.0.0.1" : host;
+    const baseUrl = `http://${displayHost}:${port}`;
+    const loginUrl = `${baseUrl}/?login_token=${encodeURIComponent(loginToken)}`;
+    loginUrlForReturn = loginUrl;
+
+    log.info("━━━━━━━━ Web Config Login ━━━━━━━━");
+    log.info(`Host binding : ${host}`);
+    log.info(`Login URL    : ${loginUrl}`);
+    if (host === "0.0.0.0") {
+      log.info("Note: replace 127.0.0.1 with your server IP or hostname when opening from another device.");
+    }
+    log.info(`This login link is valid for approximately ${Math.floor(loginTtlMs / 60000)} minutes and can be used only once.`);
+    log.info("After login, subsequent requests will use a short-lived session cookie.");
+  }
+
   return {
     close: async () => {
       if (timer) clearTimeout(timer);
@@ -785,14 +960,16 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
       settle("cancel");
     },
     url: `http://127.0.0.1:${port}`,
+    loginUrl: loginUrlForReturn,
     waitForResult,
   };
 }
 
 export async function runWebConfigFlow(options: { mode: WebFlowMode; cwd: string }): Promise<WebFlowResult> {
   const started = await startWebConfigServer(options);
-  openBrowser(started.url);
-  log.info(`Opened local configuration page: ${started.url}`);
+  const targetUrl = started.loginUrl ?? started.url;
+  openBrowser(targetUrl);
+  log.info(`Opened local configuration page: ${targetUrl}`);
   log.info(process.env.OPEN_IM_NO_BROWSER === "1" ? "Browser launch disabled. Open the URL manually." : "Save the configuration in your browser to continue.");
   return started.waitForResult;
 }
