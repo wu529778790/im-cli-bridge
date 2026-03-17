@@ -72,49 +72,78 @@ jobs:
           const { execSync } = require('child_process');
           const semver = require('semver');
 
-          const channel = process.argv[2];
-          const bump = process.argv[3];
+          const channel = process.argv[2]; // stable | beta | rc | alpha
+          const bump = process.argv[3];    // patch | minor | major
 
           function npmView(command, fallback) {
-            return execSync(
-              `${command} 2>/dev/null || echo ${JSON.stringify(fallback)}`,
-              { encoding: 'utf8', shell: '/bin/bash' }
-            ).trim();
+            try {
+              const out = execSync(command, {
+                encoding: 'utf8',
+                shell: '/bin/bash',
+                stdio: ['ignore', 'pipe', 'pipe'],
+              }).trim();
+              return out || fallback;
+            } catch {
+              return fallback;
+            }
           }
 
-          const latest = npmView(
-            'npm view @wu529778790/open-im dist-tags.latest',
-            '0.0.0'
+          // 读取线上所有已发布版本，按 semver 解析
+          const rawVersions = npmView(
+            'npm view @wu529778790/open-im versions --json',
+            '[]'
           );
 
-          const stableBase = semver.valid(latest) ? latest : '0.0.0';
-          const nextStable = semver.inc(stableBase, bump);
-          if (!nextStable) {
-            throw new Error(`Failed to calculate next version from ${latest} with bump ${bump}`);
+          /** @type {string[]} */
+          let versions;
+          try {
+            const parsed = JSON.parse(rawVersions);
+            versions = Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string') : [];
+          } catch {
+            versions = [];
+          }
+
+          const validVersions = versions
+            .map((v) => (semver.valid(v) ? v : null))
+            .filter((v) => v !== null);
+
+          // 所有稳定版（无 prerelease）
+          const stableVersions = validVersions.filter((v) => !semver.prerelease(v));
+          const stableLatest = stableVersions.length
+            ? stableVersions.sort(semver.rcompare)[0]
+            : '0.0.0';
+
+          // 计算下一个稳定基线版本（不一定会直接发布，只是作为 beta/rc 的 base）
+          const nextStableBase = semver.inc(stableLatest, bump);
+          if (!nextStableBase) {
+            throw new Error(`Failed to calculate next stable base from ${stableLatest} with bump ${bump}`);
           }
 
           if (channel === 'stable') {
-            console.log(nextStable);
+            // 稳定渠道：直接在线上最新稳定版基础上 +1
+            console.log(nextStableBase);
             process.exit(0);
           }
 
-          const channelTag = npmView(`npm view @wu529778790/open-im dist-tags.${channel}`, '');
-          const currentChannelVersion = semver.valid(channelTag) ? channelTag : null;
+          // 非 stable 渠道：按对应的 prerelease 渠道继续 +1
+          const channelVersions = validVersions.filter((v) => {
+            const pre = semver.prerelease(v);
+            return pre && pre[0] === channel;
+          });
 
-          if (
-            currentChannelVersion &&
-            semver.prerelease(currentChannelVersion)?.[0] === channel &&
-            semver.gte(currentChannelVersion, `${nextStable}-${channel}.0`)
-          ) {
-            const continued = semver.inc(currentChannelVersion, 'prerelease', channel);
+          if (channelVersions.length > 0) {
+            // 线上已有该渠道的版本：在最新的渠道版本上做 prerelease +1
+            const latestChannelVersion = channelVersions.sort(semver.rcompare)[0];
+            const continued = semver.inc(latestChannelVersion, 'prerelease', channel);
             if (!continued) {
-              throw new Error(`Failed to continue ${channel} prerelease from ${currentChannelVersion}`);
+              throw new Error(`Failed to continue ${channel} prerelease from ${latestChannelVersion}`);
             }
             console.log(continued);
             process.exit(0);
           }
 
-          console.log(`${nextStable}-${channel}.0`);
+          // 该渠道还没有版本：从新的稳定基线起一个 x.y.z-channel.0
+          console.log(`${nextStableBase}-${channel}.0`);
           NODEEOF
 
           VERSION="$(node bump-version.cjs "$CHANNEL" "$BUMP")"
