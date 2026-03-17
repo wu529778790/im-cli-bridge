@@ -135,6 +135,16 @@ jobs:
         if: github.event.inputs.dry_run != 'true'
         run: |
           VERSION=$(node -p "require('./package.json').version")
+
+          echo "Preparing to publish version $VERSION to npm..."
+
+          # 如果该版本已经存在于 npm，则直接跳过发布，避免 E403 覆盖错误
+          EXISTING_VERSION=$(npm view @wu529778790/open-im@"$VERSION" version 2>/dev/null || echo "")
+          if [ -n "$EXISTING_VERSION" ]; then
+            echo "Version $VERSION is already published on npm (found: $EXISTING_VERSION). Skipping publish."
+            exit 0
+          fi
+
           CHANNEL="${{ github.event.inputs.release_channel || 'stable' }}"
 
           # Detect if version is a prerelease (contains -alpha, -beta, -rc)
