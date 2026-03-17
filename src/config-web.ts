@@ -128,6 +128,7 @@ export interface StartedWebConfigServer {
   close: () => Promise<void>;
   url: string;
   waitForResult: Promise<WebFlowResult>;
+  loginUrl?: string;
 }
 
 interface WebConfigPayload {
@@ -931,6 +932,8 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
     if (timer) clearTimeout(timer);
   });
 
+  let loginUrlForReturn: string | undefined;
+
   // 当绑定到非 127.0.0.1（例如 0.0.0.0）时，为远程访问生成一次性登录链接
   if (host !== "127.0.0.1") {
     const loginTtlMs = 15 * 60 * 1000; // 15 分钟内有效
@@ -938,6 +941,7 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
     const displayHost = host === "0.0.0.0" ? "127.0.0.1" : host;
     const baseUrl = `http://${displayHost}:${port}`;
     const loginUrl = `${baseUrl}/?login_token=${encodeURIComponent(loginToken)}`;
+    loginUrlForReturn = loginUrl;
 
     log.info("━━━━━━━━ Web Config Login ━━━━━━━━");
     log.info(`Host binding : ${host}`);
@@ -956,14 +960,16 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
       settle("cancel");
     },
     url: `http://127.0.0.1:${port}`,
+    loginUrl: loginUrlForReturn,
     waitForResult,
   };
 }
 
 export async function runWebConfigFlow(options: { mode: WebFlowMode; cwd: string }): Promise<WebFlowResult> {
   const started = await startWebConfigServer(options);
-  openBrowser(started.url);
-  log.info(`Opened local configuration page: ${started.url}`);
+  const targetUrl = started.loginUrl ?? started.url;
+  openBrowser(targetUrl);
+  log.info(`Opened local configuration page: ${targetUrl}`);
   log.info(process.env.OPEN_IM_NO_BROWSER === "1" ? "Browser launch disabled. Open the URL manually." : "Save the configuration in your browser to continue.");
   return started.waitForResult;
 }

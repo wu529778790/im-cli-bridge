@@ -66,6 +66,13 @@ async function cmdStart(): Promise<void> {
   console.log("\nopen-im started in the background.");
   console.log(`  pid: ${child.pid}`);
   console.log(`  config page: ${getWebConfigUrl()}`);
+  if (process.env.OPEN_IM_WEB_HOST && process.env.OPEN_IM_WEB_HOST !== "127.0.0.1") {
+    console.log("");
+    console.log("NOTE:");
+    console.log("  The config page is bound to OPEN_IM_WEB_HOST.");
+    console.log("  A one-time login URL (with login_token) has been printed by the config-web server logger.");
+    console.log("  Please use that URL (replacing 127.0.0.1 with your server IP/hostname) for the first login.");
+  }
 }
 
 async function cmdStop(): Promise<void> {
