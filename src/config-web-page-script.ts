@@ -579,8 +579,16 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
 
         // Service buttons
         el("validateButton").onclick = validate;
-        el("saveButton").onclick = save;
-        el("startButton").onclick = startService;
+        el("saveButton").onclick = async () => {
+          // 先保存 JSON，再保存主配置
+          await saveClaudeSettings();
+          await save();
+        };
+        el("startButton").onclick = async () => {
+          // 启动前也顺带保存 JSON
+          await saveClaudeSettings();
+          await startService();
+        };
         el("stopButton").onclick = stopService;
 
         // Platform test buttons
