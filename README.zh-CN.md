@@ -84,46 +84,93 @@ open-im start
 
 很多服务器没有桌面环境和浏览器，此时「自动打开浏览器」既没意义，还可能因为缺少 `xdg-open` 报错。推荐如下用法：
 
-- **1）关闭自动打开浏览器**
+#### 1）关闭自动打开浏览器
 
-  在服务器上设置环境变量，然后启动：
+在服务器上设置环境变量，然后启动：
+
+```bash
+export OPEN_IM_NO_BROWSER=1
+open-im start
+```
+
+这样只会在后台启动服务与配置页面，不会尝试执行 `xdg-open` / `open` / `start`。
+
+#### 2）检查配置页面是否已在服务器本机监听
+
+在服务器上执行：
+
+```bash
+ss -lntp | grep 39282        # 或 netstat -lntp | grep 39282
+curl -v http://127.0.0.1:39282/
+```
+
+若看到 `LISTEN 0 ... 127.0.0.1:39282` 且 `curl` 返回 HTML，则说明 Web 配置页已正常启动。
+
+#### 3）推荐方式：通过 SSH 隧道在本地浏览器访问
+
+不建议直接对外开放 39282 端口，而是使用 SSH 端口转发：
+
+```bash
+# 在本地电脑执行，将本地 39282 转发到服务器 127.0.0.1:39282
+ssh -L 39282:127.0.0.1:39282 user@your-server-ip
+```
+
+然后在本地浏览器访问：
+
+```text
+http://127.0.0.1:39282/
+```
+
+即可打开服务器上的配置页面。
+
+#### 4）可选：在服务器上直接访问的一次性登录链接
+
+如果你确实希望在服务器上绑定到公网 IP，从其他设备直接访问配置页面，可以：
+
+- **将 Web 配置服务绑定到所有网卡：**
 
   ```bash
   export OPEN_IM_NO_BROWSER=1
+  export OPEN_IM_WEB_HOST=0.0.0.0
   open-im start
   ```
 
-  这样只会在后台启动服务与配置页面，不会尝试执行 `xdg-open` / `open` / `start`。
+  - 默认情况下，`OPEN_IM_WEB_HOST` 为 `127.0.0.1`（仅本机访问）。
+  - 设置为 `0.0.0.0` 后，配置页面会监听在所有网卡上。
 
-- **2）检查配置页面是否已在服务器本机监听**
-
-  在服务器上执行：
-
-  ```bash
-  ss -lntp | grep 39282        # 或 netstat -lntp | grep 39282
-  curl -v http://127.0.0.1:39282/
-  ```
-
-  若看到 `LISTEN 0 ... 127.0.0.1:39282` 且 `curl` 返回 HTML，则说明 Web 配置页已正常启动。
-
-- **3）通过 SSH 隧道在本地浏览器访问**
-
-  不建议直接对外开放 39282 端口，而是使用 SSH 端口转发：
-
-  ```bash
-  # 在本地电脑执行，将本地 39282 转发到服务器 127.0.0.1:39282
-  ssh -L 39282:127.0.0.1:39282 user@your-server-ip
-  ```
-
-  然后在本地浏览器访问：
+- **启动后，open-im 会在日志中输出一次性登录链接**，类似：
 
   ```text
-  http://127.0.0.1:39282/
+  ━━━━━━━━ Web Config Login ━━━━━━━━
+  Host binding : 0.0.0.0
+  Login URL    : http://127.0.0.1:39282/?login_token=xxxx
+  Note: replace 127.0.0.1 with your server IP or hostname when opening from another device.
+  This login link is valid for approximately 15 minutes and can be used only once.
+  After login, subsequent requests will use a short-lived session cookie.
   ```
 
-  即可打开服务器上的配置页面。
+- **在本地电脑或手机浏览器中**，将 `127.0.0.1` 换成服务器 IP 或域名，打开该链接：
 
-> 如确有需要，也可以自行修改 `config-web.ts` 中的监听地址，将 `server.listen(port, "127.0.0.1", ...)` 调整为 `0.0.0.0`，并在防火墙/安全组放行 39282 端口。但出于安全考虑，官方推荐使用 SSH 隧道方式。
+  ```text
+  http://your-server-ip:39282/?login_token=xxxx
+  ```
+
+  第一次成功访问会：
+
+  - 消费掉这枚一次性 `login_token`（后续再访问同一链接会 401）；
+  - 在浏览器中创建一个短期会话，设置 `openim_session` Cookie；
+  - 自动重定向到不带参数的配置页。
+
+  之后，只要 `openim_session` Cookie 仍然有效、进程仍在运行，就可以直接访问：
+
+  ```text
+  http://your-server-ip:39282/
+  ```
+
+> 安全提示：
+>
+> - 将 `OPEN_IM_WEB_HOST=0.0.0.0` 意味着该端口会对所有网卡开放，请务必结合防火墙/安全组、尽量配合 HTTPS + 反向代理（例如 Nginx/Caddy 的 Basic Auth 或 OIDC 登录）一起使用。
+> - 如无把握，优先使用上面的 SSH 隧道方案（第 3 步），安全性更高。
 
 ## 会话说明
 
