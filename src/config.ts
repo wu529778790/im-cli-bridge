@@ -868,7 +868,7 @@ export function loadConfig(): Config {
     claudeTimeoutMs,
     codexTimeoutMs,
     codebuddyTimeoutMs,
-    claudeModel: process.env.CLAUDE_MODEL ?? tc.model,
+    claudeModel: process.env.CLAUDE_MODEL ?? process.env.ANTHROPIC_MODEL ?? tc.model,
     logDir,
     logLevel,
     platforms,
