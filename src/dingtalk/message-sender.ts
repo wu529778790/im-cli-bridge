@@ -500,18 +500,6 @@ export async function sendPermissionCard(
   await sendTextWithRetry(chatId, message);
 }
 
-export async function sendModeCard(
-  chatId: string,
-  _userId: string,
-  currentMode: string,
-): Promise<void> {
-  const { MODE_LABELS } = await import('../permission-mode/types.js');
-  const message = buildModeMessage(
-    MODE_LABELS[currentMode as keyof typeof MODE_LABELS] || currentMode,
-  );
-  await sendTextWithRetry(chatId, message);
-}
-
 export async function sendDirectorySelection(
   chatId: string,
   currentDir: string,

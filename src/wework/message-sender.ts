@@ -378,40 +378,6 @@ export async function sendTextReply(
   }
 }
 
-export async function sendPermissionCard(
-  chatId: string,
-  requestId: string,
-  toolName: string,
-  toolInput: string,
-  reqId?: string
-): Promise<void> {
-  const message = buildPermissionRequestMessage(toolName, toolInput, requestId);
-
-  try {
-    sendText(getReqId(reqId), message);
-    log.info(`Permission card sent to user ${chatId}`);
-  } catch (err) {
-    log.error('Failed to send permission card:', err);
-  }
-}
-
-export async function sendModeCard(
-  chatId: string,
-  _userId: string,
-  currentMode: string,
-  reqId?: string
-): Promise<void> {
-  const { MODE_LABELS } = await import('../permission-mode/types.js');
-  const label = MODE_LABELS[currentMode as keyof typeof MODE_LABELS] || currentMode;
-  const message = buildModeMessage(label);
-
-  try {
-    sendText(getReqId(reqId), message);
-    log.info(`Mode card sent to user ${chatId}`);
-  } catch (err) {
-    log.error('Failed to send mode card:', err);
-  }
-}
 
 export async function sendImageReply(chatId: string, imagePath: string): Promise<void> {
   try {

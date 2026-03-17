@@ -4,8 +4,6 @@
 
 import type { Config } from '../config.js';
 import type { SessionManager } from '../session/session-manager.js';
-import { getPermissionMode } from '../permission-mode/session-mode.js';
-import type { PermissionMode } from '../permission-mode/types.js';
 import type { ToolAdapter } from '../adapters/tool-adapter.interface.js';
 import type { ParsedResult } from '../adapters/tool-adapter.interface.js';
 import { resolvePlatformAiCommand, type Platform } from '../config.js';
@@ -65,8 +63,7 @@ function isUsageLimitError(error: string): boolean {
 function buildCompletionNote(
   result: ParsedResult,
   sessionManager: SessionManager,
-  ctx: TaskContext,
-  mode: PermissionMode
+  ctx: TaskContext
 ): string {
   const toolInfo = formatToolStats(result.toolStats, result.numTurns);
   const parts: string[] = [];
@@ -79,10 +76,6 @@ function buildCompletionNote(
     : sessionManager.addTurns(ctx.userId, 0);
   const ctxWarning = getContextWarning(currentTurns);
   if (ctxWarning) parts.push(ctxWarning);
-
-  if (mode === 'plan') {
-    parts.push('当前模式: plan（只读，不执行命令/不改文件，如需真正改代码请发送 `/mode accept-edits` 或 `/mode yolo`）');
-  }
 
   return parts.join(' | ');
 }
@@ -155,25 +148,6 @@ export function runAITask(
       }
     };
 
-    const mode = getPermissionMode(ctx.userId, config.defaultPermissionMode);
-
-    let skipPermissions: boolean | undefined;
-    let permissionMode: 'default' | 'acceptEdits' | 'plan' | undefined;
-
-    if (mode === 'plan') {
-      skipPermissions = false;
-      permissionMode = 'plan';
-    } else {
-      skipPermissions = mode === 'yolo' || config.claudeSkipPermissions;
-      permissionMode = !skipPermissions
-        ? (mode === 'ask'
-          ? 'default'
-          : mode === 'accept-edits'
-            ? 'acceptEdits'
-            : undefined)
-        : undefined;
-    }
-
     // 使用 aiCommand 而不是 toolAdapter.toolId，确保 sessionId 的存储和查询使用相同的 key
     const aiCommand = resolvePlatformAiCommand(config, ctx.platform as Platform);
     const toolId = toolAdapter.toolId as 'claude' | 'codex' | 'codebuddy';
@@ -244,7 +218,7 @@ export function runAITask(
             clearTimeout(pendingUpdate);
             pendingUpdate = null;
           }
-          const note = buildCompletionNote(result, sessionManager, ctx, mode);
+          const note = buildCompletionNote(result, sessionManager, ctx);
           const output =
             result.accumulated ||
             result.result ||
@@ -310,8 +284,6 @@ export function runAITask(
         },
         },
         {
-          skipPermissions,
-          permissionMode,
           timeoutMs,
           model: sessionManager.getModel(ctx.userId, ctx.threadId) ?? config.claudeModel,
           chatId: ctx.chatId,

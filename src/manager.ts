@@ -2,12 +2,15 @@ import { startWebConfigServer } from "./config-web.js";
 import { removeManagerPid, removeManagerReady, writeManagerReady } from "./manager-control.js";
 import { startBackgroundService, stopBackgroundService, waitForBackgroundServiceReady } from "./service-control.js";
 import { createLogger } from "./logger.js";
+import { loadFileConfig } from "./config.js";
 
 const log = createLogger("Manager");
 
 async function main(): Promise<void> {
-  const web = await startWebConfigServer({ mode: "start", cwd: process.cwd(), persistent: true });
-  startBackgroundService(process.cwd());
+  const file = loadFileConfig();
+  const workDir = file.tools?.claude?.workDir ?? process.cwd();
+  const web = await startWebConfigServer({ mode: "start", cwd: workDir, persistent: true });
+  startBackgroundService(workDir);
   await waitForBackgroundServiceReady();
   writeManagerReady();
 

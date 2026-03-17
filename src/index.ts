@@ -33,8 +33,6 @@ import {
 } from "./shared/active-chats.js";
 import { initLogger, createLogger, closeLogger } from "./logger.js";
 import { APP_HOME, SHUTDOWN_PORT } from "./constants.js";
-import { startPermissionServer, stopPermissionServer } from "./hook/permission-server.js";
-import { initPermissionModes } from "./permission-mode/session-mode.js";
 import { createRequire } from "node:module";
 import { escapePathForMarkdown } from "./shared/utils.js";
 
@@ -171,20 +169,8 @@ export async function main() {
 
   initLogger(config.logDir, config.logLevel);
   loadActiveChats();
-  initPermissionModes();
-
-  // 当配置为跳过权限时，设置 CC_SKIP_PERMISSIONS 让权限服务器自动放行
-  // 否则 Claude 请求工具权限时会卡住等待用户 /allow
-  if (config.claudeSkipPermissions) {
-    process.env.CC_SKIP_PERMISSIONS = 'true';
-    log.info('skipPermissions 已启用，权限请求将自动放行');
-  }
 
   initAdapters(config);
-
-  // Start permission server for tool approval
-  const actualPort = startPermissionServer(config.hookPort);
-  log.info(`Permission server listening on port ${actualPort}`);
 
   // 尽早启动 shutdown 并写入 port 文件，使 open-im start 的 8s 就绪超时能通过（平台初始化可能较慢）
   let shutdownServer: ReturnType<typeof createServer> | null = null;
@@ -347,7 +333,6 @@ export async function main() {
     stopWeWork();
     dingtalkHandle?.stop();
     stopDingTalk();
-    stopPermissionServer();
     sessionManager.destroy();
     cleanupAdapters();
     flushActiveChats();

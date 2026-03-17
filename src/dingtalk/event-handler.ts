@@ -12,12 +12,10 @@ import {
   sendTextReply,
   sendImageReply,
   startTypingLoop,
-  sendPermissionCard,
   sendModeCard,
   sendDirectorySelection,
 } from './message-sender.js';
 import { ackMessage, downloadRobotMessageFile, registerSessionWebhook } from './client.js';
-import { registerPermissionSender } from '../hook/permission-server.js';
 import { CommandHandler } from '../commands/handler.js';
 import { getAdapter } from '../adapters/registry.js';
 import { runAITask, type TaskRunState } from '../shared/ai-task.js';
@@ -213,8 +211,6 @@ export function setupDingTalkHandlers(
     sender: { sendTextReply, sendModeCard, sendDirectorySelection },
     getRunningTasksSize: () => runningTasks.size,
   });
-
-  registerPermissionSender('dingtalk', { sendTextReply, sendPermissionCard });
 
   async function enqueuePrompt(
     userId: string,

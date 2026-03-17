@@ -32,7 +32,6 @@ interface WebConfigPayload {
   ai: {
     aiCommand: "claude" | "codex" | "codebuddy";
     claudeWorkDir: string;
-    claudeSkipPermissions: boolean;
     claudeTimeoutMs: number;
     claudeConfigPath: string;
     claudeAuthToken: string;
@@ -44,8 +43,6 @@ interface WebConfigPayload {
     codexCliPath: string;
     codebuddyCliPath: string;
     codexProxy: string;
-    defaultPermissionMode?: "ask" | "accept-edits" | "plan" | "yolo";
-    hookPort: number;
     logDir?: string;
     logLevel: "default" | "DEBUG" | "INFO" | "WARN" | "ERROR";
   };
@@ -182,7 +179,6 @@ function buildInitialPayload(file: FileConfig): WebConfigPayload {
     ai: {
       aiCommand: (file.aiCommand as "claude" | "codex" | "codebuddy") ?? "claude",
       claudeWorkDir: file.tools?.claude?.workDir ?? process.cwd(),
-      claudeSkipPermissions: file.tools?.claude?.skipPermissions ?? true,
       claudeTimeoutMs: file.tools?.claude?.timeoutMs ?? 600000,
       claudeConfigPath: process.platform === 'win32'
         ? getClaudeConfigHome() + "\\.claude\\settings.json"
@@ -196,8 +192,6 @@ function buildInitialPayload(file: FileConfig): WebConfigPayload {
       codexCliPath: file.tools?.codex?.cliPath ?? "codex",
       codebuddyCliPath: file.tools?.codebuddy?.cliPath ?? "codebuddy",
       codexProxy: file.tools?.codex?.proxy ?? "",
-    defaultPermissionMode: file.defaultPermissionMode ?? "ask",
-      hookPort: file.hookPort ?? 35801,
       logDir: file.logDir ?? "",
       logLevel: (file.logLevel as "DEBUG" | "INFO" | "WARN" | "ERROR") ?? "default",
     },
@@ -221,7 +215,6 @@ function validatePayload(payload: WebConfigPayload): string[] {
   if (!Number.isFinite(payload.ai.claudeTimeoutMs) || payload.ai.claudeTimeoutMs <= 0) errors.push("Claude timeout must be positive.");
   if (!Number.isFinite(payload.ai.codexTimeoutMs) || payload.ai.codexTimeoutMs <= 0) errors.push("Codex timeout must be positive.");
   if (!Number.isFinite(payload.ai.codebuddyTimeoutMs) || payload.ai.codebuddyTimeoutMs <= 0) errors.push("CodeBuddy timeout must be positive.");
-  if (!Number.isFinite(payload.ai.hookPort) || payload.ai.hookPort <= 0) errors.push("Hook port must be positive.");
   return errors;
 }
 
@@ -310,12 +303,9 @@ function createProbeConfig(values: Partial<Config>): Config {
     aiCommand: "claude",
     codexCliPath: "codex",
     claudeWorkDir: process.cwd(),
-    claudeSkipPermissions: true,
-    defaultPermissionMode: "ask",
     claudeTimeoutMs: 600000,
     codexTimeoutMs: 600000,
     codebuddyTimeoutMs: 600000,
-    hookPort: 35801,
     logDir: "",
     logLevel: "INFO",
     codebuddyCliPath: "codebuddy",
@@ -457,15 +447,12 @@ function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConf
   return {
     ...existing,
     aiCommand: payload.ai.aiCommand,
-    defaultPermissionMode: payload.ai.defaultPermissionMode ?? existing.defaultPermissionMode ?? "ask",
-    hookPort: payload.ai.hookPort,
     logDir: payload.ai.logDir === undefined ? existing.logDir : clean(payload.ai.logDir),
     logLevel: payload.ai.logLevel === "default" ? undefined : payload.ai.logLevel,
     tools: {
       claude: {
         ...existing.tools?.claude,
         workDir: clean(payload.ai.claudeWorkDir) ?? process.cwd(),
-        skipPermissions: payload.ai.claudeSkipPermissions,
         timeoutMs: payload.ai.claudeTimeoutMs,
         proxy: clean(payload.ai.claudeProxy),
         // model is now saved to ~/.claude/settings.json as ANTHROPIC_MODEL
@@ -474,14 +461,12 @@ function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConf
         ...existing.tools?.codex,
         cliPath: clean(payload.ai.codexCliPath) ?? "codex",
         workDir: clean(payload.ai.claudeWorkDir) ?? process.cwd(),
-        skipPermissions: existing.tools?.codex?.skipPermissions ?? payload.ai.claudeSkipPermissions,
         timeoutMs: payload.ai.codexTimeoutMs,
         proxy: clean(payload.ai.codexProxy),
       },
       codebuddy: {
         ...existing.tools?.codebuddy,
         cliPath: clean(payload.ai.codebuddyCliPath) ?? "codebuddy",
-        skipPermissions: existing.tools?.codebuddy?.skipPermissions ?? payload.ai.claudeSkipPermissions,
         timeoutMs: payload.ai.codebuddyTimeoutMs,
       },
     },
@@ -699,8 +684,9 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
 
       if (request.method === "POST" && requestUrl.pathname === "/api/service/start") {
         try {
-          loadConfig();
-          const started = startBackgroundService(options.cwd);
+          const config = loadConfig();
+          const workDir = config.claudeWorkDir ?? options.cwd;
+          const started = startBackgroundService(workDir);
           json(response, 200, { message: `Bridge started with pid ${started.pid}.`, pid: started.pid });
           if (!options.persistent) {
             setTimeout(() => finishFlow("saved"), 120);

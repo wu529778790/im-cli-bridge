@@ -97,11 +97,6 @@ export async function sendDirectorySelection(chatId: string, currentDir: string)
   await sendTextReply(chatId, buildDirectoryMessage(currentDir));
 }
 
-export async function sendModeKeyboard(chatId: string, _userId: string, currentMode: string): Promise<void> {
-  const { MODE_LABELS } = await import("../permission-mode/types.js");
-  const label = MODE_LABELS[currentMode as keyof typeof MODE_LABELS] || currentMode;
-  await sendTextReply(chatId, buildModeMessage(label));
-}
 
 export function startTypingLoop(): () => void {
   return () => {};

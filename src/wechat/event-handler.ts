@@ -13,12 +13,7 @@ import {
   sendTextReply,
   sendImageReply,
   startTypingLoop,
-  sendPermissionCard,
-  sendModeCard,
 } from './message-sender.js';
-import { registerPermissionSender, resolvePermissionById } from '../hook/permission-server.js';
-import { setPermissionMode } from '../permission-mode/session-mode.js';
-import { MODE_LABELS } from '../permission-mode/types.js';
 import { CommandHandler } from '../commands/handler.js';
 import { getAdapter } from '../adapters/registry.js';
 import { runAITask, type TaskRunState } from '../shared/ai-task.js';
@@ -73,11 +68,9 @@ export function setupWeChatHandlers(
     config,
     sessionManager,
     requestQueue,
-    sender: { sendTextReply, sendModeCard },
+    sender: { sendTextReply },
     getRunningTasksSize: () => runningTasks.size,
   });
-
-  registerPermissionSender('wechat', { sendTextReply, sendPermissionCard });
 
   function parseWeChatIncomingMessage(raw: string): WeChatIncomingMessage | null {
     try {
@@ -339,31 +332,6 @@ export function setupWeChatHandlers(
 
     log.info(`[SESSION_UPDATE] chatId=${chatId}, updates=`, JSON.stringify(updates));
 
-    if (updates.type === 'permission_response') {
-      const { requestId, decision } = updates as { requestId: string; decision: 'allow' | 'deny' };
-      log.info(`Permission response: ${decision} for ${requestId}`);
-
-      const resolved = resolvePermissionById(requestId, decision);
-      const message = resolved
-        ? decision === 'allow'
-          ? 'Permission granted.'
-          : 'Permission denied.'
-        : 'Permission request expired or was not found.';
-
-      await sendTextReply(chatId, message);
-    }
-
-    if (updates.type === 'mode_switch') {
-      const { mode } = updates as { mode: string };
-      const validMode = mode as 'ask' | 'accept-edits' | 'plan' | 'yolo';
-
-      if (['ask', 'accept-edits', 'plan', 'yolo'].includes(validMode)) {
-        setPermissionMode(chatId, validMode);
-        await sendTextReply(chatId, `Switched to ${MODE_LABELS[validMode]}`);
-      } else {
-        await sendTextReply(chatId, `Invalid mode: ${mode}`);
-      }
-    }
   }
 
   return {
