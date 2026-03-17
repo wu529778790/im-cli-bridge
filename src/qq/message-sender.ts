@@ -3,7 +3,7 @@ import { splitLongContent } from "../shared/utils.js";
 import { buildImageFallbackMessage } from "../channels/capabilities.js";
 import { getQQBot } from "./client.js";
 import { buildMessageTitle, OPEN_IM_SYSTEM_TITLE } from "../shared/message-title.js";
-import { buildDirectoryMessage, buildModeMessage } from "../shared/system-messages.js";
+import { buildDirectoryMessage } from "../shared/system-messages.js";
 
 const log = createLogger("QQSender");
 const MAX_QQ_MESSAGE_LENGTH = 1500;

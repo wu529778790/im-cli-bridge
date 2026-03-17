@@ -9,10 +9,6 @@ import { buildImageFallbackMessage } from '../channels/capabilities.js';
 import type { MessageStatus } from './types.js';
 import { buildMessageTitle, OPEN_IM_SYSTEM_TITLE } from '../shared/message-title.js';
 import { buildTextNote } from '../shared/message-note.js';
-import {
-  buildModeMessage,
-  buildPermissionRequestMessage,
-} from '../shared/system-messages.js';
 
 const log = createLogger('WeChatSender');
 

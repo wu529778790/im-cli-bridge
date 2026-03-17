@@ -12,7 +12,6 @@ import {
   sendTextReply,
   sendImageReply,
   startTypingLoop,
-  sendModeCard,
   sendDirectorySelection,
 } from './message-sender.js';
 import { ackMessage, downloadRobotMessageFile, registerSessionWebhook } from './client.js';
@@ -208,7 +207,7 @@ export function setupDingTalkHandlers(
     config,
     sessionManager,
     requestQueue,
-    sender: { sendTextReply, sendModeCard, sendDirectorySelection },
+    sender: { sendTextReply, sendDirectorySelection },
     getRunningTasksSize: () => runningTasks.size,
   });
 

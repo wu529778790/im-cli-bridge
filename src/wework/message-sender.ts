@@ -10,8 +10,6 @@ import { buildMessageTitle, OPEN_IM_SYSTEM_TITLE } from '../shared/message-title
 import { buildTextNote } from '../shared/message-note.js';
 import {
   buildDirectoryMessage,
-  buildModeMessage,
-  buildPermissionRequestMessage,
 } from '../shared/system-messages.js';
 import { MAX_WEWORK_MESSAGE_LENGTH } from '../constants.js';
 import { createHash, randomBytes } from 'node:crypto';
