@@ -14,19 +14,6 @@
 - 会话隔离：每个用户独立维护本地会话，`/new` 可重置
 - 常用命令：支持 `/help`、`/new`、`/cd`、`/pwd`、`/status`
 
-## 覆盖矩阵
-
-能力等级说明：`Native` 表示平台内原生支持，`Fallback` 表示有降级方案或文本兜底，`None` 表示当前暂不支持。
-
-| 平台 | 文本输入 | 图片输入 | 文件输入 | 语音输入 | 视频输入 | 流式回复 | 图片回复 | 卡片回复 |
-| ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |
-| Telegram | Native | Native | Native | Native | Native | Native | Native | Native |
-| 飞书 | Native | Native | Native | Fallback | Fallback | Native | Native | Native |
-| QQ | Native | Fallback | Fallback | Fallback | Fallback | None | Fallback | Fallback |
-| 企业微信 | Native | Fallback | Fallback | Fallback | Fallback | Native | Native | Native |
-| 钉钉 | Native | Fallback | Fallback | Fallback | Fallback | Native | Fallback | Native |
-| 微信（测试中） | Native | Fallback | Fallback | Fallback | Fallback | Native | Fallback | Native |
-
 ## 环境要求
 
 - Node.js >= 20
@@ -50,12 +37,13 @@ open-im start
 
 ## CLI 命令
 
-| 命令 | 说明 |
-| ---- | ---- |
-| `open-im init` | 初始化或追加配置，不启动服务 |
-| `open-im start` | 后台运行服务 |
-| `open-im stop` | 停止后台服务 |
-| `open-im dev` | 前台运行（调试模式） |
+| 命令              | 说明                           |
+| ----------------- | ------------------------------ |
+| `open-im init`    | 初始化或追加配置，不启动服务   |
+| `open-im start`   | 后台运行服务                   |
+| `open-im stop`    | 停止后台服务                   |
+| `open-im dev`     | 前台运行（调试模式）           |
+| `open-im dashboard` | 仅启动 Web 配置页（不启动桥接服务） |
 
 ## 服务器部署与图形化配置
 
@@ -71,106 +59,50 @@ open-im start
 
 - **概览** – 已配置/已启用平台数量、服务状态（未启动或运行中）
 - **平台配置** – 启用并填写 Telegram、飞书、QQ、企业微信、钉钉的凭证（Bot Token/App ID/Secret、代理、该平台使用的 AI 工具、白名单用户 ID）。每个平台提供「校验配置」按钮
-- **AI 工具配置** – **公共**：默认 AI 工具（Claude / Codex / CodeBuddy）、工作目录、Hook 端口、日志级别。**分工具**：Claude（CLI 路径、超时、代理、配置路径、ANTHROPIC_* 等）、Codex（CLI 路径、超时、代理）、CodeBuddy（CLI 路径、超时）
+- **AI 工具配置** – **公共**：默认 AI 工具（Claude / Codex / CodeBuddy）、工作目录、Hook 端口、日志级别。**分工具**：Claude（CLI 路径、超时、代理、配置路径、ANTHROPIC\_\* 等）、Codex（CLI 路径、超时、代理）、CodeBuddy（CLI 路径、超时）
 - **服务控制** – 校验配置、保存、启动桥接、停止桥接
 
 微信暂不在网页中配置，如需使用请在 `~/.open-im/config.json` 中手动配置或通过 `open-im init` 引导。
 
-- `open-im start` 会同时启动桥接服务并提供该配置页
-- `open-im dev` 仅在未完成配置时自动打开页面
-- 已有配置但想手动打开时，执行 `open-im start` 后访问上述地址即可
+- `open-im start` 会同时启动桥接服务并提供该配置页（本机场景）。
+- `open-im dev` 仅在未完成配置时自动打开页面。
+- 已有配置但想单独打开配置页时，可以使用 `open-im dashboard` 启动仅 Web 配置服务。
 
-### 在服务器上部署（无图形界面）
+### 推荐的服务器端使用方式
 
-很多服务器没有桌面环境和浏览器，此时「自动打开浏览器」既没意义，还可能因为缺少 `xdg-open` 报错。推荐如下用法：
+在远程服务器上，建议的最简单、安全的方式是：
 
-#### 1）关闭自动打开浏览器
+1. **先通过 `dashboard` 在浏览器里完成配置**
 
-在服务器上设置环境变量，然后启动：
+   在服务器上执行：
 
-```bash
-export OPEN_IM_NO_BROWSER=1
-open-im start
-```
+   ```bash
+   export OPEN_IM_NO_BROWSER=1
+   # 可选：如果希望从其他设备访问配置页，可以绑定到所有网卡
+   # export OPEN_IM_WEB_HOST=0.0.0.0
+   open-im dashboard
+   ```
 
-这样只会在后台启动服务与配置页面，不会尝试执行 `xdg-open` / `open` / `start`。
+   - 这只会启动 Web 配置页，不会同时启动桥接服务。
+   - 若设置了 `OPEN_IM_WEB_HOST=0.0.0.0`，服务端会输出一次性登录链接，例如：
 
-#### 2）检查配置页面是否已在服务器本机监听
+     ```text
+     http://your-server-ip:39282/?login_token=xxxx
+     ```
 
-在服务器上执行：
+   - 在浏览器中打开该链接，按照页面提示完成各个平台 / AI 工具配置，最后在页面中点击 **「Start bridge」** 按钮启动桥接服务。
 
-```bash
-ss -lntp | grep 39282        # 或 netstat -lntp | grep 39282
-curl -v http://127.0.0.1:39282/
-```
+2. **后台运行桥接服务**
 
-若看到 `LISTEN 0 ... 127.0.0.1:39282` 且 `curl` 返回 HTML，则说明 Web 配置页已正常启动。
+   配置保存后，有两种启动方式：
+   - 在 Web 页面 Service 面板中直接点击 **「Start bridge」**；
+   - 或者在服务器上运行：
 
-#### 3）推荐方式：通过 SSH 隧道在本地浏览器访问
+     ```bash
+     open-im start
+     ```
 
-不建议直接对外开放 39282 端口，而是使用 SSH 端口转发：
-
-```bash
-# 在本地电脑执行，将本地 39282 转发到服务器 127.0.0.1:39282
-ssh -L 39282:127.0.0.1:39282 user@your-server-ip
-```
-
-然后在本地浏览器访问：
-
-```text
-http://127.0.0.1:39282/
-```
-
-即可打开服务器上的配置页面。
-
-#### 4）可选：在服务器上直接访问的一次性登录链接
-
-如果你确实希望在服务器上绑定到公网 IP，从其他设备直接访问配置页面，可以：
-
-- **将 Web 配置服务绑定到所有网卡：**
-
-  ```bash
-  export OPEN_IM_NO_BROWSER=1
-  export OPEN_IM_WEB_HOST=0.0.0.0
-  open-im start
-  ```
-
-  - 默认情况下，`OPEN_IM_WEB_HOST` 为 `127.0.0.1`（仅本机访问）。
-  - 设置为 `0.0.0.0` 后，配置页面会监听在所有网卡上。
-
-- **启动后，open-im 会在日志中输出一次性登录链接**，类似：
-
-  ```text
-  ━━━━━━━━ Web Config Login ━━━━━━━━
-  Host binding : 0.0.0.0
-  Login URL    : http://127.0.0.1:39282/?login_token=xxxx
-  Note: replace 127.0.0.1 with your server IP or hostname when opening from another device.
-  This login link is valid for approximately 15 minutes and can be used only once.
-  After login, subsequent requests will use a short-lived session cookie.
-  ```
-
-- **在本地电脑或手机浏览器中**，将 `127.0.0.1` 换成服务器 IP 或域名，打开该链接：
-
-  ```text
-  http://your-server-ip:39282/?login_token=xxxx
-  ```
-
-  第一次成功访问会：
-
-  - 消费掉这枚一次性 `login_token`（后续再访问同一链接会 401）；
-  - 在浏览器中创建一个短期会话，设置 `openim_session` Cookie；
-  - 自动重定向到不带参数的配置页。
-
-  之后，只要 `openim_session` Cookie 仍然有效、进程仍在运行，就可以直接访问：
-
-  ```text
-  http://your-server-ip:39282/
-  ```
-
-> 安全提示：
->
-> - 将 `OPEN_IM_WEB_HOST=0.0.0.0` 意味着该端口会对所有网卡开放，请务必结合防火墙/安全组、尽量配合 HTTPS + 反向代理（例如 Nginx/Caddy 的 Basic Auth 或 OIDC 登录）一起使用。
-> - 如无把握，优先使用上面的 SSH 隧道方案（第 3 步），安全性更高。
+   这会根据已保存的配置，在后台长期运行桥接服务。
 
 ## 会话说明
 
@@ -321,46 +253,46 @@ codebuddy login
 
 ### 常用环境变量
 
-| 变量 | 说明 |
-| ---- | ---- |
-| `AI_COMMAND` | 选择 `claude` / `codex` / `codebuddy` |
-| `CLAUDE_WORK_DIR` | 默认会话目录 |
-| `LOG_DIR` | 日志目录 |
-| `LOG_LEVEL` | 日志级别 |
-| `HOOK_PORT` | 权限服务端口 |
-| `CODEX_PROXY` | Codex 访问 `chatgpt.com` 的代理 |
-| `OPENAI_API_KEY` | Codex API Key，可替代 `codex login` |
-| `CODEBUDDY_CLI_PATH` | 覆盖 CodeBuddy CLI 路径 |
-| `CODEBUDDY_TIMEOUT_MS` | 覆盖 CodeBuddy 超时 |
-| `CODEBUDDY_SKIP_PERMISSIONS` | 覆盖 CodeBuddy 的跳过权限确认行为 |
-| `CODEBUDDY_IDLE_TIMEOUT_MS` | CodeBuddy 长时间无输出时自动终止 |
-| `CODEBUDDY_API_KEY` | CodeBuddy API Key，可替代 `codebuddy login` |
-| `CODEBUDDY_AUTH_TOKEN` | CodeBuddy Auth Token，可替代 `codebuddy login` |
-| `TELEGRAM_BOT_TOKEN` | Telegram Bot Token |
-| `TELEGRAM_PROXY` | Telegram 代理地址 |
-| `TELEGRAM_ALLOWED_USER_IDS` | Telegram 白名单 |
-| `FEISHU_APP_ID` | 飞书 App ID |
-| `FEISHU_APP_SECRET` | 飞书 App Secret |
-| `FEISHU_ALLOWED_USER_IDS` | 飞书白名单 |
-| `QQ_BOT_APPID` | QQ 机器人 App ID |
-| `QQ_BOT_SECRET` | QQ 机器人 App Secret |
-| `QQ_BOT_SANDBOX` | QQ 机器人沙箱模式（`1`/`true` 启用，默认关闭） |
-| `QQ_ALLOWED_USER_IDS` | QQ 白名单 |
-| `DINGTALK_CLIENT_ID` | 钉钉应用 Client ID / AppKey |
-| `DINGTALK_CLIENT_SECRET` | 钉钉应用 Client Secret / AppSecret |
-| `DINGTALK_CARD_TEMPLATE_ID` | 钉钉 AI 卡片模板 ID，配置后启用单条流式回复 |
-| `DINGTALK_ALLOWED_USER_IDS` | 钉钉白名单 |
-| `WEWORK_CORP_ID` | 企业微信 Bot ID |
-| `WEWORK_SECRET` | 企业微信 Secret |
-| `WEWORK_WS_URL` | 企业微信 WebSocket 地址 |
-| `WEWORK_ALLOWED_USER_IDS` | 企业微信白名单 |
-| `WECHAT_APP_ID` | 微信标准模式 App ID |
-| `WECHAT_APP_SECRET` | 微信标准模式 App Secret |
-| `WECHAT_TOKEN` | 微信 AGP 模式 Token |
-| `WECHAT_GUID` | 微信 AGP 模式 GUID |
-| `WECHAT_USER_ID` | 微信 AGP 模式 User ID |
-| `WECHAT_WS_URL` | 微信 WebSocket 地址 |
-| `WECHAT_ALLOWED_USER_IDS` | 微信白名单 |
+| 变量                         | 说明                                           |
+| ---------------------------- | ---------------------------------------------- |
+| `AI_COMMAND`                 | 选择 `claude` / `codex` / `codebuddy`          |
+| `CLAUDE_WORK_DIR`            | 默认会话目录                                   |
+| `LOG_DIR`                    | 日志目录                                       |
+| `LOG_LEVEL`                  | 日志级别                                       |
+| `HOOK_PORT`                  | 权限服务端口                                   |
+| `CODEX_PROXY`                | Codex 访问 `chatgpt.com` 的代理                |
+| `OPENAI_API_KEY`             | Codex API Key，可替代 `codex login`            |
+| `CODEBUDDY_CLI_PATH`         | 覆盖 CodeBuddy CLI 路径                        |
+| `CODEBUDDY_TIMEOUT_MS`       | 覆盖 CodeBuddy 超时                            |
+| `CODEBUDDY_SKIP_PERMISSIONS` | 覆盖 CodeBuddy 的跳过权限确认行为              |
+| `CODEBUDDY_IDLE_TIMEOUT_MS`  | CodeBuddy 长时间无输出时自动终止               |
+| `CODEBUDDY_API_KEY`          | CodeBuddy API Key，可替代 `codebuddy login`    |
+| `CODEBUDDY_AUTH_TOKEN`       | CodeBuddy Auth Token，可替代 `codebuddy login` |
+| `TELEGRAM_BOT_TOKEN`         | Telegram Bot Token                             |
+| `TELEGRAM_PROXY`             | Telegram 代理地址                              |
+| `TELEGRAM_ALLOWED_USER_IDS`  | Telegram 白名单                                |
+| `FEISHU_APP_ID`              | 飞书 App ID                                    |
+| `FEISHU_APP_SECRET`          | 飞书 App Secret                                |
+| `FEISHU_ALLOWED_USER_IDS`    | 飞书白名单                                     |
+| `QQ_BOT_APPID`               | QQ 机器人 App ID                               |
+| `QQ_BOT_SECRET`              | QQ 机器人 App Secret                           |
+| `QQ_BOT_SANDBOX`             | QQ 机器人沙箱模式（`1`/`true` 启用，默认关闭） |
+| `QQ_ALLOWED_USER_IDS`        | QQ 白名单                                      |
+| `DINGTALK_CLIENT_ID`         | 钉钉应用 Client ID / AppKey                    |
+| `DINGTALK_CLIENT_SECRET`     | 钉钉应用 Client Secret / AppSecret             |
+| `DINGTALK_CARD_TEMPLATE_ID`  | 钉钉 AI 卡片模板 ID，配置后启用单条流式回复    |
+| `DINGTALK_ALLOWED_USER_IDS`  | 钉钉白名单                                     |
+| `WEWORK_CORP_ID`             | 企业微信 Bot ID                                |
+| `WEWORK_SECRET`              | 企业微信 Secret                                |
+| `WEWORK_WS_URL`              | 企业微信 WebSocket 地址                        |
+| `WEWORK_ALLOWED_USER_IDS`    | 企业微信白名单                                 |
+| `WECHAT_APP_ID`              | 微信标准模式 App ID                            |
+| `WECHAT_APP_SECRET`          | 微信标准模式 App Secret                        |
+| `WECHAT_TOKEN`               | 微信 AGP 模式 Token                            |
+| `WECHAT_GUID`                | 微信 AGP 模式 GUID                             |
+| `WECHAT_USER_ID`             | 微信 AGP 模式 User ID                          |
+| `WECHAT_WS_URL`              | 微信 WebSocket 地址                            |
+| `WECHAT_ALLOWED_USER_IDS`    | 微信白名单                                     |
 
 ### 平台配置来源
 
@@ -381,15 +313,15 @@ codebuddy login
 
 ## IM 内命令
 
-| 命令 | 说明 |
-| ---- | ---- |
-| `/help` | 显示帮助 |
-| `/new` | 开始新会话 |
-| `/status` | 显示 AI 工具、版本、会话目录、会话 ID |
-| `/cd <路径>` | 切换会话目录 |
-| `/pwd` | 显示当前会话目录 |
-| `/allow` `/y` | 允许权限请求 |
-| `/deny` `/n` | 拒绝权限请求 |
+| 命令          | 说明                                  |
+| ------------- | ------------------------------------- |
+| `/help`       | 显示帮助                              |
+| `/new`        | 开始新会话                            |
+| `/status`     | 显示 AI 工具、版本、会话目录、会话 ID |
+| `/cd <路径>`  | 切换会话目录                          |
+| `/pwd`        | 显示当前会话目录                      |
+| `/allow` `/y` | 允许权限请求                          |
+| `/deny` `/n`  | 拒绝权限请求                          |
 
 ## 故障排除
 

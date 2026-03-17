@@ -14,19 +14,6 @@ Multi-platform IM bridge for AI CLI tools. Connect Telegram, Feishu, WeCom, Ding
 - Isolated sessions: each user gets an independent local session, and `/new` resets it
 - Built-in commands: `/help`, `/new`, `/cd`, `/pwd`, `/status`
 
-## Coverage Matrix
-
-Capability levels: `Native` = fully supported in-channel, `Fallback` = degraded behavior or text fallback, `None` = not currently supported.
-
-| Platform | Text Inbound | Image Inbound | File Inbound | Voice Inbound | Video Inbound | Streaming Reply | Image Reply | Card Reply |
-| ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |
-| Telegram | Native | Native | Native | Native | Native | Native | Native | Native |
-| Feishu | Native | Native | Native | Fallback | Fallback | Native | Native | Native |
-| QQ | Native | Fallback | Fallback | Fallback | Fallback | None | Fallback | Fallback |
-| WeCom | Native | Fallback | Fallback | Fallback | Fallback | Native | Native | Native |
-| DingTalk | Native | Fallback | Fallback | Fallback | Fallback | Native | Fallback | Native |
-| WeChat (experimental) | Native | Fallback | Fallback | Fallback | Fallback | Native | Fallback | Native |
-
 ## Requirements
 
 - Node.js >= 20
@@ -50,12 +37,13 @@ The config file is stored at `~/.open-im/config.json` by default.
 
 ## CLI Commands
 
-| Command | Description |
-| ---- | ---- |
-| `open-im init` | Initialize or append configuration without starting the service |
-| `open-im start` | Run the service in the background |
-| `open-im stop` | Stop the background service |
-| `open-im dev` | Run in the foreground for development/debugging |
+| Command           | Description                                                      |
+| ----------------- | ---------------------------------------------------------------- |
+| `open-im init`    | Initialize or append configuration without starting the service |
+| `open-im start`   | Run the service in the background                                |
+| `open-im stop`    | Stop the background service                                      |
+| `open-im dev`     | Run in the foreground for development/debugging                  |
+| `open-im dashboard` | Run only the config web UI (no bridge)                        |
 
 ## Server Deployment & Config Page
 
@@ -65,106 +53,50 @@ Open the config page at [`http://127.0.0.1:39282`](http://127.0.0.1:39282) (or t
 
 - **Dashboard** – Configured / Enabled platform count and service status (Idle or Running)
 - **Platforms** – Enable and configure Telegram, Feishu, QQ, WeCom, and DingTalk (credentials, proxy, per-platform AI tool, allowed user IDs). Each platform has a “Test Configuration” button.
-- **AI Tooling** – **General**: default AI tool (Claude / Codex / CodeBuddy), work directory, hook port, log level. **Per-tool tabs**: Claude (CLI path, timeout, proxy, config path, ANTHROPIC_* fields), Codex (CLI path, timeout, proxy), CodeBuddy (CLI path, timeout).
+- **AI Tooling** – **General**: default AI tool (Claude / Codex / CodeBuddy), work directory, hook port, log level. **Per-tool tabs**: Claude (CLI path, timeout, proxy, config path, ANTHROPIC\_\* fields), Codex (CLI path, timeout, proxy), CodeBuddy (CLI path, timeout).
 - **Service control** – Validate config, Save, Start bridge, Stop bridge.
 
 WeChat is not in the web UI; configure it in `~/.open-im/config.json` or via `open-im init` if needed.
 
-- `open-im start` serves both the config page and the bridge.
+- `open-im start` serves both the config page and the bridge on your local machine.
 - `open-im dev` opens the page automatically only when setup is incomplete.
-- To open the page when config already exists, run `open-im start` and visit the URL above.
+- To open the page when config already exists, you can also run `open-im dashboard` to launch the config UI only (without starting the bridge).
 
-### On a headless server (no GUI)
+### Recommended server workflow
 
-Many servers do not have a desktop environment or browser. In that case, trying to auto-launch a browser (`xdg-open`, `open`, `start`) is unnecessary and may even fail. Use these patterns instead.
+On a remote server, the simplest and safest pattern is:
 
-#### 1) Disable automatic browser launch
+1. **Use `dashboard` to configure via browser**
 
-On the server:
+   On the server:
 
-```bash
-export OPEN_IM_NO_BROWSER=1
-open-im start
-```
+   ```bash
+   export OPEN_IM_NO_BROWSER=1
+   # Optional: bind to all interfaces if you want to open from another device
+   # export OPEN_IM_WEB_HOST=0.0.0.0
+   open-im dashboard
+   ```
 
-This starts the bridge and the config web server in the background without attempting to open a browser.
+   - This starts only the config web UI (no bridge yet).
+   - If `OPEN_IM_WEB_HOST` is `0.0.0.0`, the server will print a one-time login URL like:
 
-#### 2) Verify that the config page is listening on the server
+     ```text
+     http://your-server-ip:39282/?login_token=xxxx
+     ```
 
-On the server:
+   - Open this URL in your browser, complete all platform/AI settings, then click **Start bridge** in the web UI.
 
-```bash
-ss -lntp | grep 39282        # or: netstat -lntp | grep 39282
-curl -v http://127.0.0.1:39282/
-```
+2. **Run the bridge as a background service**
 
-If you see a `LISTEN` line for `127.0.0.1:39282` and `curl` returns HTML, the config UI is running.
+   After configuration is saved, you have two options:
+   - Start from the web UI: use the **Start bridge** button on the Service panel.
+   - Or start from the CLI:
 
-#### 3) Safest option: SSH tunnel to local browser
+     ```bash
+     open-im start
+     ```
 
-Instead of exposing port 39282 to the public internet, use SSH port forwarding:
-
-```bash
-# On your local machine:
-ssh -L 39282:127.0.0.1:39282 user@your-server-ip
-```
-
-Then open in your local browser:
-
-```text
-http://127.0.0.1:39282/
-```
-
-This safely tunnels the config page from the server to your local browser.
-
-#### 4) Optional: Remote access with one-time login link
-
-If you want to open the config UI directly from another device without SSH tunneling, you can bind the web config server to all interfaces and use a one-time login URL:
-
-- **Bind to all interfaces and keep the browser closed on the server:**
-
-  ```bash
-  export OPEN_IM_NO_BROWSER=1
-  export OPEN_IM_WEB_HOST=0.0.0.0
-  open-im start
-  ```
-
-  - By default, `OPEN_IM_WEB_HOST` is `127.0.0.1` (local only).
-  - Setting it to `0.0.0.0` makes the config page listen on all interfaces.
-
-- **On startup, open-im will log a one-time login URL**, for example:
-
-  ```text
-  ━━━━━━━━ Web Config Login ━━━━━━━━
-  Host binding : 0.0.0.0
-  Login URL    : http://127.0.0.1:39282/?login_token=xxxx
-  Note: replace 127.0.0.1 with your server IP or hostname when opening from another device.
-  This login link is valid for approximately 15 minutes and can be used only once.
-  After login, subsequent requests will use a short-lived session cookie.
-  ```
-
-- **From your laptop/phone**, replace `127.0.0.1` with the server IP or hostname and open the URL in a browser:
-
-  ```text
-  http://your-server-ip:39282/?login_token=xxxx
-  ```
-
-  The first successful visit:
-
-  - Consumes the one-time `login_token` (subsequent uses will fail with 401);
-  - Creates a short-lived session and sets a `openim_session` cookie in your browser;
-  - Redirects you to the config page without query parameters.
-
-  After that, as long as the `openim_session` cookie is valid and the process is still running, you can continue visiting:
-
-  ```text
-  http://your-server-ip:39282/
-  ```
-
-> Security notes:
->
-> - Binding `OPEN_IM_WEB_HOST=0.0.0.0` exposes the config port on all interfaces. Always combine this with firewall rules / security groups and consider fronting the port with HTTPS + auth via a reverse proxy.
-> - When in doubt, prefer SSH tunneling (step 3) over direct exposure.
+   This runs the full bridge in the background using the saved config.
 
 ## Session Behavior
 
@@ -315,46 +247,46 @@ The following is valid JSON and can be saved directly as `~/.open-im/config.json
 
 ### Common Environment Variables
 
-| Variable | Description |
-| ---- | ---- |
-| `AI_COMMAND` | Select `claude`, `codex`, or `codebuddy` |
-| `CLAUDE_WORK_DIR` | Default session working directory |
-| `LOG_DIR` | Log directory |
-| `LOG_LEVEL` | Log level |
-| `HOOK_PORT` | Permission service port |
-| `CODEX_PROXY` | Proxy used by Codex to access `chatgpt.com` |
-| `OPENAI_API_KEY` | Codex API key, can replace `codex login` |
-| `CODEBUDDY_CLI_PATH` | Override CodeBuddy CLI path |
-| `CODEBUDDY_TIMEOUT_MS` | Override CodeBuddy timeout |
-| `CODEBUDDY_SKIP_PERMISSIONS` | Override CodeBuddy skip-permissions behavior |
-| `CODEBUDDY_IDLE_TIMEOUT_MS` | Abort CodeBuddy when it stays silent for too long |
-| `CODEBUDDY_API_KEY` | CodeBuddy API key, can replace `codebuddy login` |
-| `CODEBUDDY_AUTH_TOKEN` | CodeBuddy auth token, can replace `codebuddy login` |
-| `TELEGRAM_BOT_TOKEN` | Telegram bot token |
-| `TELEGRAM_PROXY` | Telegram proxy URL |
-| `TELEGRAM_ALLOWED_USER_IDS` | Telegram allowlist |
-| `FEISHU_APP_ID` | Feishu app ID |
-| `FEISHU_APP_SECRET` | Feishu app secret |
-| `FEISHU_ALLOWED_USER_IDS` | Feishu allowlist |
-| `QQ_BOT_APPID` | QQ bot app ID |
-| `QQ_BOT_SECRET` | QQ bot app secret |
-| `QQ_BOT_SANDBOX` | QQ bot sandbox mode (`1` / `true` to enable, disabled by default) |
-| `QQ_ALLOWED_USER_IDS` | QQ allowlist |
-| `DINGTALK_CLIENT_ID` | DingTalk client ID / AppKey |
-| `DINGTALK_CLIENT_SECRET` | DingTalk client secret / AppSecret |
-| `DINGTALK_CARD_TEMPLATE_ID` | DingTalk AI card template ID; enables single-message streaming replies |
-| `DINGTALK_ALLOWED_USER_IDS` | DingTalk allowlist |
-| `WEWORK_CORP_ID` | WeCom bot ID |
-| `WEWORK_SECRET` | WeCom secret |
-| `WEWORK_WS_URL` | WeCom WebSocket URL |
-| `WEWORK_ALLOWED_USER_IDS` | WeCom allowlist |
-| `WECHAT_APP_ID` | WeChat standard mode app ID |
-| `WECHAT_APP_SECRET` | WeChat standard mode app secret |
-| `WECHAT_TOKEN` | WeChat AGP mode token |
-| `WECHAT_GUID` | WeChat AGP mode GUID |
-| `WECHAT_USER_ID` | WeChat AGP mode user ID |
-| `WECHAT_WS_URL` | WeChat WebSocket URL |
-| `WECHAT_ALLOWED_USER_IDS` | WeChat allowlist |
+| Variable                     | Description                                                            |
+| ---------------------------- | ---------------------------------------------------------------------- |
+| `AI_COMMAND`                 | Select `claude`, `codex`, or `codebuddy`                               |
+| `CLAUDE_WORK_DIR`            | Default session working directory                                      |
+| `LOG_DIR`                    | Log directory                                                          |
+| `LOG_LEVEL`                  | Log level                                                              |
+| `HOOK_PORT`                  | Permission service port                                                |
+| `CODEX_PROXY`                | Proxy used by Codex to access `chatgpt.com`                            |
+| `OPENAI_API_KEY`             | Codex API key, can replace `codex login`                               |
+| `CODEBUDDY_CLI_PATH`         | Override CodeBuddy CLI path                                            |
+| `CODEBUDDY_TIMEOUT_MS`       | Override CodeBuddy timeout                                             |
+| `CODEBUDDY_SKIP_PERMISSIONS` | Override CodeBuddy skip-permissions behavior                           |
+| `CODEBUDDY_IDLE_TIMEOUT_MS`  | Abort CodeBuddy when it stays silent for too long                      |
+| `CODEBUDDY_API_KEY`          | CodeBuddy API key, can replace `codebuddy login`                       |
+| `CODEBUDDY_AUTH_TOKEN`       | CodeBuddy auth token, can replace `codebuddy login`                    |
+| `TELEGRAM_BOT_TOKEN`         | Telegram bot token                                                     |
+| `TELEGRAM_PROXY`             | Telegram proxy URL                                                     |
+| `TELEGRAM_ALLOWED_USER_IDS`  | Telegram allowlist                                                     |
+| `FEISHU_APP_ID`              | Feishu app ID                                                          |
+| `FEISHU_APP_SECRET`          | Feishu app secret                                                      |
+| `FEISHU_ALLOWED_USER_IDS`    | Feishu allowlist                                                       |
+| `QQ_BOT_APPID`               | QQ bot app ID                                                          |
+| `QQ_BOT_SECRET`              | QQ bot app secret                                                      |
+| `QQ_BOT_SANDBOX`             | QQ bot sandbox mode (`1` / `true` to enable, disabled by default)      |
+| `QQ_ALLOWED_USER_IDS`        | QQ allowlist                                                           |
+| `DINGTALK_CLIENT_ID`         | DingTalk client ID / AppKey                                            |
+| `DINGTALK_CLIENT_SECRET`     | DingTalk client secret / AppSecret                                     |
+| `DINGTALK_CARD_TEMPLATE_ID`  | DingTalk AI card template ID; enables single-message streaming replies |
+| `DINGTALK_ALLOWED_USER_IDS`  | DingTalk allowlist                                                     |
+| `WEWORK_CORP_ID`             | WeCom bot ID                                                           |
+| `WEWORK_SECRET`              | WeCom secret                                                           |
+| `WEWORK_WS_URL`              | WeCom WebSocket URL                                                    |
+| `WEWORK_ALLOWED_USER_IDS`    | WeCom allowlist                                                        |
+| `WECHAT_APP_ID`              | WeChat standard mode app ID                                            |
+| `WECHAT_APP_SECRET`          | WeChat standard mode app secret                                        |
+| `WECHAT_TOKEN`               | WeChat AGP mode token                                                  |
+| `WECHAT_GUID`                | WeChat AGP mode GUID                                                   |
+| `WECHAT_USER_ID`             | WeChat AGP mode user ID                                                |
+| `WECHAT_WS_URL`              | WeChat WebSocket URL                                                   |
+| `WECHAT_ALLOWED_USER_IDS`    | WeChat allowlist                                                       |
 
 ### Platform Setup Sources
 
@@ -375,15 +307,15 @@ DingTalk AI card templates are already compatible with the official "Search Resu
 
 ## IM Commands
 
-| Command | Description |
-| ---- | ---- |
-| `/help` | Show help |
-| `/new` | Start a new session |
-| `/status` | Show AI tool, version, session directory, and session ID |
-| `/cd <path>` | Change the session working directory |
-| `/pwd` | Show the current session working directory |
-| `/allow` `/y` | Approve a permission request |
-| `/deny` `/n` | Reject a permission request |
+| Command       | Description                                              |
+| ------------- | -------------------------------------------------------- |
+| `/help`       | Show help                                                |
+| `/new`        | Start a new session                                      |
+| `/status`     | Show AI tool, version, session directory, and session ID |
+| `/cd <path>`  | Change the session working directory                     |
+| `/pwd`        | Show the current session working directory               |
+| `/allow` `/y` | Approve a permission request                             |
+| `/deny` `/n`  | Reject a permission request                              |
 
 ## Troubleshooting
 
