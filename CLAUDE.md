@@ -99,6 +99,6 @@ Key config options:
 - **Node >= 20** - Minimum Node version requirement
 - **First-run setup** - `src/setup.ts` provides interactive configuration wizard; if stdin is not a TTY, prints manual setup instructions
 - **Multi-platform** - Telegram, Feishu, and WeChat can be enabled simultaneously; `enabledPlatforms` is dynamically determined based on available tokens
-- **Permission Server** - `src/hook/permission-server.ts` handles auto-approving tool permissions when `claudeSkipPermissions` is enabled
+- **Permission Server** - `src/hook/permission-server.ts` can auto-approve tool permissions when permission auto-approval is enabled
 - **Request Queue** - `src/queue/request-queue.ts` handles concurrent message processing per user
 - **Access Control** - `src/access/access-control.ts` validates user IDs against whitelist
