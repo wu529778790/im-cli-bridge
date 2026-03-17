@@ -36,9 +36,9 @@ interface ExistingConfig {
   env?: Record<string, string>;
   aiCommand?: string;
   tools?: {
-    claude?: { cliPath?: string; workDir?: string; skipPermissions?: boolean; timeoutMs?: number; model?: string };
-    codex?: { cliPath?: string; workDir?: string; skipPermissions?: boolean; proxy?: string };
-    codebuddy?: { cliPath?: string; skipPermissions?: boolean; timeoutMs?: number };
+    claude?: { cliPath?: string; workDir?: string; timeoutMs?: number; model?: string };
+    codex?: { cliPath?: string; workDir?: string; proxy?: string };
+    codebuddy?: { cliPath?: string; timeoutMs?: number };
   };
 }
 
@@ -102,11 +102,10 @@ function printManualInstructions(configPath: string): void {
     "claude": {
       "cliPath": "claude",
       "workDir": "${process.cwd().replace(/\\/g, "/")}",
-      "skipPermissions": true,
       "timeoutMs": 600000
     },
-    "codex": { "cliPath": "codex", "workDir": "${process.cwd().replace(/\\/g, "/")}", "skipPermissions": true, "proxy": "http://127.0.0.1:7890" },
-    "codebuddy": { "cliPath": "codebuddy", "skipPermissions": true, "timeoutMs": 600000 }
+    "codex": { "cliPath": "codex", "workDir": "${process.cwd().replace(/\\/g, "/")}", "proxy": "http://127.0.0.1:7890" },
+    "codebuddy": { "cliPath": "codebuddy", "timeoutMs": 600000 }
   },
   "platforms": {
     "telegram": {
@@ -850,7 +849,6 @@ export async function runInteractiveSetup(): Promise<boolean> {
     feishuAppId: __,
     feishuAppSecret: ___,
     claudeWorkDir: _cwd,
-    claudeSkipPermissions: _csp,
     claudeTimeoutMs: _ctm,
     claudeModel: _cm,
     ...baseRest
@@ -906,14 +904,12 @@ export async function runInteractiveSetup(): Promise<boolean> {
         ...baseTools.claude,
         cliPath: baseTools.claude?.cliPath ?? "claude",
         workDir,
-        skipPermissions: baseTools.claude?.skipPermissions ?? true,
         timeoutMs: baseTools.claude?.timeoutMs ?? 600000,
       },
       codex: {
         ...baseTools.codex,
         cliPath: baseTools.codex?.cliPath ?? "codex",
         workDir: workDir,
-        skipPermissions: baseTools.codex?.skipPermissions ?? baseTools.claude?.skipPermissions ?? true,
         proxy:
           commonResp.aiCommand === "codex"
             ? (codexProxyResp as { codexProxy?: string }).codexProxy?.trim() || undefined
@@ -922,7 +918,6 @@ export async function runInteractiveSetup(): Promise<boolean> {
       codebuddy: {
         ...baseTools.codebuddy,
         cliPath: baseTools.codebuddy?.cliPath ?? "codebuddy",
-        skipPermissions: baseTools.codebuddy?.skipPermissions ?? baseTools.claude?.skipPermissions ?? true,
         timeoutMs: baseTools.codebuddy?.timeoutMs ?? 600000,
       },
     },

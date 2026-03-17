@@ -18,7 +18,6 @@ vi.mock("./message-sender.js", () => ({
   sendErrorMessage: sendErrorMessageMock,
   sendTextReply: sendTextReplyMock,
   sendImageReply: sendImageReplyMock,
-  sendModeKeyboard: vi.fn(async () => {}),
   sendDirectorySelection: vi.fn(async () => {}),
   startTypingLoop: vi.fn(() => vi.fn()),
 }));

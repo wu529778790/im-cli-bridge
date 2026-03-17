@@ -33,8 +33,6 @@ import {
 } from "./shared/active-chats.js";
 import { initLogger, createLogger, closeLogger } from "./logger.js";
 import { APP_HOME, SHUTDOWN_PORT } from "./constants.js";
-import { startPermissionServer, stopPermissionServer } from "./hook/permission-server.js";
-import { initPermissionModes } from "./permission-mode/session-mode.js";
 import { createRequire } from "node:module";
 import { escapePathForMarkdown } from "./shared/utils.js";
 
@@ -143,6 +141,8 @@ function buildShutdownMessage(uptimeMinutes: number): string {
 }
 
 export async function main() {
+  const startupCwd = process.cwd();
+
   if (needsSetup()) {
     const saved = process.stdin.isTTY
       ? (await runWebConfigFlow({ mode: "dev", cwd: process.cwd() })) === "saved"
@@ -171,20 +171,8 @@ export async function main() {
 
   initLogger(config.logDir, config.logLevel);
   loadActiveChats();
-  initPermissionModes();
-
-  // 当配置为跳过权限时，设置 CC_SKIP_PERMISSIONS 让权限服务器自动放行
-  // 否则 Claude 请求工具权限时会卡住等待用户 /allow
-  if (config.claudeSkipPermissions) {
-    process.env.CC_SKIP_PERMISSIONS = 'true';
-    log.info('skipPermissions 已启用，权限请求将自动放行');
-  }
 
   initAdapters(config);
-
-  // Start permission server for tool approval
-  const actualPort = startPermissionServer(config.hookPort);
-  log.info(`Permission server listening on port ${actualPort}`);
 
   // 尽早启动 shutdown 并写入 port 文件，使 open-im start 的 8s 就绪超时能通过（平台初始化可能较慢）
   let shutdownServer: ReturnType<typeof createServer> | null = null;
@@ -211,10 +199,13 @@ export async function main() {
 
   log.info("Starting open-im bridge...");
   log.info(`AI 工具: ${getConfiguredAiCommands(config).join(", ")}`);
-  log.info(`默认会话目录: ${config.claudeWorkDir}`);
+  log.info(`默认会话目录(本次启动 cwd): ${startupCwd}`);
+  if (startupCwd !== config.claudeWorkDir) {
+    log.info(`历史默认会话目录(配置中的 claudeWorkDir): ${config.claudeWorkDir}`);
+  }
   log.info(`启用平台: ${config.enabledPlatforms.join(", ")}`);
 
-  const sessionManager = new SessionManager(config.claudeWorkDir);
+  const sessionManager = new SessionManager(startupCwd, config.claudeWorkDir);
 
   // CLI 工具（Codex/CodeBuddy）的 session 是进程级别的，服务重启后一定无效。
   // 启动时仅清除 CLI 工具自己的 sessionId，保留 Claude 的持久上下文。
@@ -305,7 +296,7 @@ export async function main() {
       platform,
       APP_VERSION,
       resolvePlatformAiCommand(config, platform as "telegram" | "feishu" | "qq" | "wechat" | "wework" | "dingtalk"),
-      config.claudeWorkDir,
+      startupCwd,
       sessionManager,
     );
     await sendLifecycleNotification(platform, startupMsg).catch((err) => {
@@ -347,7 +338,6 @@ export async function main() {
     stopWeWork();
     dingtalkHandle?.stop();
     stopDingTalk();
-    stopPermissionServer();
     sessionManager.destroy();
     cleanupAdapters();
     flushActiveChats();

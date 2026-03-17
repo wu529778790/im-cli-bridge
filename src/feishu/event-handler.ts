@@ -11,18 +11,11 @@ import {
   sendTextReplyByOpenId,
   startTypingLoop,
   sendImageReply,
-  createFeishuButtonCard,
-  sendModeCard,
-  createFeishuModeCardReadOnly,
-  delayUpdateCard,
   sendThinkingCard,
   streamContentUpdate,
   sendFinalCards,
   sendErrorCard,
 } from './message-sender.js';
-import { registerPermissionSender, resolvePermissionById } from '../hook/permission-server.js';
-import { setPermissionMode } from '../permission-mode/session-mode.js';
-import { MODE_LABELS } from '../permission-mode/types.js';
 import { CommandHandler } from '../commands/handler.js';
 import { getAdapter } from '../adapters/registry.js';
 import { runAITask, type TaskRunState } from '../shared/ai-task.js';
@@ -61,62 +54,6 @@ async function downloadFeishuMessageResource(
   return targetPath;
 }
 
-/**
- * Send permission prompt card with interactive buttons
- */
-async function sendPermissionCard(
-  chatId: string,
-  requestId: string,
-  toolName: string,
-  toolInput: string
-): Promise<void> {
-  const { getClient } = await import('./client.js');
-  const client = getClient();
-
-  // Format tool input for display
-  let formattedInput: string;
-  if (toolInput.length > 300) {
-    formattedInput = toolInput.slice(0, 300) + '...';
-  } else {
-    formattedInput = toolInput;
-  }
-
-  const content = `**工具:** \`${toolName}\`
-
-**参数:**
-\`\`\`
-${formattedInput}
-\`\`\`
-
-**请求 ID:** \`${requestId.slice(-8)}\`
-
-请点击下方按钮进行处理。`;
-
-  const cardContent = createFeishuButtonCard(
-    '权限请求',
-    content,
-    [
-      { label: '允许', value: `allow_${requestId}`, type: 'primary' },
-      { label: '拒绝', value: `deny_${requestId}`, type: 'default' },
-    ]
-  );
-
-  try {
-    await client.im.message.create({
-      data: {
-        receive_id: chatId,
-        msg_type: 'interactive',
-        content: cardContent,
-      },
-      params: { receive_id_type: 'chat_id' },
-    });
-    log.info(`Permission card sent for request ${requestId}`);
-  } catch (err) {
-    log.error('Failed to send permission card:', err);
-    throw err;
-  }
-}
-
 export interface FeishuEventHandlerHandle {
   stop: () => void;
   getRunningTaskCount: () => number;
@@ -136,11 +73,9 @@ export function setupFeishuHandlers(
     config,
     sessionManager,
     requestQueue,
-    sender: { sendTextReply, sendModeCard },
+    sender: { sendTextReply },
     getRunningTasksSize: () => runningTasks.size,
   });
-
-  registerPermissionSender('feishu', { sendTextReply, sendPermissionCard });
 
   async function handleAIRequest(
     userId: string,
@@ -217,34 +152,6 @@ export function setupFeishuHandlers(
         sendImage: (path) => sendImageReply(chatId, path),
       }
     );
-  }
-
-  /**
-   * Parse permission button value from card action (兼容多种格式)
-   */
-  function parsePermissionActionValue(raw: unknown): { decision: 'allow' | 'deny'; requestId: string } | null {
-    if (!raw) return null;
-    let buttonValue: string | undefined;
-    if (typeof raw === 'string') {
-      try {
-        const parsed = JSON.parse(raw) as { action?: string; value?: string };
-        if (parsed.action === 'permission' && parsed.value) buttonValue = parsed.value;
-        else if (raw.startsWith('allow_') || raw.startsWith('deny_')) buttonValue = raw;
-      } catch {
-        if (raw.startsWith('allow_') || raw.startsWith('deny_')) buttonValue = raw;
-      }
-    } else if (typeof raw === 'object' && raw !== null) {
-      const obj = raw as { action?: string; value?: string };
-      if (obj.action === 'permission' && obj.value) buttonValue = obj.value;
-    }
-    if (!buttonValue) return null;
-    if (buttonValue.startsWith('allow_')) {
-      return { decision: 'allow', requestId: buttonValue.slice(6) };
-    }
-    if (buttonValue.startsWith('deny_')) {
-      return { decision: 'deny', requestId: buttonValue.slice(5) };
-    }
-    return null;
   }
 
   /**
@@ -344,61 +251,8 @@ export function setupFeishuHandlers(
       return { toast: { type: 'success', content: '已停止' } };
     }
 
-    // 处理 mode 按钮（兼容 value 为对象或 JSON 字符串）
-    const modeAv = parseActionValue(actionValue);
-    if (modeAv?.action === 'mode' && modeAv.value) {
-      const mode = modeAv.value as 'ask' | 'accept-edits' | 'plan' | 'yolo';
-      if (['ask', 'accept-edits', 'plan', 'yolo'].includes(mode)) {
-        setPermissionMode(userId, mode);
-        const toastContent = `✅ 已切换为 ${MODE_LABELS[mode]}`;
-        const label = MODE_LABELS[mode];
-        // 异步发送文本回复，不阻塞 3 秒内返回
-        const sendReply = (): Promise<void> | void => {
-          if (chatId) return sendTextReply(chatId, toastContent);
-          if (userId) return sendTextReplyByOpenId(userId, toastContent);
-          log.warn('[handleCardAction] No chatId/userId, cannot send text reply');
-        };
-        const p = sendReply();
-        if (p) p.catch((e) => log.warn('[handleCardAction] Send reply failed:', e));
-        // 同步只返回 toast，避免 200672（同步返回 card 格式易出错）
-        const cardToken = extractCardToken(data);
-        const readOnlyCard = createFeishuModeCardReadOnly(label);
-        if (cardToken && userId) {
-          // 延时更新：异步替换为只读卡片，防止二次点击
-          delayUpdateCard(cardToken, readOnlyCard, [userId]).catch((e) =>
-            log.warn('[handleCardAction] delayUpdateCard failed:', e)
-          );
-        } else if (!cardToken) {
-          log.debug('[handleCardAction] No card token in event, cannot delay-update card');
-        }
-        return { toast: { type: 'success', content: toastContent } };
-      }
-    }
-
-    const parsed = parsePermissionActionValue(actionValue);
-    if (!parsed) {
-      log.info('[handleCardAction] Unrecognized action value, returning default toast');
-      return { toast: { type: 'warning', content: '未知操作' } };
-    }
-
-    const { decision, requestId } = parsed;
-    log.info(`[handleCardAction] Permission button: ${decision} for ${requestId}, chatId=${chatId}`);
-
-    const resolved = resolvePermissionById(requestId, decision);
-    const toastContent = resolved
-      ? decision === 'allow'
-        ? '✅ 权限已允许'
-        : '❌ 权限已拒绝'
-      : '⚠️ 权限请求已过期或不存在';
-
-    const sendPermReply = (): Promise<void> | void => {
-      if (chatId) return sendTextReply(chatId, toastContent);
-      if (userId) return sendTextReplyByOpenId(userId, toastContent);
-    };
-    const permP = sendPermReply();
-    if (permP) permP.catch((err) => log.warn('Failed to send permission reply:', err));
-
-    return { toast: { type: resolved ? 'success' : 'warning', content: toastContent } };
+    log.info('[handleCardAction] Unrecognized action value');
+    return { toast: { type: 'warning', content: '未知操作' } };
   }
 
   async function handleEvent(data: unknown): Promise<void | Record<string, unknown>> {
@@ -433,23 +287,6 @@ export function setupFeishuHandlers(
       // 2. 消息接收 (im.message.receive_v1)
       if (eventType === 'im.message.receive_v1') {
         log.info('[handleEvent] Processing im.message.receive_v1 event');
-
-        // 兼容：部分场景下卡片点击可能通过 im.message 携带 action
-        if (event?.action?.value) {
-          const parsed = parsePermissionActionValue(event.action.value);
-          if (parsed) {
-            const { decision, requestId } = parsed;
-            const chatId = event.message?.chat_id ?? '';
-            log.info(`[handleEvent] Permission (via msg): ${decision} for ${requestId}`);
-            const resolved = resolvePermissionById(requestId, decision);
-            if (resolved) {
-              await sendTextReply(chatId, decision === 'allow' ? '✅ 权限已允许' : '❌ 权限已拒绝');
-            } else {
-              await sendTextReply(chatId, '⚠️ 权限请求已过期或不存在');
-            }
-            return;
-          }
-        }
 
       const message = event?.message;
       if (!message) {

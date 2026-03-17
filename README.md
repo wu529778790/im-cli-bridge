@@ -57,9 +57,11 @@ The config file is stored at `~/.open-im/config.json` by default.
 | `open-im stop` | Stop the background service |
 | `open-im dev` | Run in the foreground for development/debugging |
 
-## Graphical Config Page
+## Server Deployment & Config Page
 
-Open the config page at **http://127.0.0.1:39282** (or the URL shown after `open-im start`). The page includes:
+### Local (with browser)
+
+Open the config page at [`http://127.0.0.1:39282`](http://127.0.0.1:39282) (or the URL shown after `open-im start`). The page includes:
 
 - **Dashboard** – Configured / Enabled platform count and service status (Idle or Running)
 - **Platforms** – Enable and configure Telegram, Feishu, QQ, WeCom, and DingTalk (credentials, proxy, per-platform AI tool, allowed user IDs). Each platform has a “Test Configuration” button.
@@ -68,9 +70,54 @@ Open the config page at **http://127.0.0.1:39282** (or the URL shown after `open
 
 WeChat is not in the web UI; configure it in `~/.open-im/config.json` or via `open-im init` if needed.
 
-- `open-im start` serves the config page and the bridge.
+- `open-im start` serves both the config page and the bridge.
 - `open-im dev` opens the page automatically only when setup is incomplete.
 - To open the page when config already exists, run `open-im start` and visit the URL above.
+
+### On a headless server (no GUI)
+
+Many servers do not have a desktop environment or browser. In that case, trying to auto-launch a browser (`xdg-open`, `open`, `start`) is unnecessary and may even fail. Use this pattern instead:
+
+- **1) Disable automatic browser launch**
+
+  On the server:
+
+  ```bash
+  export OPEN_IM_NO_BROWSER=1
+  open-im start
+  ```
+
+  This starts the bridge and the config web server in the background without attempting to open a browser.
+
+- **2) Verify that the config page is listening on the server**
+
+  On the server:
+
+  ```bash
+  ss -lntp | grep 39282        # or: netstat -lntp | grep 39282
+  curl -v http://127.0.0.1:39282/
+  ```
+
+  If you see a `LISTEN` line for `127.0.0.1:39282` and `curl` returns HTML, the config UI is running.
+
+- **3) Access the config UI from your local machine via SSH tunnel**
+
+  Instead of exposing port 39282 to the public internet, use SSH port forwarding:
+
+  ```bash
+  # On your local machine:
+  ssh -L 39282:127.0.0.1:39282 user@your-server-ip
+  ```
+
+  Then open in your local browser:
+
+  ```text
+  http://127.0.0.1:39282/
+  ```
+
+  This safely tunnels the config page from the server to your local browser.
+
+> If you really want to expose the config UI directly, you can change the listener in `config-web.ts` from `server.listen(port, "127.0.0.1", ...)` to `0.0.0.0` and open port 39282 in your firewall / security group. For security reasons, SSH tunneling is strongly recommended instead.
 
 ## Session Behavior
 

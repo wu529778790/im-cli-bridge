@@ -650,7 +650,6 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         ai: {
           aiCommand: getValue("ai-aiCommand"),
           claudeWorkDir: getValue("ai-claudeWorkDir"),
-          claudeSkipPermissions: true,
           claudeTimeoutMs: getNumber("ai-claudeTimeoutMs"),
           claudeConfigPath: getValue("ai-claudeConfigPath"),
           claudeAuthToken: getValue("ai-claudeAuthToken"),

@@ -1,10 +1,7 @@
 import { resolvePlatformAiCommand, type Config } from '../config.js';
 import type { SessionManager } from '../session/session-manager.js';
 import type { RequestQueue } from '../queue/request-queue.js';
-import { resolveLatestPermission, getPendingCount } from '../hook/permission-server.js';
 import { escapePathForMarkdown } from '../shared/utils.js';
-import { getPermissionMode, setPermissionMode } from '../permission-mode/session-mode.js';
-import { MODE_LABELS, MODE_DESCRIPTIONS, parsePermissionMode, type PermissionMode } from '../permission-mode/types.js';
 import { TERMINAL_ONLY_COMMANDS } from '../constants.js';
 import { execFile } from 'node:child_process';
 import { readdirSync, statSync } from 'node:fs';
@@ -16,8 +13,6 @@ export type { ThreadContext };
 export interface MessageSender {
   sendTextReply(chatId: string, text: string, threadCtx?: ThreadContext): Promise<void>;
   sendDirectorySelection?(chatId: string, currentDir: string, userId: string): Promise<void>;
-  sendModeCard?(chatId: string, userId: string, currentMode: PermissionMode): Promise<void>;
-  sendModeKeyboard?(chatId: string, userId: string, currentMode: PermissionMode): Promise<void>;
 }
 
 export interface CommandHandlerDeps {
@@ -56,12 +51,9 @@ export class CommandHandler {
     }
 
     if (t === '/help') return this.handleHelp(chatId, platform);
-    if (t === '/mode' || t.startsWith('/mode ')) return this.handleMode(chatId, userId, platform, t.slice(6).trim());
     if (t === '/new') return this.handleNew(chatId, userId, platform);
     if (t === '/pwd') return this.handlePwd(chatId, userId);
     if (t === '/status') return this.handleStatus(chatId, userId, platform);
-    if (t === '/allow' || t === '/y') return this.handleAllow(chatId);
-    if (t === '/deny' || t === '/n') return this.handleDeny(chatId);
 
     if (t === '/cd' || t.startsWith('/cd ')) {
       return this.handleCd(chatId, userId, t.slice(3).trim(), platform);
@@ -74,52 +66,6 @@ export class CommandHandler {
     }
 
     return false;
-  }
-
-  private async handleMode(
-    chatId: string,
-    userId: string,
-    platform: 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework',
-    arg: string
-  ): Promise<boolean> {
-    const defaultMode = this.deps.config.defaultPermissionMode;
-    const currentMode = getPermissionMode(userId, defaultMode);
-
-    if (arg) {
-      const parsed = parsePermissionMode(arg);
-      if (parsed) {
-        setPermissionMode(userId, parsed);
-        await this.deps.sender.sendTextReply(
-          chatId,
-          `✅ 权限模式已切换为 **${MODE_LABELS[parsed]}**\n${MODE_DESCRIPTIONS[parsed]}`
-        );
-        return true;
-      }
-      await this.deps.sender.sendTextReply(
-        chatId,
-        `无效模式: ${arg}\n可用: ask, accept-edits, plan, yolo`
-      );
-      return true;
-    }
-
-    if (platform === 'feishu' && this.deps.sender.sendModeCard) {
-      await this.deps.sender.sendModeCard(chatId, userId, currentMode);
-      return true;
-    }
-    if (platform === 'telegram' && this.deps.sender.sendModeKeyboard) {
-      await this.deps.sender.sendModeKeyboard(chatId, userId, currentMode);
-      return true;
-    }
-
-    const lines = [
-      `🔐 **权限模式** (当前: ${MODE_LABELS[currentMode]})`,
-      '',
-      ...(['ask', 'accept-edits', 'plan', 'yolo'] as const).map(
-        (m) => `• \`/mode ${m}\` - ${MODE_LABELS[m]}: ${MODE_DESCRIPTIONS[m]}`
-      ),
-    ];
-    await this.deps.sender.sendTextReply(chatId, lines.join('\n'));
-    return true;
   }
 
   private getClearHistoryHint(platform: 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework'): string {
@@ -137,13 +83,10 @@ export class CommandHandler {
       '📋 可用命令:',
       '',
       '/help - 显示帮助',
-      '/mode - 切换权限模式（安全/编辑放行/只读/YOLO）',
       '/new - 开始新会话（AI 上下文重置）',
       '/status - 显示状态',
       '/cd <路径> - 切换工作目录',
       '/pwd - 当前工作目录',
-      '/allow (/y) - 允许权限请求',
-      '/deny (/n) - 拒绝权限请求',
       '',
       this.getClearHistoryHint(platform),
     ].join('\n');
@@ -210,27 +153,6 @@ export class CommandHandler {
       );
     } catch (err) {
       await this.deps.sender.sendTextReply(chatId, err instanceof Error ? err.message : String(err));
-    }
-    return true;
-  }
-
-  private async handleAllow(chatId: string): Promise<boolean> {
-    const reqId = resolveLatestPermission(chatId, 'allow');
-    if (reqId) {
-      const remaining = getPendingCount(chatId);
-      await this.deps.sender.sendTextReply(chatId, `✅ 权限已允许${remaining > 0 ? `（还有 ${remaining} 个待确认）` : ''}`);
-    } else {
-      await this.deps.sender.sendTextReply(chatId, 'ℹ️ 没有待确认的权限请求');
-    }
-    return true;
-  }
-
-  private async handleDeny(chatId: string): Promise<boolean> {
-    const reqId = resolveLatestPermission(chatId, 'deny');
-    if (reqId) {
-      await this.deps.sender.sendTextReply(chatId, '❌ 权限已拒绝');
-    } else {
-      await this.deps.sender.sendTextReply(chatId, 'ℹ️ 没有待确认的权限请求');
     }
     return true;
   }

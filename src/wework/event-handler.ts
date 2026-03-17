@@ -13,11 +13,8 @@ import {
   sendTextReply,
   sendImageReply,
   startTypingLoop,
-  sendPermissionCard,
-  sendModeCard,
   setCurrentReqId,
 } from './message-sender.js';
-import { registerPermissionSender } from '../hook/permission-server.js';
 import { CommandHandler } from '../commands/handler.js';
 import { getAdapter } from '../adapters/registry.js';
 import { runAITask, type TaskRunState } from '../shared/ai-task.js';
@@ -239,11 +236,9 @@ export function setupWeWorkHandlers(
     config,
     sessionManager,
     requestQueue,
-    sender: { sendTextReply, sendModeCard },
+    sender: { sendTextReply },
     getRunningTasksSize: () => runningTasks.size,
   });
-
-  registerPermissionSender('wework', { sendTextReply, sendPermissionCard });
 
   async function handleAIRequest(
     userId: string,

@@ -9,11 +9,9 @@ import {
   sendErrorMessage,
   sendTextReply,
   sendImageReply,
-  sendModeKeyboard,
   sendDirectorySelection,
   startTypingLoop,
 } from "./message-sender.js";
-import { registerPermissionSender } from "../hook/permission-server.js";
 import { CommandHandler } from "../commands/handler.js";
 import { getAdapter } from "../adapters/registry.js";
 import { runAITask, type TaskRunState } from "../shared/ai-task.js";
@@ -152,11 +150,9 @@ export function setupQQHandlers(
     config,
     sessionManager,
     requestQueue,
-    sender: { sendTextReply, sendModeKeyboard, sendDirectorySelection },
+    sender: { sendTextReply, sendDirectorySelection },
     getRunningTasksSize: () => runningTasks.size,
   });
-
-  registerPermissionSender("qq", { sendTextReply });
 
   async function enqueuePrompt(
     userId: string,

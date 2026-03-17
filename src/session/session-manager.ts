@@ -47,9 +47,13 @@ export class SessionManager {
   private defaultWorkDir: string;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(defaultWorkDir: string) {
+  /**
+   * @param defaultWorkDir 本次进程的默认工作目录（通常为进程启动时的 cwd）
+   * @param previousDefaultWorkDir 旧版本/旧配置使用的默认目录（用于迁移仍跟随默认值的会话）
+   */
+  constructor(defaultWorkDir: string, previousDefaultWorkDir?: string) {
     this.defaultWorkDir = defaultWorkDir;
-    this.load();
+    this.load(previousDefaultWorkDir);
   }
 
   getSessionIdForConv(userId: string, convId: string, toolId: ToolId): string | undefined {
@@ -260,12 +264,16 @@ export class SessionManager {
     return realpath(resolved);
   }
 
-  private load(): void {
+  private load(previousDefaultWorkDir?: string): void {
     try {
       if (existsSync(SESSIONS_FILE)) {
         const data = JSON.parse(readFileSync(SESSIONS_FILE, 'utf-8')) as Record<string, UserSession>;
         for (const [k, v] of Object.entries(data)) {
           if (v && typeof v.workDir === 'string') {
+            // 如果该会话目录等于旧默认目录，则迁移到新的默认目录（认为用户没有手动 /cd 过）
+            if (previousDefaultWorkDir && v.workDir === previousDefaultWorkDir) {
+              v.workDir = this.defaultWorkDir;
+            }
             if (!v.activeConvId) v.activeConvId = randomBytes(4).toString('hex');
             if (!v.sessionIds) v.sessionIds = {};
             if ('sessionId' in (v as object)) {

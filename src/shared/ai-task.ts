@@ -4,8 +4,6 @@
 
 import type { Config } from '../config.js';
 import type { SessionManager } from '../session/session-manager.js';
-import { getPermissionMode } from '../permission-mode/session-mode.js';
-import type { PermissionMode } from '../permission-mode/types.js';
 import type { ToolAdapter } from '../adapters/tool-adapter.interface.js';
 import type { ParsedResult } from '../adapters/tool-adapter.interface.js';
 import { resolvePlatformAiCommand, type Platform } from '../config.js';
@@ -65,8 +63,7 @@ function isUsageLimitError(error: string): boolean {
 function buildCompletionNote(
   result: ParsedResult,
   sessionManager: SessionManager,
-  ctx: TaskContext,
-  mode: PermissionMode
+  ctx: TaskContext
 ): string {
   const toolInfo = formatToolStats(result.toolStats, result.numTurns);
   const parts: string[] = [];
@@ -79,10 +76,6 @@ function buildCompletionNote(
     : sessionManager.addTurns(ctx.userId, 0);
   const ctxWarning = getContextWarning(currentTurns);
   if (ctxWarning) parts.push(ctxWarning);
-
-  if (mode === 'plan') {
-    parts.push('当前模式: plan（只读，不执行命令/不改文件，如需真正改代码请发送 `/mode accept-edits` 或 `/mode yolo`）');
-  }
 
   return parts.join(' | ');
 }
@@ -104,6 +97,7 @@ export function runAITask(
     let wasThinking = false;
     let thinkingText = '';
     let currentSessionId = ctx.sessionId;
+    let hadSessionInvalid = false;
     let activeHandle: { abort: () => void } | null = null;
     const toolLines: string[] = [];
     const minDelta = platformAdapter.minContentDeltaChars ?? 0;
@@ -155,25 +149,6 @@ export function runAITask(
       }
     };
 
-    const mode = getPermissionMode(ctx.userId, config.defaultPermissionMode);
-
-    let skipPermissions: boolean | undefined;
-    let permissionMode: 'default' | 'acceptEdits' | 'plan' | undefined;
-
-    if (mode === 'plan') {
-      skipPermissions = false;
-      permissionMode = 'plan';
-    } else {
-      skipPermissions = mode === 'yolo' || config.claudeSkipPermissions;
-      permissionMode = !skipPermissions
-        ? (mode === 'ask'
-          ? 'default'
-          : mode === 'accept-edits'
-            ? 'acceptEdits'
-            : undefined)
-        : undefined;
-    }
-
     // 使用 aiCommand 而不是 toolAdapter.toolId，确保 sessionId 的存储和查询使用相同的 key
     const aiCommand = resolvePlatformAiCommand(config, ctx.platform as Platform);
     const toolId = toolAdapter.toolId as 'claude' | 'codex' | 'codebuddy';
@@ -201,7 +176,12 @@ export function runAITask(
           else log.info(`[AITask] No threadId or convId, sessionId not persisted to storage`);
         },
         onSessionInvalid: () => {
+          hadSessionInvalid = true;
           if (ctx.convId) sessionManager.clearSessionForConv(ctx.userId, ctx.convId, aiCommand);
+          const ok = sessionManager.newSession(ctx.userId);
+          log.info(
+            `[AITask] Session invalid for user ${ctx.userId}, aiCommand=${aiCommand}; auto /new applied, ok=${ok}`
+          );
         },
         onThinking: (t) => {
           if (!firstContentLogged) {
@@ -244,7 +224,7 @@ export function runAITask(
             clearTimeout(pendingUpdate);
             pendingUpdate = null;
           }
-          const note = buildCompletionNote(result, sessionManager, ctx, mode);
+          const note = buildCompletionNote(result, sessionManager, ctx);
           const output =
             result.accumulated ||
             result.result ||
@@ -300,8 +280,11 @@ export function runAITask(
           } else if (aiCommand === 'codex' && isUsageLimitError(error)) {
             log.info(`Keeping codex session for user ${ctx.userId} after usage limit error`);
           }
+          const friendlyError = hadSessionInvalid
+            ? '当前 Claude 会话已失效，已自动执行 /new 重置会话，请重新发送刚才的问题。'
+            : error;
           try {
-            await platformAdapter.sendError(error);
+            await platformAdapter.sendError(friendlyError);
           } catch (err) {
             log.error('Failed to send error:', err);
           }
@@ -310,11 +293,11 @@ export function runAITask(
         },
         },
         {
-          skipPermissions,
-          permissionMode,
           timeoutMs,
           model: sessionManager.getModel(ctx.userId, ctx.threadId) ?? config.claudeModel,
           chatId: ctx.chatId,
+          // Claude 默认跳过权限确认，保持与之前 CLI 行为一致（全自动执行）
+          ...(aiCommand === 'claude' ? { skipPermissions: true } : {}),
           ...(aiCommand === 'codex' && config.codexProxy ? { proxy: config.codexProxy } : {}),
         }
       );

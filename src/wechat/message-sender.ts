@@ -9,10 +9,6 @@ import { buildImageFallbackMessage } from '../channels/capabilities.js';
 import type { MessageStatus } from './types.js';
 import { buildMessageTitle, OPEN_IM_SYSTEM_TITLE } from '../shared/message-title.js';
 import { buildTextNote } from '../shared/message-note.js';
-import {
-  buildModeMessage,
-  buildPermissionRequestMessage,
-} from '../shared/system-messages.js';
 
 const log = createLogger('WeChatSender');
 
@@ -178,46 +174,6 @@ export async function sendImageReply(chatId: string, imagePath: string): Promise
   await sendTextReply(chatId, buildImageFallbackMessage('wechat', imagePath));
 }
 
-export async function sendPermissionCard(
-  chatId: string,
-  requestId: string,
-  toolName: string,
-  toolInput: string,
-): Promise<void> {
-  const message = buildPermissionRequestMessage(toolName, toolInput, requestId);
-
-  try {
-    sendAGPMessage('session.promptResponse', {
-      session_id: chatId,
-      content: message,
-      status: 'success',
-      metadata: { type: 'permission', requestId },
-    });
-    log.info(`Permission card sent to chat ${chatId}`);
-  } catch (err) {
-    log.error('Failed to send permission card:', err);
-  }
-}
-
-export async function sendModeCard(
-  chatId: string,
-  _userId: string,
-  currentMode: string,
-): Promise<void> {
-  const message = buildModeMessage(currentMode);
-
-  try {
-    sendAGPMessage('session.promptResponse', {
-      session_id: chatId,
-      content: message,
-      status: 'success',
-      metadata: { type: 'mode_switch' },
-    });
-    log.info(`Mode card sent to chat ${chatId}`);
-  } catch (err) {
-    log.error('Failed to send mode card:', err);
-  }
-}
 
 function generateMsgId(): string {
   return `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;

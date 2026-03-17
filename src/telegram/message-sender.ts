@@ -221,28 +221,6 @@ export async function sendDirectorySelection(
   );
 }
 
-export async function sendModeKeyboard(
-  chatId: string,
-  userId: string,
-  currentMode: string,
-): Promise<void> {
-  const bot = getBot();
-  const { MODE_LABELS } = await import("../permission-mode/types.js");
-  const modes = ["ask", "accept-edits", "plan", "yolo"] as const;
-  const keyboard = {
-    inline_keyboard: [
-      modes.map((m) => ({
-        text: currentMode === m ? `✓ ${MODE_LABELS[m]}` : MODE_LABELS[m],
-        callback_data: `mode:${userId}:${m}`,
-      })),
-    ],
-  };
-  await bot.telegram.sendMessage(
-    Number(chatId),
-    `🔐 **权限模式**\n\n当前模式: ${MODE_LABELS[currentMode as keyof typeof MODE_LABELS] ?? currentMode}\n\n点击下方按钮切换：`,
-    { parse_mode: "Markdown", reply_markup: keyboard },
-  );
-}
 
 export function startTypingLoop(chatId: string): () => void {
   const bot = getBot();

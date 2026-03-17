@@ -3,7 +3,7 @@ import { splitLongContent } from "../shared/utils.js";
 import { buildImageFallbackMessage } from "../channels/capabilities.js";
 import { getQQBot } from "./client.js";
 import { buildMessageTitle, OPEN_IM_SYSTEM_TITLE } from "../shared/message-title.js";
-import { buildDirectoryMessage, buildModeMessage } from "../shared/system-messages.js";
+import { buildDirectoryMessage } from "../shared/system-messages.js";
 
 const log = createLogger("QQSender");
 const MAX_QQ_MESSAGE_LENGTH = 1500;
@@ -97,11 +97,6 @@ export async function sendDirectorySelection(chatId: string, currentDir: string)
   await sendTextReply(chatId, buildDirectoryMessage(currentDir));
 }
 
-export async function sendModeKeyboard(chatId: string, _userId: string, currentMode: string): Promise<void> {
-  const { MODE_LABELS } = await import("../permission-mode/types.js");
-  const label = MODE_LABELS[currentMode as keyof typeof MODE_LABELS] || currentMode;
-  await sendTextReply(chatId, buildModeMessage(label));
-}
 
 export function startTypingLoop(): () => void {
   return () => {};

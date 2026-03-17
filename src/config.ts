@@ -61,10 +61,7 @@ export interface Config {
   codexTimeoutMs: number;
   codebuddyTimeoutMs: number;
   claudeWorkDir: string;
-  claudeSkipPermissions: boolean;
-  defaultPermissionMode: 'ask' | 'accept-edits' | 'plan' | 'yolo';
   claudeModel?: string;
-  hookPort: number;
   logDir: string;
   logLevel: LogLevel;
 
@@ -168,7 +165,6 @@ export interface FilePlatformDingtalk {
 
 export interface FileToolClaude {
   workDir?: string;
-  skipPermissions?: boolean;
   timeoutMs?: number;
   model?: string;
   proxy?: string;
@@ -178,8 +174,6 @@ export interface FileToolCodex {
   cliPath?: string;
   workDir?: string;
   timeoutMs?: number;
-  /** 是否跳过权限确认（默认 true） */
-  skipPermissions?: boolean;
   /** HTTP/HTTPS 代理，用于访问 chatgpt.com（如 http://127.0.0.1:7890） */
   proxy?: string;
 }
@@ -187,8 +181,6 @@ export interface FileToolCodex {
 export interface FileToolCodeBuddy {
   cliPath?: string;
   timeoutMs?: number;
-  /** 是否跳过权限确认（默认 true） */
-  skipPermissions?: boolean;
 }
 
 export interface FileConfig {
@@ -213,8 +205,6 @@ export interface FileConfig {
     codex?: FileToolCodex;
     codebuddy?: FileToolCodeBuddy;
   };
-  defaultPermissionMode?: 'ask' | 'accept-edits' | 'plan' | 'yolo';
-  hookPort?: number;
   logDir?: string;
   logLevel?: LogLevel;
 }
@@ -227,7 +217,7 @@ const CODEX_AUTH_PATHS = [
 ];
 
 const OLD_ROOT_KEYS = [
-  'claudeWorkDir', 'claudeSkipPermissions',
+  'claudeWorkDir',
   'claudeTimeoutMs', 'claudeModel',
 ] as const;
 
@@ -265,7 +255,6 @@ function migrateToNewConfigFormat(raw: Record<string, unknown>): Record<string, 
     claude: {
       ...tc,
       workDir: tc.workDir ?? raw.claudeWorkDir ?? process.cwd(),
-      skipPermissions: tc.skipPermissions ?? raw.claudeSkipPermissions ?? true,
       timeoutMs: tc.timeoutMs ?? raw.claudeTimeoutMs ?? 600000,
       model: tc.model ?? raw.claudeModel,
     },
@@ -273,14 +262,12 @@ function migrateToNewConfigFormat(raw: Record<string, unknown>): Record<string, 
       ...tcod,
       cliPath: tcod.cliPath ?? 'codex',
       workDir: tcod.workDir ?? raw.claudeWorkDir ?? process.cwd(),
-      skipPermissions: tcod.skipPermissions ?? raw.claudeSkipPermissions ?? true,
       timeoutMs: tcod.timeoutMs ?? raw.claudeTimeoutMs ?? 600000,
       proxy: tcod.proxy,
     },
     codebuddy: {
       ...tcb,
       cliPath: tcb.cliPath ?? 'codebuddy',
-      skipPermissions: tcb.skipPermissions ?? raw.claudeSkipPermissions ?? true,
       timeoutMs: tcb.timeoutMs ?? raw.claudeTimeoutMs ?? 600000,
     },
   };
@@ -289,35 +276,6 @@ function migrateToNewConfigFormat(raw: Record<string, unknown>): Record<string, 
     delete migrated[k];
   }
   return migrated;
-}
-
-/** 确保 codex/codebuddy 有 skipPermissions（缺失时从 claude 继承并写回） */
-function ensureToolsSkipPermissions(raw: Record<string, unknown>): boolean {
-  const tools = raw.tools as Record<string, unknown> | undefined;
-  if (!tools || typeof tools !== 'object') return false;
-  const tc = (tools.claude as Record<string, unknown>) || {};
-  const fallback = tc.skipPermissions ?? true;
-  let changed = false;
-  if (tools.codex && typeof tools.codex === 'object') {
-    const cod = tools.codex as Record<string, unknown>;
-    if (cod.skipPermissions === undefined) {
-      cod.skipPermissions = fallback;
-      changed = true;
-    }
-  }
-  if (tools.codebuddy && typeof tools.codebuddy === 'object') {
-    const codebuddy = tools.codebuddy as Record<string, unknown>;
-    if (codebuddy.skipPermissions === undefined) {
-      codebuddy.skipPermissions = fallback;
-      changed = true;
-    }
-  }
-  if (changed) {
-    const dir = dirname(CONFIG_PATH);
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    writeFileSync(CONFIG_PATH, JSON.stringify(raw, null, 2), 'utf-8');
-  }
-  return changed;
 }
 
 export function loadFileConfig(): FileConfig {
@@ -332,7 +290,6 @@ export function loadFileConfig(): FileConfig {
       writeFileSync(CONFIG_PATH, JSON.stringify(migrated, null, 2), 'utf-8');
       return migrated as FileConfig;
     }
-    ensureToolsSkipPermissions(raw);
     return raw as FileConfig;
   } catch {
     return {};
@@ -662,17 +619,6 @@ export function loadConfig(): Config {
   }
   const claudeWorkDir = process.env.CLAUDE_WORK_DIR ?? tc.workDir ?? process.cwd();
 
-  // 按当前 AI 工具选择 skipPermissions：claude 用 tools.claude，其他 CLI 工具优先读各自配置，再回退到 claude
-  const claudeSkipPermissions = (() => {
-    if (process.env.CLAUDE_SKIP_PERMISSIONS !== undefined) return process.env.CLAUDE_SKIP_PERMISSIONS === 'true';
-    if (process.env.CODEBUDDY_SKIP_PERMISSIONS !== undefined && aiCommand === 'codebuddy') return process.env.CODEBUDDY_SKIP_PERMISSIONS === 'true';
-    if (aiCommand === 'codex') return tcod.skipPermissions ?? tc.skipPermissions ?? true;
-    if (aiCommand === 'codebuddy') return tcb.skipPermissions ?? tc.skipPermissions ?? true;
-    return tc.skipPermissions ?? true;
-  })();
-
-  const defaultPermissionMode = (file.defaultPermissionMode ?? 'ask') as 'ask' | 'accept-edits' | 'plan' | 'yolo';
-
   const claudeTimeoutMs =
     process.env.CLAUDE_TIMEOUT_MS !== undefined
       ? parseInt(process.env.CLAUDE_TIMEOUT_MS, 10) || 600000
@@ -685,11 +631,6 @@ export function loadConfig(): Config {
     process.env.CODEBUDDY_TIMEOUT_MS !== undefined
       ? parseInt(process.env.CODEBUDDY_TIMEOUT_MS, 10) || 600000
       : tcb.timeoutMs ?? 600000;
-
-  const hookPort =
-    process.env.HOOK_PORT !== undefined
-      ? parseInt(process.env.HOOK_PORT, 10) || 35801
-      : file.hookPort ?? 35801;
 
   // 6. 校验 Claude API 凭证（SDK 模式需要）
   // 支持：官方 API Key、Auth Token、或自定义 API（第三方模型等，BASE_URL + token）
@@ -924,13 +865,10 @@ export function loadConfig(): Config {
     codebuddyCliPath,
     codexProxy,
     claudeWorkDir,
-    claudeSkipPermissions,
-    defaultPermissionMode,
     claudeTimeoutMs,
     codexTimeoutMs,
     codebuddyTimeoutMs,
     claudeModel: process.env.CLAUDE_MODEL ?? tc.model,
-    hookPort,
     logDir,
     logLevel,
     platforms,

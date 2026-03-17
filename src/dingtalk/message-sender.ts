@@ -23,8 +23,6 @@ import { buildMessageTitle, OPEN_IM_SYSTEM_TITLE } from '../shared/message-title
 import { buildTextNote } from '../shared/message-note.js';
 import {
   buildDirectoryMessage,
-  buildModeMessage,
-  buildPermissionRequestMessage,
 } from '../shared/system-messages.js';
 
 const log = createLogger('DingTalkSender');
@@ -488,28 +486,6 @@ export async function sendProactiveTextReply(
   await sendProactiveText(target, formatMessage(text, 'done', undefined, OPEN_IM_SYSTEM_TITLE));
   const targetId = typeof target === 'string' ? target : target.chatId;
   log.info(`Proactive text sent to DingTalk chat ${targetId}`);
-}
-
-export async function sendPermissionCard(
-  chatId: string,
-  requestId: string,
-  toolName: string,
-  toolInput: string,
-): Promise<void> {
-  const message = buildPermissionRequestMessage(toolName, toolInput, requestId);
-  await sendTextWithRetry(chatId, message);
-}
-
-export async function sendModeCard(
-  chatId: string,
-  _userId: string,
-  currentMode: string,
-): Promise<void> {
-  const { MODE_LABELS } = await import('../permission-mode/types.js');
-  const message = buildModeMessage(
-    MODE_LABELS[currentMode as keyof typeof MODE_LABELS] || currentMode,
-  );
-  await sendTextWithRetry(chatId, message);
 }
 
 export async function sendDirectorySelection(

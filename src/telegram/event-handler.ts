@@ -11,13 +11,8 @@ import {
   sendTextReply,
   startTypingLoop,
   sendImageReply,
-  sendModeKeyboard,
   sendDirectorySelection,
 } from "./message-sender.js";
-import {
-  registerPermissionSender,
-  resolvePermissionById,
-} from "../hook/permission-server.js";
 import { CommandHandler } from "../commands/handler.js";
 import { getAdapter } from "../adapters/registry.js";
 import { runAITask, type TaskRunState } from "../shared/ai-task.js";
@@ -25,8 +20,6 @@ import { startTaskCleanup } from "../shared/task-cleanup.js";
 import { TELEGRAM_THROTTLE_MS } from "../constants.js";
 import { setActiveChatId } from "../shared/active-chats.js";
 import { setChatUser } from "../shared/chat-user-map.js";
-import { setPermissionMode } from "../permission-mode/session-mode.js";
-import { MODE_LABELS } from "../permission-mode/types.js";
 import { createLogger } from "../logger.js";
 import { downloadMediaFromUrl } from "../shared/media-storage.js";
 import { buildSavedMediaPrompt } from "../shared/media-analysis-prompt.js";
@@ -118,11 +111,9 @@ export function setupTelegramHandlers(
     config,
     sessionManager,
     requestQueue,
-    sender: { sendTextReply, sendDirectorySelection, sendModeKeyboard },
+    sender: { sendTextReply, sendDirectorySelection },
     getRunningTasksSize: () => runningTasks.size,
   });
-
-  registerPermissionSender("telegram", { sendTextReply });
 
   async function enqueueSavedMedia(
     userId: string,
@@ -389,24 +380,6 @@ export function setupTelegramHandlers(
         await ctx.answerCbQuery("已停止执行");
       } else {
         await ctx.answerCbQuery("任务已完成或不存在");
-      }
-    } else if (
-      data.startsWith("perm_allow_") ||
-      data.startsWith("perm_deny_")
-    ) {
-      const isAllow = data.startsWith("perm_allow_");
-      const requestId = data.replace(/^perm_(allow|deny)_/, "");
-      const decision = isAllow ? "allow" : "deny";
-      resolvePermissionById(requestId, decision);
-      await ctx.answerCbQuery(isAllow ? "✅ 已允许" : "❌ 已拒绝");
-    } else if (data.startsWith("mode:")) {
-      const parts = data.split(":");
-      if (parts.length >= 3 && parts[1] === userId) {
-        const mode = parts[2] as "ask" | "accept-edits" | "plan" | "yolo";
-        if (["ask", "accept-edits", "plan", "yolo"].includes(mode)) {
-          setPermissionMode(userId, mode);
-          await ctx.answerCbQuery(`✅ 已切换为 ${MODE_LABELS[mode]}`);
-        }
       }
     }
   });
