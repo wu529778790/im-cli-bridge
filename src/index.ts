@@ -141,6 +141,8 @@ function buildShutdownMessage(uptimeMinutes: number): string {
 }
 
 export async function main() {
+  const startupCwd = process.cwd();
+
   if (needsSetup()) {
     const saved = process.stdin.isTTY
       ? (await runWebConfigFlow({ mode: "dev", cwd: process.cwd() })) === "saved"
@@ -197,10 +199,13 @@ export async function main() {
 
   log.info("Starting open-im bridge...");
   log.info(`AI 工具: ${getConfiguredAiCommands(config).join(", ")}`);
-  log.info(`默认会话目录: ${config.claudeWorkDir}`);
+  log.info(`默认会话目录(本次启动 cwd): ${startupCwd}`);
+  if (startupCwd !== config.claudeWorkDir) {
+    log.info(`历史默认会话目录(配置中的 claudeWorkDir): ${config.claudeWorkDir}`);
+  }
   log.info(`启用平台: ${config.enabledPlatforms.join(", ")}`);
 
-  const sessionManager = new SessionManager(config.claudeWorkDir);
+  const sessionManager = new SessionManager(startupCwd, config.claudeWorkDir);
 
   // CLI 工具（Codex/CodeBuddy）的 session 是进程级别的，服务重启后一定无效。
   // 启动时仅清除 CLI 工具自己的 sessionId，保留 Claude 的持久上下文。
@@ -291,7 +296,7 @@ export async function main() {
       platform,
       APP_VERSION,
       resolvePlatformAiCommand(config, platform as "telegram" | "feishu" | "qq" | "wechat" | "wework" | "dingtalk"),
-      config.claudeWorkDir,
+      startupCwd,
       sessionManager,
     );
     await sendLifecycleNotification(platform, startupMsg).catch((err) => {

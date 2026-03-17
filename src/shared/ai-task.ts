@@ -97,6 +97,7 @@ export function runAITask(
     let wasThinking = false;
     let thinkingText = '';
     let currentSessionId = ctx.sessionId;
+    let hadSessionInvalid = false;
     let activeHandle: { abort: () => void } | null = null;
     const toolLines: string[] = [];
     const minDelta = platformAdapter.minContentDeltaChars ?? 0;
@@ -175,7 +176,12 @@ export function runAITask(
           else log.info(`[AITask] No threadId or convId, sessionId not persisted to storage`);
         },
         onSessionInvalid: () => {
+          hadSessionInvalid = true;
           if (ctx.convId) sessionManager.clearSessionForConv(ctx.userId, ctx.convId, aiCommand);
+          const ok = sessionManager.newSession(ctx.userId);
+          log.info(
+            `[AITask] Session invalid for user ${ctx.userId}, aiCommand=${aiCommand}; auto /new applied, ok=${ok}`
+          );
         },
         onThinking: (t) => {
           if (!firstContentLogged) {
@@ -274,8 +280,11 @@ export function runAITask(
           } else if (aiCommand === 'codex' && isUsageLimitError(error)) {
             log.info(`Keeping codex session for user ${ctx.userId} after usage limit error`);
           }
+          const friendlyError = hadSessionInvalid
+            ? '当前 Claude 会话已失效，已自动执行 /new 重置会话，请重新发送刚才的问题。'
+            : error;
           try {
-            await platformAdapter.sendError(error);
+            await platformAdapter.sendError(friendlyError);
           } catch (err) {
             log.error('Failed to send error:', err);
           }
