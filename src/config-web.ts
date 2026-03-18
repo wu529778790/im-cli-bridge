@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { URL } from "node:url";
 import { randomBytes } from "node:crypto";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { join, dirname } from "node:path";
 import { DWClient } from "dingtalk-stream";
 import type { Config } from "./config.js";
 import { WEB_CONFIG_PORT } from "./constants.js";
@@ -15,6 +17,12 @@ const log = createLogger("ConfigWeb");
 type WebFlowMode = "init" | "start" | "dev";
 type WebFlowResult = "saved" | "cancel";
 const TEST_TIMEOUT_MS = 10000;
+
+function getClaudeSettingsPath(): string {
+  const home = getClaudeConfigHome();
+  const baseDir = join(home, ".claude");
+  return join(baseDir, "settings.json");
+}
 
 // --- Web config auth: one-time login token + in-memory session ---
 
@@ -793,6 +801,55 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
 
       if (request.method === "GET" && requestUrl.pathname === "/api/service/status") {
         json(response, 200, getServiceStatus());
+        return;
+      }
+
+      if (request.method === "GET" && requestUrl.pathname === "/api/claude/settings") {
+        try {
+          const settingsPath = getClaudeSettingsPath();
+          let contents = "{}";
+          if (existsSync(settingsPath)) {
+            contents = readFileSync(settingsPath, "utf-8");
+          } else {
+            // Try to synthesize from env if file doesn't exist yet
+            const env = loadClaudeSettingsEnv();
+            if (Object.keys(env).length > 0) {
+              contents = JSON.stringify({ env }, null, 2);
+            }
+          }
+          json(response, 200, { path: settingsPath, contents });
+        } catch (error) {
+          json(response, 500, { error: error instanceof Error ? error.message : String(error) });
+        }
+        return;
+      }
+
+      if (request.method === "POST" && requestUrl.pathname === "/api/claude/settings") {
+        try {
+          const body = await readJson<{ contents?: string }>(request);
+          const raw = body.contents ?? "";
+          if (!raw.trim()) {
+            json(response, 400, { error: "contents is required" });
+            return;
+          }
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(raw);
+          } catch (err) {
+            json(response, 400, { error: `Invalid JSON: ${err instanceof Error ? err.message : String(err)}` });
+            return;
+          }
+          const pretty = JSON.stringify(parsed, null, 2);
+          const settingsPath = getClaudeSettingsPath();
+          const dir = dirname(settingsPath);
+          if (!existsSync(dir)) {
+            mkdirSync(dir, { recursive: true });
+          }
+          writeFileSync(settingsPath, pretty, "utf-8");
+          json(response, 200, { message: "Claude settings.json saved.", path: settingsPath });
+        } catch (error) {
+          json(response, 500, { error: error instanceof Error ? error.message : String(error) });
+        }
         return;
       }
 

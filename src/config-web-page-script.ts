@@ -201,9 +201,6 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           { id: "ai-claudeWorkDir-label", key: "workDir" },
           { id: "ai-claudeTimeoutMs-label", key: "claudeTimeout" },
           { id: "ai-claudeConfigPath-label", key: "claudeConfigPath" },
-          { id: "ai-claudeAuthToken-label", key: "claudeAuthToken" },
-          { id: "ai-claudeBaseUrl-label", key: "claudeBaseUrl" },
-          { id: "ai-claudeModel-label", key: "claudeModel" },
           { id: "ai-claudeProxy-label", key: "claudeProxy" },
           { id: "ai-codexCliPath-label", key: "codexCli" },
           { id: "ai-codexTimeoutMs-label", key: "codexTimeout" },
@@ -405,15 +402,55 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         return body;
       }
 
+      async function loadClaudeSettings() {
+        const textarea = document.getElementById("claudeSettingsEditor");
+        if (!(textarea instanceof HTMLTextAreaElement)) return;
+        try {
+          const data = await request("/api/claude/settings");
+          const raw = (data.contents || "").trim();
+          const target = raw || "{\n}\n";
+          try {
+            const parsed = JSON.parse(target);
+            textarea.value = JSON.stringify(parsed, null, 2) + "\n";
+          } catch {
+            // 如果后端返回的不是合法 JSON，就原样展示，方便用户手动修
+            textarea.value = target;
+          }
+        } catch (error) {
+          setMessage(error.message || String(error), "error");
+        }
+      }
+
+      async function saveClaudeSettings() {
+        const textarea = document.getElementById("claudeSettingsEditor");
+        if (!(textarea instanceof HTMLTextAreaElement)) return;
+        const edited = textarea.value;
+        // Validate JSON before sending
+        try {
+          const parsed = JSON.parse(edited);
+          textarea.value = JSON.stringify(parsed, null, 2) + "\n";
+        } catch (err) {
+          setMessage("Invalid JSON: " + (err && err.message ? err.message : String(err)), "error");
+          return;
+        }
+
+        try {
+          await request("/api/claude/settings", {
+            method: "POST",
+            body: JSON.stringify({ contents: edited }),
+          });
+          setMessage("Claude settings.json saved.", "success");
+        } catch (error) {
+          setMessage(error.message || String(error), "error");
+        }
+      }
+
       // Fill form with data
       const AI_FIELD_MAPPINGS = [
         { id: "ai-aiCommand", key: "aiCommand" },
         { id: "ai-claudeWorkDir", key: "claudeWorkDir" },
         { id: "ai-claudeTimeoutMs", key: "claudeTimeoutMs" },
         { id: "ai-claudeConfigPath", key: "claudeConfigPath" },
-        { id: "ai-claudeAuthToken", key: "claudeAuthToken" },
-        { id: "ai-claudeBaseUrl", key: "claudeBaseUrl" },
-        { id: "ai-claudeModel", key: "claudeModel" },
         { id: "ai-claudeProxy", key: "claudeProxy" },
         { id: "ai-codexCliPath", key: "codexCliPath" },
         { id: "ai-codexTimeoutMs", key: "codexTimeoutMs" },
@@ -460,6 +497,7 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           applyLanguage();
           const data = await request("/api/config");
           fill(data.payload, data.meta);
+          await loadClaudeSettings();
           // Initialize current AI tool panel from dropdown value
           currentAiToolPanel = el("ai-aiCommand")?.value || "claude";
           await refreshStatus();
@@ -499,6 +537,16 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           }
         });
 
+        // Claude settings.json editor (advanced, inline & collapsible)
+        const claudeSettingsContainer = document.getElementById("claudeSettingsContainer");
+        if (claudeSettingsContainer && claudeSettingsContainer instanceof HTMLDetailsElement) {
+          claudeSettingsContainer.addEventListener("toggle", () => {
+            if (claudeSettingsContainer.open) {
+              void loadClaudeSettings();
+            }
+          });
+        }
+
         // AI tool switcher
         document.querySelectorAll(".tab[data-tool]").forEach((tab) => {
           tab.addEventListener("click", () => {
@@ -531,8 +579,16 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
 
         // Service buttons
         el("validateButton").onclick = validate;
-        el("saveButton").onclick = save;
-        el("startButton").onclick = startService;
+        el("saveButton").onclick = async () => {
+          // 先保存 JSON，再保存主配置
+          await saveClaudeSettings();
+          await save();
+        };
+        el("startButton").onclick = async () => {
+          // 启动前也顺带保存 JSON
+          await saveClaudeSettings();
+          await startService();
+        };
         el("stopButton").onclick = stopService;
 
         // Platform test buttons
@@ -652,9 +708,6 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           claudeWorkDir: getValue("ai-claudeWorkDir"),
           claudeTimeoutMs: getNumber("ai-claudeTimeoutMs"),
           claudeConfigPath: getValue("ai-claudeConfigPath"),
-          claudeAuthToken: getValue("ai-claudeAuthToken"),
-          claudeBaseUrl: getValue("ai-claudeBaseUrl"),
-          claudeModel: getValue("ai-claudeModel"),
           claudeProxy: getValue("ai-claudeProxy"),
           codexTimeoutMs: getNumber("ai-codexTimeoutMs"),
           codebuddyTimeoutMs: getNumber("ai-codebuddyTimeoutMs"),

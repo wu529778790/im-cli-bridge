@@ -1128,19 +1128,20 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                       <div class="form-hint" id="ai-claudeConfigPath-hint">Environment variables are saved to ~/.claude/settings.json</div>
                     </div>
                     <div class="form-group">
-                      <label class="form-label" id="ai-claudeAuthToken-label">ANTHROPIC_AUTH_TOKEN</label>
-                      <input id="ai-claudeAuthToken" class="form-input mono" type="password" />
-                      <div class="form-hint" id="ai-claudeAuthToken-hint">Auth token for API access (optional, overrides env)</div>
-                    </div>
-                    <div class="form-group">
-                      <label class="form-label" id="ai-claudeBaseUrl-label">ANTHROPIC_BASE_URL</label>
-                      <input id="ai-claudeBaseUrl" class="form-input mono" type="text" />
-                      <div class="form-hint" id="ai-claudeBaseUrl-hint">Custom API base URL (optional, overrides env)</div>
-                    </div>
-                    <div class="form-group">
-                      <label class="form-label" id="ai-claudeModel-label">ANTHROPIC_MODEL</label>
-                      <input id="ai-claudeModel" class="form-input mono" type="text" />
-                      <div class="form-hint" id="ai-claudeModel-hint">Model name (optional, overrides env)</div>
+                      <details id="claudeSettingsContainer">
+                        <summary class="form-label" style="cursor: pointer;">Edit ~/.claude/settings.json (advanced)</summary>
+                        <div class="form-hint" style="margin-top: 8px; margin-bottom: 8px;">
+                          JSON will be auto-formatted; invalid JSON 会提示错误。
+                        </div>
+                        <textarea
+                          id="claudeSettingsEditor"
+                          class="form-input mono"
+                          style="min-height: 200px; white-space: pre; font-family: var(--font-mono);"
+                        ></textarea>
+                        <div class="form-hint" style="margin-top: 4px;">
+                          折叠/展开以隐藏或查看完整配置。
+                        </div>
+                      </details>
                     </div>
                   </div>
 

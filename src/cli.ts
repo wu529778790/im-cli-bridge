@@ -136,11 +136,11 @@ async function cmdDev(): Promise<void> {
 
 async function cmdDashboard(): Promise<void> {
   // Start web config server in persistent mode (no timeout)
-  const { startWebConfigServer, openWebConfigUrl } = await import("./config-web.js");
+  const { startWebConfigServer } = await import("./config-web.js");
   const server = await startWebConfigServer({ mode: "dev", cwd: process.cwd(), persistent: true });
-  console.log(`\nDashboard: ${server.url}`);
+  const url = server.loginUrl ?? server.url;
+  console.log(`\nDashboard: ${url}`);
   console.log("Press Ctrl+C to close.\n");
-  openWebConfigUrl();
   await server.waitForResult;
 }
 
