@@ -148,6 +148,7 @@ export class ClaudeSDKAdapter implements ToolAdapter {
         }
 
         log.info(`[V2] Session: ${sessionId ?? 'new'}, prompt="${prompt.slice(0, 50)}..."`);
+        log.info(`ClaudeSDK model param=${String(options?.model ?? '')} baseUrl=${process.env.ANTHROPIC_BASE_URL ?? '(default)'}`);
 
         // 获取或创建会话
         const { session } = await getOrCreateSession(sessionId, workDir, options?.model, permissionMode);
