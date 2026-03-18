@@ -54,11 +54,15 @@ async function getOrCreateSession(
   model: string | undefined,
   permissionMode: 'default' | 'bypassPermissions' | 'acceptEdits' | 'plan'
 ): Promise<{ session: SDKSession; sessionId: string }> {
+  const resolvedModel = model?.trim() || 'claude-opus-4-5';
   const sessionOptions = {
-    model: model || 'claude-opus-4-5',
+    model: resolvedModel,
     permissionMode,
     // 可以添加其他选项，如 hooks, allowedTools 等
   };
+
+  const baseUrl = process.env.ANTHROPIC_BASE_URL ?? '(default)';
+  log.info(`[ClaudeSDK] model param=${String(model ?? '')} resolved=${resolvedModel} baseUrl=${baseUrl}`);
 
   let session: SDKSession;
 
