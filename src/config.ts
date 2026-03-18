@@ -659,8 +659,9 @@ export function loadConfig(): Config {
         '方式 2：运行配置向导',
         '  open-im init',
         '',
-        '方式 3：编辑 ~/.open-im/config.json 的 env 字段',
-        '  或 ~/.claude/settings.json（与 Claude Code 共用）',
+        '方式 3：编辑配置文件',
+        '  ~/.open-im/config.json: tools.claude.model = "..."',
+        '  ~/.claude/settings.json: env.ANTHROPIC_MODEL = "..."（与 Claude Code 共用）',
         '',
       ].join('\n');
       throw new Error(errorMsg);
@@ -868,7 +869,7 @@ export function loadConfig(): Config {
     claudeTimeoutMs,
     codexTimeoutMs,
     codebuddyTimeoutMs,
-    claudeModel: process.env.CLAUDE_MODEL ?? process.env.ANTHROPIC_MODEL ?? tc.model,
+    claudeModel: process.env.ANTHROPIC_MODEL ?? tc.model,
     logDir,
     logLevel,
     platforms,
