@@ -55,6 +55,8 @@ export interface Config {
   aiCommand: AiCommand;
   codexCliPath: string;
   codebuddyCliPath: string;
+  /** Claude 访问 API 的代理（如 http://127.0.0.1:7890） */
+  claudeProxy?: string;
   /** Codex 访问 chatgpt.com 的代理（如 http://127.0.0.1:7890） */
   codexProxy?: string;
   claudeTimeoutMs: number;
@@ -164,10 +166,14 @@ export interface FilePlatformDingtalk {
 }
 
 export interface FileToolClaude {
+  cliPath?: string;
   workDir?: string;
   timeoutMs?: number;
-  model?: string;
+  skipPermissions?: boolean;
+  /** HTTP/HTTPS 代理，用于访问 Claude API（如 http://127.0.0.1:7890） */
   proxy?: string;
+  /** Claude API 配置（优先级：环境变量 > tools.claude.env > ~/.claude/settings.json） */
+  env?: Record<string, string>;
 }
 
 export interface FileToolCodex {
@@ -256,7 +262,8 @@ function migrateToNewConfigFormat(raw: Record<string, unknown>): Record<string, 
       ...tc,
       workDir: tc.workDir ?? raw.claudeWorkDir ?? process.cwd(),
       timeoutMs: tc.timeoutMs ?? raw.claudeTimeoutMs ?? 600000,
-      model: tc.model ?? raw.claudeModel,
+      proxy: tc.proxy,
+      // model 现在通过 env 配置，不再在这里处理
     },
     codex: {
       ...tcod,
@@ -423,11 +430,16 @@ export function loadConfig(): Config {
       }
     }
   };
+  // 1. 全局 env（最低优先级之一）
   if (file.env) mergeEnv(file.env as Record<string, unknown>);
 
-  // 从 Claude Code 配置合并 API 凭证（~/.claude/settings.json 或 ~/.claude.json，最低优先级）
-  const claudeEnv = loadClaudeSettingsEnv();
-  mergeEnv(claudeEnv);
+  // 2. tools.claude.env（优先级高于 Claude settings）
+  const claudeToolEnv = file.tools?.claude?.env;
+  if (claudeToolEnv) mergeEnv(claudeToolEnv as Record<string, unknown>);
+
+  // 3. 从 Claude Code 配置合并（最低优先级）
+  const claudeSettingsEnv = loadClaudeSettingsEnv();
+  mergeEnv(claudeSettingsEnv);
 
   const fileTelegram = file.platforms?.telegram;
   const fileFeishu = file.platforms?.feishu;
@@ -584,6 +596,7 @@ export function loadConfig(): Config {
   const tcod = file.tools?.codex ?? {};
   const tcb = file.tools?.codebuddy ?? {};
 
+  const claudeProxy = process.env.CLAUDE_PROXY ?? tc.proxy;
   const codexProxy = process.env.CODEX_PROXY ?? tcod.proxy;
   let codexCliPath = process.env.CODEX_CLI_PATH ?? tcod.cliPath ?? 'codex';
   if (process.platform === 'win32' && codexCliPath === 'codex') {
@@ -659,8 +672,9 @@ export function loadConfig(): Config {
         '方式 2：运行配置向导',
         '  open-im init',
         '',
-        '方式 3：编辑 ~/.open-im/config.json 的 env 字段',
-        '  或 ~/.claude/settings.json（与 Claude Code 共用）',
+        '方式 3：编辑配置文件',
+        '  ~/.open-im/config.json: tools.claude.env.ANTHROPIC_MODEL = "..."',
+        '  ~/.claude/settings.json: env.ANTHROPIC_MODEL = "..."（与 Claude Code 共用）',
         '',
       ].join('\n');
       throw new Error(errorMsg);
@@ -863,12 +877,13 @@ export function loadConfig(): Config {
     aiCommand,
     codexCliPath,
     codebuddyCliPath,
+    claudeProxy,
     codexProxy,
     claudeWorkDir,
     claudeTimeoutMs,
     codexTimeoutMs,
     codebuddyTimeoutMs,
-    claudeModel: process.env.CLAUDE_MODEL ?? process.env.ANTHROPIC_MODEL ?? tc.model,
+    claudeModel: process.env.ANTHROPIC_MODEL,
     logDir,
     logLevel,
     platforms,

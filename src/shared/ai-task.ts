@@ -296,8 +296,8 @@ export function runAITask(
           timeoutMs,
           model: sessionManager.getModel(ctx.userId, ctx.threadId) ?? config.claudeModel,
           chatId: ctx.chatId,
-          // Claude 默认跳过权限确认，保持与之前 CLI 行为一致（全自动执行）
-          ...(aiCommand === 'claude' ? { skipPermissions: true } : {}),
+          // 默认跳过权限确认，保持全自动执行
+          skipPermissions: true,
           ...(aiCommand === 'codex' && config.codexProxy ? { proxy: config.codexProxy } : {}),
         }
       );
