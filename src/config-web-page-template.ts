@@ -781,6 +781,16 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
             </svg>
             <span id="navServiceText">Service</span>
           </button>
+          <button class="nav-item" id="navConfigEditorBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+              <polyline points="10 9 9 9 8 9"/>
+            </svg>
+            <span id="navConfigEditorText">Config Editor</span>
+          </button>
         </nav>
       </aside>
 
@@ -1192,6 +1202,33 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                 </div>
                 <div class="text-center mt-6">
                   <div id="message" class="message hidden" aria-live="polite"></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Config Editor Section -->
+          <section class="section" id="configEditorSection" style="display:none">
+            <div class="section-header">
+              <h2 class="section-title" id="configEditorTitle">Config Editor</h2>
+              <p class="section-description" id="configEditorHint">Edit ~/.open-im/config.json directly</p>
+            </div>
+
+            <div class="card">
+              <div class="card-body">
+                <div class="form-group">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                    <label class="form-label" id="configJson-label">Configuration (JSON)</label>
+                    <div style="display:flex; gap:8px;">
+                      <button id="formatJsonButton" class="btn btn-sm btn-ghost">Format</button>
+                      <button id="resetJsonButton" class="btn btn-sm btn-ghost">Reset</button>
+                    </div>
+                  </div>
+                  <textarea id="configJson" class="form-input mono" rows="20" style="font-family:monospace; font-size:13px; line-height:1.5; min-height:400px; resize:vertical;" spellcheck="false"></textarea>
+                  <p class="form-hint" id="configJson-hint">Edit the configuration JSON. Changes will be saved when you click "Save Config" in the Service section.</p>
+                </div>
+                <div class="form-group">
+                  <div id="jsonValidationMessage" class="message hidden" aria-live="polite"></div>
                 </div>
               </div>
             </div>
