@@ -159,6 +159,12 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           { id: "statConfiguredLabel", key: "statConfiguredLabel" },
           { id: "statEnabledLabel", key: "statEnabledLabel" },
           { id: "statServiceLabel", key: "statServiceLabel" },
+          { id: "openImConfigSummary", key: "configJson" },
+          { id: "claudeSettingsSummary", key: "claudeSettingsLabel" },
+          { id: "formatJsonButtonText", key: "formatJson" },
+          { id: "resetJsonButtonText", key: "resetJson" },
+          { id: "saveClaudeSettingsBtnText", key: "saveBtn" },
+          { id: "saveOpenImConfigBtnText", key: "saveBtn" },
         ],
         platformLabels: {
           enabled: { suffix: "-label", key: "enabled" },
@@ -380,7 +386,7 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
 
       // Navigation
       function setActiveNav(targetId) {
-        ["navOverviewBtn","navPlatformsBtn","navAiBtn","navServiceBtn","navConfigEditorBtn"].forEach((id) => {
+        ["navOverviewBtn","navPlatformsBtn","navAiBtn","navServiceBtn"].forEach((id) => {
           const btn = el(id);
           if (btn) btn.classList.toggle("active", id === targetId);
         });
@@ -604,15 +610,36 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           }
         });
 
-        // Claude settings.json editor (advanced, inline & collapsible)
+        // Open-im config.json: load when expanded
+        const openImConfigContainer = document.getElementById("openImConfigContainer");
+        if (openImConfigContainer && openImConfigContainer instanceof HTMLDetailsElement) {
+          openImConfigContainer.addEventListener("toggle", () => {
+            if (openImConfigContainer.open) void loadOpenImConfig();
+          });
+        }
+        // Claude settings.json: load when expanded
         const claudeSettingsContainer = document.getElementById("claudeSettingsContainer");
         if (claudeSettingsContainer && claudeSettingsContainer instanceof HTMLDetailsElement) {
           claudeSettingsContainer.addEventListener("toggle", () => {
-            if (claudeSettingsContainer.open) {
-              void loadClaudeSettings();
-            }
+            if (claudeSettingsContainer.open) void loadClaudeSettings();
           });
         }
+
+        el("saveClaudeSettingsBtn").onclick = async () => {
+          try {
+            await saveClaudeSettings();
+          } catch (e) {
+            setMessage(e && e.message ? e.message : String(e), "error");
+          }
+        };
+        el("saveOpenImConfigBtn").onclick = async () => {
+          try {
+            await saveOpenImConfig();
+            setMessage(t("saveOk"), "success");
+          } catch (e) {
+            setMessage(e && e.message ? e.message : String(e), "error");
+          }
+        };
 
         // AI tool switcher
         document.querySelectorAll(".tab[data-tool]").forEach((tab) => {
@@ -648,7 +675,6 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         el("navPlatformsBtn").onclick = () => scrollToSection("configSection", "navPlatformsBtn");
         el("navAiBtn").onclick = () => scrollToSection("aiSection", "navAiBtn");
         el("navServiceBtn").onclick = () => scrollToSection("serviceSection", "navServiceBtn");
-        el("navConfigEditorBtn").onclick = () => scrollToSection("configEditorSection", "navConfigEditorBtn");
 
         // Language toggle
         el("langButton").onclick = () => {
@@ -718,7 +744,8 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
       async function saveOpenImConfig() {
         const textarea = document.getElementById("configJson");
         if (!(textarea instanceof HTMLTextAreaElement)) return;
-        const json = textarea.value;
+        const json = textarea.value.trim();
+        if (!json) return;
 
         // Validate JSON
         try {
