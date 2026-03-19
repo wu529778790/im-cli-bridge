@@ -764,6 +764,46 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
         return;
       }
 
+      if (request.method === "GET" && requestUrl.pathname === "/api/config/file") {
+        try {
+          let contents = "{}";
+          if (existsSync(CONFIG_PATH)) {
+            contents = readFileSync(CONFIG_PATH, "utf-8");
+          }
+          json(response, 200, { path: CONFIG_PATH, contents });
+        } catch (error) {
+          json(response, 500, { error: error instanceof Error ? error.message : String(error) });
+        }
+        return;
+      }
+
+      if (request.method === "POST" && requestUrl.pathname === "/api/config/file") {
+        try {
+          const body = await readJson<{ contents?: string }>(request);
+          const raw = body.contents ?? "";
+          if (!raw.trim()) {
+            json(response, 400, { error: "contents is required" });
+            return;
+          }
+          try {
+            JSON.parse(raw);
+          } catch {
+            json(response, 400, { error: "Invalid JSON" });
+            return;
+          }
+          const dir = dirname(CONFIG_PATH);
+          if (!existsSync(dir)) {
+            mkdirSync(dir, { recursive: true });
+          }
+          writeFileSync(CONFIG_PATH, raw, "utf-8");
+          loadConfig();
+          json(response, 200, { message: "Config file saved.", path: CONFIG_PATH });
+        } catch (error) {
+          json(response, 500, { error: error instanceof Error ? error.message : String(error) });
+        }
+        return;
+      }
+
       if (request.method === "POST" && requestUrl.pathname === "/api/config/validate") {
         try {
           const body = await readJson<WebConfigPayload>(request);

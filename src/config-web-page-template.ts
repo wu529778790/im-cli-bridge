@@ -1128,18 +1128,31 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                       <div class="form-hint" id="ai-claudeConfigPath-hint">Environment variables are saved to ~/.claude/settings.json</div>
                     </div>
                     <div class="form-group">
-                      <details id="claudeSettingsContainer">
-                        <summary class="form-label" style="cursor: pointer;">Edit ~/.claude/settings.json (advanced)</summary>
-                        <div class="form-hint" style="margin-top: 8px; margin-bottom: 8px;">
-                          JSON will be auto-formatted; invalid JSON 会提示错误。
+                      <details id="openImConfigContainer">
+                        <summary class="form-label" style="cursor: pointer;" id="openImConfigSummary">~/.open-im/config.json</summary>
+                        <div style="margin-top: 12px;">
+                          <div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:8px;">
+                            <button type="button" id="formatJsonButton" class="btn btn-sm btn-ghost"><span id="formatJsonButtonText">Format</span></button>
+                            <button type="button" id="resetJsonButton" class="btn btn-sm btn-ghost"><span id="resetJsonButtonText">Reset</span></button>
+                          </div>
+                          <textarea id="configJson" class="form-input mono" rows="16" style="font-family:monospace; font-size:13px; line-height:1.5; min-height:320px; resize:vertical; white-space:pre;" spellcheck="false"></textarea>
+                          <div id="jsonValidationMessage" class="message hidden" style="margin-top:6px;" aria-live="polite"></div>
+                          <div style="margin-top: 8px;">
+                            <button type="button" id="saveOpenImConfigBtn" class="btn btn-secondary btn-sm"><span id="saveOpenImConfigBtnText">Save</span></button>
+                          </div>
                         </div>
-                        <textarea
-                          id="claudeSettingsEditor"
-                          class="form-input mono"
-                          style="min-height: 200px; white-space: pre; font-family: var(--font-mono);"
-                        ></textarea>
-                        <div class="form-hint" style="margin-top: 4px;">
-                          折叠/展开以隐藏或查看完整配置。
+                      </details>
+                      <details id="claudeSettingsContainer" style="margin-top: 12px;">
+                        <summary class="form-label" style="cursor: pointer;" id="claudeSettingsSummary">~/.claude/settings.json</summary>
+                        <div style="margin-top: 12px;">
+                          <textarea
+                            id="claudeSettingsEditor"
+                            class="form-input mono"
+                            style="min-height: 180px; white-space: pre; font-family: var(--font-mono);"
+                          ></textarea>
+                          <div style="margin-top: 8px;">
+                            <button type="button" id="saveClaudeSettingsBtn" class="btn btn-secondary btn-sm"><span id="saveClaudeSettingsBtnText">Save</span></button>
+                          </div>
                         </div>
                       </details>
                     </div>
@@ -1196,6 +1209,7 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
               </div>
             </div>
           </section>
+
         </div>
       </main>
     </div>

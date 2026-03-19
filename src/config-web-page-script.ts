@@ -159,6 +159,12 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           { id: "statConfiguredLabel", key: "statConfiguredLabel" },
           { id: "statEnabledLabel", key: "statEnabledLabel" },
           { id: "statServiceLabel", key: "statServiceLabel" },
+          { id: "openImConfigSummary", key: "configJson" },
+          { id: "claudeSettingsSummary", key: "claudeSettingsLabel" },
+          { id: "formatJsonButtonText", key: "formatJson" },
+          { id: "resetJsonButtonText", key: "resetJson" },
+          { id: "saveClaudeSettingsBtnText", key: "saveBtn" },
+          { id: "saveOpenImConfigBtnText", key: "saveBtn" },
         ],
         platformLabels: {
           enabled: { suffix: "-label", key: "enabled" },
@@ -445,6 +451,70 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         }
       }
 
+      // Open-im Config Editor functions
+      let originalConfigJson = "";
+
+      async function loadOpenImConfig() {
+        const textarea = document.getElementById("configJson");
+        if (!(textarea instanceof HTMLTextAreaElement)) return;
+        try {
+          const data = await request("/api/config/file");
+          const raw = (data.contents || "").trim();
+          originalConfigJson = raw;
+          try {
+            const parsed = JSON.parse(raw);
+            textarea.value = JSON.stringify(parsed, null, 2) + "\n";
+          } catch {
+            textarea.value = raw;
+          }
+          validateJson();
+        } catch (error) {
+          showJsonValidationMessage(error.message || String(error), "error");
+        }
+      }
+
+      function validateJson() {
+        const textarea = document.getElementById("configJson");
+        const message = document.getElementById("jsonValidationMessage");
+        if (!(textarea instanceof HTMLTextAreaElement) || !message) return;
+
+        const json = textarea.value;
+        try {
+          JSON.parse(json);
+          showJsonValidationMessage("Valid JSON", "success");
+        } catch (err) {
+          showJsonValidationMessage("Invalid JSON: " + (err.message || String(err)), "error");
+        }
+      }
+
+      function showJsonValidationMessage(text, type) {
+        const message = document.getElementById("jsonValidationMessage");
+        if (!message) return;
+        message.textContent = text;
+        message.className = "message";
+        if (type) message.classList.add("message-" + type);
+        message.classList.remove("hidden");
+      }
+
+      function formatJson() {
+        const textarea = document.getElementById("configJson");
+        if (!(textarea instanceof HTMLTextAreaElement)) return;
+        try {
+          const parsed = JSON.parse(textarea.value);
+          textarea.value = JSON.stringify(parsed, null, 2) + "\n";
+          validateJson();
+        } catch (err) {
+          showJsonValidationMessage("Cannot format: Invalid JSON", "error");
+        }
+      }
+
+      function resetJson() {
+        const textarea = document.getElementById("configJson");
+        if (!(textarea instanceof HTMLTextAreaElement)) return;
+        textarea.value = originalConfigJson;
+        validateJson();
+      }
+
       // Fill form with data
       const AI_FIELD_MAPPINGS = [
         { id: "ai-aiCommand", key: "aiCommand" },
@@ -474,6 +544,9 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
             setValue(id, value ?? "");
           }
         });
+
+        // Load JSON editor content
+        void loadOpenImConfig();
 
         updateVisualState();
       }
@@ -537,15 +610,36 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           }
         });
 
-        // Claude settings.json editor (advanced, inline & collapsible)
+        // Open-im config.json: load when expanded
+        const openImConfigContainer = document.getElementById("openImConfigContainer");
+        if (openImConfigContainer && openImConfigContainer instanceof HTMLDetailsElement) {
+          openImConfigContainer.addEventListener("toggle", () => {
+            if (openImConfigContainer.open) void loadOpenImConfig();
+          });
+        }
+        // Claude settings.json: load when expanded
         const claudeSettingsContainer = document.getElementById("claudeSettingsContainer");
         if (claudeSettingsContainer && claudeSettingsContainer instanceof HTMLDetailsElement) {
           claudeSettingsContainer.addEventListener("toggle", () => {
-            if (claudeSettingsContainer.open) {
-              void loadClaudeSettings();
-            }
+            if (claudeSettingsContainer.open) void loadClaudeSettings();
           });
         }
+
+        el("saveClaudeSettingsBtn").onclick = async () => {
+          try {
+            await saveClaudeSettings();
+          } catch (e) {
+            setMessage(e && e.message ? e.message : String(e), "error");
+          }
+        };
+        el("saveOpenImConfigBtn").onclick = async () => {
+          try {
+            await saveOpenImConfig();
+            setMessage(t("saveOk"), "success");
+          } catch (e) {
+            setMessage(e && e.message ? e.message : String(e), "error");
+          }
+        };
 
         // AI tool switcher
         document.querySelectorAll(".tab[data-tool]").forEach((tab) => {
@@ -557,6 +651,24 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
             }
           });
         });
+
+        // Config editor JSON textarea
+        const configJsonTextarea = document.getElementById("configJson");
+        if (configJsonTextarea) {
+          configJsonTextarea.addEventListener("input", validateJson);
+        }
+
+        // Config editor buttons
+        const formatJsonButton = document.getElementById("formatJsonButton");
+        if (formatJsonButton) {
+          formatJsonButton.addEventListener("click", formatJson);
+        }
+
+        const resetJsonButton = document.getElementById("resetJsonButton");
+        if (resetJsonButton) {
+          resetJsonButton.addEventListener("click", resetJson);
+        }
+
 
         // Navigation
         el("navOverviewBtn").onclick = () => scrollToSection("dashboardSection", "navOverviewBtn");
@@ -617,12 +729,41 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
       async function save() {
         setBusy(true);
         try {
+          // First save JSON editor content if changed
+          await saveOpenImConfig();
+          // Then save form data
           await request("/api/config/save?final=1", { method: "POST", body: JSON.stringify(payload()) });
           setMessage(t("saveOk"), "success");
         } catch (error) {
           setMessage(error.message || String(error), "error");
         } finally {
           setBusy(false);
+        }
+      }
+
+      async function saveOpenImConfig() {
+        const textarea = document.getElementById("configJson");
+        if (!(textarea instanceof HTMLTextAreaElement)) return;
+        const json = textarea.value.trim();
+        if (!json) return;
+
+        // Validate JSON
+        try {
+          JSON.parse(json);
+        } catch (err) {
+          showJsonValidationMessage("Invalid JSON: " + (err.message || String(err)), "error");
+          throw new Error("Invalid JSON: " + (err.message || String(err)));
+        }
+
+        try {
+          await request("/api/config/file", {
+            method: "POST",
+            body: JSON.stringify({ contents: json }),
+          });
+          originalConfigJson = json;
+        } catch (error) {
+          showJsonValidationMessage(error.message || String(error), "error");
+          throw error;
         }
       }
 
