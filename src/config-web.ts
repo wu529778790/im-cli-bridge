@@ -418,6 +418,7 @@ function createProbeConfig(values: Partial<Config>): Config {
     wechatAllowedUserIds: [],
     weworkAllowedUserIds: [],
     dingtalkAllowedUserIds: [],
+    workbuddyAllowedUserIds: [],
     aiCommand: "claude",
     codexCliPath: "codex",
     claudeWorkDir: process.cwd(),

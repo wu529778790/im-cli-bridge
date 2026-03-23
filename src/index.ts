@@ -24,6 +24,9 @@ import { setupWeWorkHandlers } from "./wework/event-handler.js";
 import { sendProactiveTextReply as sendWeWorkTextReply } from "./wework/message-sender.js";
 import { initDingTalk, stopDingTalk, formatDingTalkInitError } from "./dingtalk/client.js";
 import { setupDingTalkHandlers } from "./dingtalk/event-handler.js";
+import { initWorkBuddy, stopWorkBuddy } from "./workbuddy/client.js";
+import { setupWorkBuddyHandlers } from "./workbuddy/event-handler.js";
+import { sendTextReply as sendWorkBuddyTextReply } from "./workbuddy/message-sender.js";
 import { initAdapters, cleanupAdapters } from "./adapters/registry.js";
 import { SessionManager } from "./session/session-manager.js";
 import {
@@ -44,8 +47,8 @@ const { version: APP_VERSION } = require("../package.json") as {
 const log = createLogger("Main");
 
 async function sendLifecycleNotification(platform: string, message: string) {
-  // DingTalk 不支持主动发消息（OpenAPI 需 robotCode 等，易报 robot 不存在），跳过启动/关闭通知
-  if (platform === "dingtalk") return;
+  // DingTalk 和 WorkBuddy 不支持主动发消息（OpenAPI 需 robotCode 等，易报 robot 不存在），跳过启动/关闭通知
+  if (platform === "dingtalk" || platform === "workbuddy") return;
 
   const telegramChatId = getActiveChatId("telegram");
   const feishuChatId = getActiveChatId("feishu");
@@ -217,6 +220,7 @@ export async function main() {
   let wechatHandle: ReturnType<typeof setupWeChatHandlers> | null = null;
   let weworkHandle: ReturnType<typeof setupWeWorkHandlers> | null = null;
   let dingtalkHandle: ReturnType<typeof setupDingTalkHandlers> | null = null;
+  let workbuddyHandle: ReturnType<typeof setupWorkBuddyHandlers> | null = null;
 
   // Track successfully initialized platforms
   const successfulPlatforms: string[] = [];
@@ -282,6 +286,16 @@ export async function main() {
     }
   }
 
+  if (config.enabledPlatforms.includes("workbuddy")) {
+    try {
+      workbuddyHandle = setupWorkBuddyHandlers(config, sessionManager);
+      await initWorkBuddy(config, workbuddyHandle.handleEvent);
+      successfulPlatforms.push("workbuddy");
+    } catch (err) {
+      log.error("Failed to initialize WorkBuddy:", err);
+    }
+  }
+
   // Require at least one platform to start successfully
   if (successfulPlatforms.length === 0) {
     throw new Error("No platforms initialized successfully. Service cannot start.");
@@ -295,7 +309,7 @@ export async function main() {
     const startupMsg = buildStartupMessage(
       platform,
       APP_VERSION,
-      resolvePlatformAiCommand(config, platform as "telegram" | "feishu" | "qq" | "wechat" | "wework" | "dingtalk"),
+      resolvePlatformAiCommand(config, platform as "telegram" | "feishu" | "qq" | "wechat" | "wework" | "dingtalk" | "workbuddy"),
       startupCwd,
       sessionManager,
     );
@@ -338,6 +352,8 @@ export async function main() {
     stopWeWork();
     dingtalkHandle?.stop();
     stopDingTalk();
+    workbuddyHandle?.stop();
+    stopWorkBuddy();
     sessionManager.destroy();
     cleanupAdapters();
     flushActiveChats();

@@ -16,6 +16,7 @@ const PLATFORM_LABELS: Record<Platform, string> = {
   wechat: "微信",
   wework: "企业微信",
   dingtalk: "钉钉",
+  workbuddy: "WorkBuddy",
 };
 
 export const CHANNEL_CAPABILITIES: Record<Platform, ChannelCapabilities> = {
@@ -42,6 +43,10 @@ export const CHANNEL_CAPABILITIES: Record<Platform, ChannelCapabilities> = {
   dingtalk: {
     inbound: { text: "native", image: "fallback", file: "fallback", voice: "fallback", video: "fallback" },
     outbound: { streamEdit: "native", streamPush: "fallback", image: "fallback", card: "native", typing: "native" },
+  },
+  workbuddy: {
+    inbound: { text: "native", image: "none", file: "none", voice: "none", video: "none" },
+    outbound: { streamEdit: "none", streamPush: "none", image: "none", card: "none", typing: "none" },
   },
 };
 

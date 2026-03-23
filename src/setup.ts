@@ -1055,9 +1055,10 @@ const PLATFORM_LABELS: Record<Platform, string> = {
   wework: "企业微信",
   dingtalk: "钉钉",
   wechat: "微信（测试中）",
+  workbuddy: "WorkBuddy",
 };
 
-const ALL_PLATFORMS: Platform[] = ["telegram", "feishu", "qq", "wework", "dingtalk", "wechat"];
+const ALL_PLATFORMS: Platform[] = ["telegram", "feishu", "qq", "wework", "dingtalk", "wechat", "workbuddy"];
 
 /**
  * 启动时让用户选择要启用的平台（无论单通道还是多通道）

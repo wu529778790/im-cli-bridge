@@ -13,7 +13,7 @@ import { APP_HOME } from './constants.js';
 
 const log = createLogger('config');
 
-export type Platform = 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework';
+export type Platform = 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework' | 'workbuddy';
 
 export type AiCommand = 'claude' | 'codex' | 'codebuddy';
 const AI_COMMANDS: readonly AiCommand[] = ['claude', 'codex', 'codebuddy'];
@@ -51,6 +51,7 @@ export interface Config {
   wechatAllowedUserIds: string[];
   weworkAllowedUserIds: string[];
   dingtalkAllowedUserIds: string[];
+  workbuddyAllowedUserIds: string[];
 
   aiCommand: AiCommand;
   codexCliPath: string;
@@ -105,6 +106,17 @@ export interface Config {
       aiCommand?: AiCommand;
       allowedUserIds: string[];
       cardTemplateId?: string;
+    };
+    workbuddy?: {
+      enabled: boolean;
+      aiCommand?: AiCommand;
+      allowedUserIds: string[];
+      accessToken?: string;
+      refreshToken?: string;
+      userId?: string;
+      baseUrl?: string;
+      guid?: string;
+      workspacePath?: string;
     };
   };
 }
@@ -165,6 +177,19 @@ export interface FilePlatformDingtalk {
   cardTemplateId?: string;
 }
 
+interface FilePlatformWorkBuddy {
+  enabled?: boolean;
+  aiCommand?: AiCommand;
+  allowedUserIds?: string[];
+  // WorkBuddy OAuth credentials
+  accessToken?: string;
+  refreshToken?: string;
+  userId?: string;
+  baseUrl?: string;
+  guid?: string;
+  workspacePath?: string;
+}
+
 export interface FileToolClaude {
   cliPath?: string;
   workDir?: string;
@@ -202,6 +227,7 @@ export interface FileConfig {
     wechat?: FilePlatformWechat;
     wework?: FilePlatformWework;
     dingtalk?: FilePlatformDingtalk;
+    workbuddy?: FilePlatformWorkBuddy;
   };
 
   env?: Record<string, string>;
@@ -447,6 +473,7 @@ export function loadConfig(): Config {
   const fileWechat = file.platforms?.wechat;
   const fileWework = file.platforms?.wework;
   const fileDingtalk = file.platforms?.dingtalk;
+  const fileWorkBuddy = file.platforms?.workbuddy;
 
   // 1. 加载各平台凭证（env 优先，其次新结构，最后旧字段）
   const telegramBotToken =
@@ -515,6 +542,26 @@ export function loadConfig(): Config {
     process.env.DINGTALK_CARD_TEMPLATE_ID ??
     fileDingtalk?.cardTemplateId;
 
+  // WorkBuddy credentials
+  const workbuddyAccessToken =
+    process.env.WORKBUDDY_ACCESS_TOKEN ??
+    fileWorkBuddy?.accessToken;
+  const workbuddyRefreshToken =
+    process.env.WORKBUDDY_REFRESH_TOKEN ??
+    fileWorkBuddy?.refreshToken;
+  const workbuddyUserId =
+    process.env.WORKBUDDY_USER_ID ??
+    fileWorkBuddy?.userId;
+  const workbuddyBaseUrl =
+    process.env.WORKBUDDY_BASE_URL ??
+    fileWorkBuddy?.baseUrl;
+  const workbuddyGuid =
+    process.env.WORKBUDDY_GUID ??
+    fileWorkBuddy?.guid;
+  const workbuddyWorkspacePath =
+    process.env.WORKBUDDY_WORKSPACE_PATH ??
+    fileWorkBuddy?.workspacePath;
+
   // 2. 计算启用平台
   const enabledPlatforms: Platform[] = [];
 
@@ -524,6 +571,7 @@ export function loadConfig(): Config {
   const wechatEnabledFlag = fileWechat?.enabled;
   const weworkEnabledFlag = fileWework?.enabled;
   const dingtalkEnabledFlag = fileDingtalk?.enabled;
+  const workbuddyEnabledFlag = fileWorkBuddy?.enabled;
 
   const telegramEnabled =
     !!telegramBotToken && (telegramEnabledFlag !== false);
@@ -541,6 +589,9 @@ export function loadConfig(): Config {
     !!(weworkCorpId && weworkSecret) && (weworkEnabledFlag !== false);
   const dingtalkEnabled =
     !!(dingtalkClientId && dingtalkClientSecret) && (dingtalkEnabledFlag !== false);
+  // WorkBuddy 需要 OAuth 凭证
+  const workbuddyEnabled =
+    !!(workbuddyAccessToken && workbuddyRefreshToken && workbuddyUserId) && (workbuddyEnabledFlag !== false);
 
   if (telegramEnabled) enabledPlatforms.push('telegram');
   if (feishuEnabled) enabledPlatforms.push('feishu');
@@ -548,6 +599,7 @@ export function loadConfig(): Config {
   if (wechatEnabled) enabledPlatforms.push('wechat');
   if (weworkEnabled) enabledPlatforms.push('wework');
   if (dingtalkEnabled) enabledPlatforms.push('dingtalk');
+  if (workbuddyEnabled) enabledPlatforms.push('workbuddy');
 
   if (enabledPlatforms.length === 0) {
     throw new Error('至少需要配置 Telegram、Feishu、WeChat、WeWork 或 DingTalk 其中一个平台（可以通过环境变量或 config.json）');
@@ -589,6 +641,11 @@ export function loadConfig(): Config {
     process.env.DINGTALK_ALLOWED_USER_IDS !== undefined
       ? parseCommaSeparated(process.env.DINGTALK_ALLOWED_USER_IDS)
       : fileDingtalk?.allowedUserIds ?? allowedUserIds;
+
+  const workbuddyAllowedUserIds =
+    process.env.WORKBUDDY_ALLOWED_USER_IDS !== undefined
+      ? parseCommaSeparated(process.env.WORKBUDDY_ALLOWED_USER_IDS)
+      : fileWorkBuddy?.allowedUserIds ?? allowedUserIds;
 
   // 5. AI / 工作目录 / 安全配置（从 tools 读取）
   const aiCommand = normalizeAiCommand(process.env.AI_COMMAND ?? file.aiCommand, 'claude');
@@ -844,6 +901,29 @@ export function loadConfig(): Config {
           allowedUserIds: dingtalkAllowedUserIds,
           cardTemplateId: dingtalkCardTemplateId,
         },
+    workbuddy: workbuddyEnabled
+      ? {
+          enabled: true,
+          aiCommand: normalizeAiCommand(file.platforms?.workbuddy?.aiCommand, aiCommand),
+          allowedUserIds: workbuddyAllowedUserIds,
+          accessToken: workbuddyAccessToken,
+          refreshToken: workbuddyRefreshToken,
+          userId: workbuddyUserId,
+          baseUrl: workbuddyBaseUrl,
+          guid: workbuddyGuid,
+          workspacePath: workbuddyWorkspacePath,
+        }
+      : {
+          enabled: false,
+          aiCommand: normalizeAiCommand(file.platforms?.workbuddy?.aiCommand, aiCommand),
+          allowedUserIds: workbuddyAllowedUserIds,
+          accessToken: workbuddyAccessToken,
+          refreshToken: workbuddyRefreshToken,
+          userId: workbuddyUserId,
+          baseUrl: workbuddyBaseUrl,
+          guid: workbuddyGuid,
+          workspacePath: workbuddyWorkspacePath,
+        },
   };
 
   return {
@@ -874,6 +954,7 @@ export function loadConfig(): Config {
     wechatAllowedUserIds,
     weworkAllowedUserIds,
     dingtalkAllowedUserIds,
+    workbuddyAllowedUserIds,
     aiCommand,
     codexCliPath,
     codebuddyCliPath,
