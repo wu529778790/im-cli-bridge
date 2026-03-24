@@ -828,7 +828,7 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
             <div class="stats-grid">
               <div class="stat-card">
                 <div class="stat-label" id="statConfiguredLabel">Configured</div>
-                <div class="stat-value" id="statConfiguredValue">0/5</div>
+                <div class="stat-value" id="statConfiguredValue">0/6</div>
               </div>
               <div class="stat-card">
                 <div class="stat-label" id="statEnabledLabel">Enabled</div>
@@ -1056,6 +1056,53 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                     <button id="test-dingtalk" class="btn btn-secondary btn-sm" type="button">Test Configuration</button>
                   </div>
                   <div id="test-dingtalk-result" class="mt-4"></div>
+                </div>
+              </div>
+
+              <!-- WorkBuddy -->
+              <div class="platform-card">
+                <div class="platform-header">
+                  <h3 class="platform-title">WorkBuddy</h3>
+                  <label class="toggle">
+                    <input type="checkbox" id="workbuddy-enabled" class="toggle-input">
+                    <span class="toggle-switch"></span>
+                    <span class="toggle-label" id="workbuddy-label">Enabled</span>
+                  </label>
+                </div>
+                <div class="platform-body">
+                  <div class="form-group">
+                    <label class="form-label" id="workbuddy-aiCommand-label">AI Tool</label>
+                    <select id="workbuddy-aiCommand" class="form-select">
+                      <option value="claude">claude</option>
+                      <option value="codex">codex</option>
+                      <option value="codebuddy">codebuddy</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" id="workbuddy-accessToken-label">Access Token</label>
+                    <input id="workbuddy-accessToken" class="form-input mono" type="password" autocomplete="off" />
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" id="workbuddy-refreshToken-label">Refresh Token</label>
+                    <input id="workbuddy-refreshToken" class="form-input mono" type="password" autocomplete="off" />
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" id="workbuddy-userId-label">User ID</label>
+                    <input id="workbuddy-userId" class="form-input mono" type="text" />
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" id="workbuddy-baseUrl-label">Base URL (optional)</label>
+                    <input id="workbuddy-baseUrl" class="form-input mono" type="text" placeholder="https://copilot.tencent.com" />
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" id="workbuddy-allowedUserIds-label">Allowed User IDs</label>
+                    <textarea id="workbuddy-allowedUserIds" class="form-textarea mono"></textarea>
+                  </div>
+                  <div class="form-help" id="workbuddy-help">WorkBuddy uses CodeBuddy OAuth to connect WeChat customer service. Get credentials from CodeBuddy login.</div>
+                  <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                    <button id="test-workbuddy" class="btn btn-secondary btn-sm" type="button">Test Configuration</button>
+                  </div>
+                  <div id="test-workbuddy-result" class="mt-4"></div>
                 </div>
               </div>
             </div>
