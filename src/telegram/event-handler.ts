@@ -167,6 +167,9 @@ export function setupTelegramHandlers(
       msgId = await sendThinkingMessage(chatId, replyToMessageId, toolId);
     } catch (err) {
       log.error("Failed to send thinking message:", err);
+      try {
+        await sendTextReply(chatId, "启动 AI 处理失败，请重试。");
+      } catch { /* ignore */ }
       return;
     }
 

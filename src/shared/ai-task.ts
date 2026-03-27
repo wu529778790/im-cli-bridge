@@ -317,7 +317,20 @@ export function runAITask(
       startedAt: Date.now(),
       toolId: aiCommand,
     };
-    startRun();
+    try {
+      startRun();
+    } catch (err) {
+      if (!settled) {
+        settled = true;
+        cleanup();
+        log.error(`[AITask] Synchronous error in startRun: ${err}`);
+        platformAdapter.sendError(
+          `内部错误：${err instanceof Error ? err.message : String(err)}`
+        ).catch(() => { /* ignore */ });
+        resolve();
+      }
+      return;
+    }
     platformAdapter.onTaskReady(taskState);
   });
 }

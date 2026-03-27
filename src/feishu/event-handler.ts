@@ -108,6 +108,9 @@ export function setupFeishuHandlers(
       cardHandle = await sendThinkingCard(chatId, toolId);
     } catch (err) {
       log.error('Failed to send thinking card:', err);
+      try {
+        await sendTextReply(chatId, '启动 AI 处理失败，请重试。');
+      } catch { /* ignore */ }
       return;
     }
 
@@ -115,11 +118,21 @@ export function setupFeishuHandlers(
     const stopTyping = startTypingLoop(chatId);
     const taskKey = `${userId}:${cardId}`;
 
+    let consecutiveStreamErrors = 0;
+    const MAX_STREAM_ERRORS = 5;
     const streamUpdate = (content: string, toolNote?: string) => {
+      if (consecutiveStreamErrors >= MAX_STREAM_ERRORS) return; // 停止尝试
       const note = buildProgressNote(toolNote);
-      streamContentUpdate(cardId, content, note).catch((e) =>
-        log.debug('Stream update failed (will retry on next update):', e?.message ?? e)
-      );
+      streamContentUpdate(cardId, content, note).then(() => {
+        consecutiveStreamErrors = 0;
+      }).catch((e) => {
+        consecutiveStreamErrors++;
+        if (consecutiveStreamErrors >= MAX_STREAM_ERRORS) {
+          log.warn(`Stream update failed ${consecutiveStreamErrors} times consecutively, giving up: ${e?.message ?? e}`);
+        } else {
+          log.debug('Stream update failed (will retry on next update):', e?.message ?? e);
+        }
+      });
     };
 
     await runAITask(

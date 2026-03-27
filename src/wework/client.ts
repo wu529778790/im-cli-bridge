@@ -67,12 +67,10 @@ export function getConnectionState(): WeWorkConnectionState {
  */
 export function sendProactiveMessage(chatId: string, content: string): void {
   if (!ws || connectionState !== 'connected') {
-    log.error('Cannot send proactive message: WebSocket not connected');
-    return;
+    throw new Error('Cannot send proactive message: WebSocket not connected');
   }
   if (!chatId) {
-    log.error('Cannot send proactive message: chatId is required');
-    return;
+    throw new Error('Cannot send proactive message: chatId is required');
   }
 
   const message = {
@@ -99,12 +97,10 @@ export function sendProactiveMessage(chatId: string, content: string): void {
  */
 export function sendWebSocketReply(reqId: string, body: WeWorkHttpResponseBody): void {
   if (!ws || connectionState !== 'connected') {
-    log.error('Cannot send reply: WebSocket not connected');
-    return;
+    throw new Error('Cannot send reply: WebSocket not connected');
   }
   if (!reqId) {
-    log.error('Cannot send reply: req_id is required');
-    return;
+    throw new Error('Cannot send reply: req_id is required');
   }
 
   const message = {

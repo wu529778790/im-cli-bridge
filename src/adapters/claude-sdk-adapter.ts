@@ -307,6 +307,11 @@ export class ClaudeSDKAdapter implements ToolAdapter {
         if (abortController.signal.aborted) {
           log.info('Session run aborted');
           clearRunTimeout();
+          // 清理 pending tempId
+          if (actualSessionId?.startsWith('pending-')) {
+            activeSessions.delete(actualSessionId);
+            log.info(`Cleaned up pending session: ${actualSessionId}`);
+          }
           return;
         }
 
@@ -318,6 +323,12 @@ export class ClaudeSDKAdapter implements ToolAdapter {
         log.error(`Claude SDK V2 error: ${msg}`);
         if (errorObj.stack) {
           log.error(`Error stack: ${errorObj.stack}`);
+        }
+
+        // 清理 pending tempId（session 在获取真实 ID 前就失败了）
+        if (actualSessionId?.startsWith('pending-')) {
+          activeSessions.delete(actualSessionId);
+          log.info(`Cleaned up pending session after error: ${actualSessionId}`);
         }
 
         callbacks.onError(msg);

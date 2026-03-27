@@ -46,8 +46,8 @@ export async function initTelegram(
         await new Promise((r) => setTimeout(r, delayMs));
         return launchWithRetry(attempt + 1);
       }
-      log.error("Telegram gave up reconnecting, exiting");
-      process.exit(1);
+      log.error("Telegram gave up reconnecting, skipping");
+      // 不再 exit(1)，让其他通道继续运行
     }
   };
   void launchWithRetry();

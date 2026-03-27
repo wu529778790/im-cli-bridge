@@ -268,7 +268,16 @@ export function setupWeWorkHandlers(
       log.info(`[handleAIRequest] Running ${aiCommand} for user ${userId}, sessionId=${sessionId ?? 'new'}`);
 
       const toolId = aiCommand;
-      const msgId = await sendThinkingMessage(chatId, replyToMessageId, toolId, reqId);
+      let msgId: string;
+      try {
+        msgId = await sendThinkingMessage(chatId, replyToMessageId, toolId, reqId);
+      } catch (err) {
+        log.error('Failed to send thinking message:', err);
+        try {
+          await sendTextReply(chatId, '启动 AI 处理失败，请重试。', reqId);
+        } catch { /* ignore */ }
+        return;
+      }
       const stopTyping = startTypingLoop(chatId);
       const taskKey = `${userId}:${msgId}`;
 

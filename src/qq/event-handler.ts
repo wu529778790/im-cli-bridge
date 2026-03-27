@@ -187,7 +187,16 @@ export function setupQQHandlers(
       ? sessionManager.getSessionIdForConv(userId, convId, aiCommand)
       : undefined;
     const toolId = aiCommand;
-    const msgId = await sendThinkingMessage(chatId, replyToMessageId, toolId);
+    let msgId: string;
+    try {
+      msgId = await sendThinkingMessage(chatId, replyToMessageId, toolId);
+    } catch (err) {
+      log.error("Failed to send thinking message:", err);
+      try {
+        await sendTextReply(chatId, "启动 AI 处理失败，请重试。");
+      } catch { /* ignore */ }
+      return;
+    }
     const stopTyping = startTypingLoop();
     const taskKey = `${userId}:${msgId}`;
 
