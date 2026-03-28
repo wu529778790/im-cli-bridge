@@ -146,6 +146,7 @@ interface WebConfigPayload {
     qq: { enabled: boolean; aiCommand: "" | "claude" | "codex" | "codebuddy"; appId: string; secret: string; allowedUserIds: string };
     wework: { enabled: boolean; aiCommand: "" | "claude" | "codex" | "codebuddy"; corpId: string; secret: string; allowedUserIds: string };
     dingtalk: { enabled: boolean; aiCommand: "" | "claude" | "codex" | "codebuddy"; clientId: string; clientSecret: string; cardTemplateId: string; allowedUserIds: string };
+    workbuddy: { enabled: boolean; aiCommand: "" | "claude" | "codex" | "codebuddy"; accessToken: string; refreshToken: string; userId: string; baseUrl: string; allowedUserIds: string };
   };
   ai: {
     aiCommand: "claude" | "codex" | "codebuddy";
@@ -175,6 +176,7 @@ export function getHealthPlatformSnapshot(
   const fileQQ = file.platforms?.qq;
   const fileWework = file.platforms?.wework;
   const fileDingtalk = file.platforms?.dingtalk;
+  const fileWorkbuddy = file.platforms?.workbuddy;
   const telegramBotToken = env.TELEGRAM_BOT_TOKEN ?? fileTelegram?.botToken ?? file.telegramBotToken;
   const feishuAppId = env.FEISHU_APP_ID ?? fileFeishu?.appId ?? file.feishuAppId;
   const feishuAppSecret = env.FEISHU_APP_SECRET ?? fileFeishu?.appSecret ?? file.feishuAppSecret;
@@ -184,6 +186,9 @@ export function getHealthPlatformSnapshot(
   const weworkSecret = env.WEWORK_SECRET ?? fileWework?.secret;
   const dingtalkClientId = env.DINGTALK_CLIENT_ID ?? fileDingtalk?.clientId;
   const dingtalkClientSecret = env.DINGTALK_CLIENT_SECRET ?? fileDingtalk?.clientSecret;
+  const workbuddyAccessToken = fileWorkbuddy?.accessToken;
+  const workbuddyRefreshToken = fileWorkbuddy?.refreshToken;
+  const workbuddyUserId = fileWorkbuddy?.userId;
 
   return {
     telegram: {
@@ -215,6 +220,12 @@ export function getHealthPlatformSnapshot(
       enabled: !!(dingtalkClientId && dingtalkClientSecret) && fileDingtalk?.enabled !== false,
       healthy: !!(dingtalkClientId && dingtalkClientSecret),
       message: dingtalkClientId && dingtalkClientSecret ? "Client ID and Secret configured" : "Missing credentials",
+    },
+    workbuddy: {
+      configured: !!(workbuddyAccessToken && workbuddyRefreshToken && workbuddyUserId),
+      enabled: !!(workbuddyAccessToken && workbuddyRefreshToken && workbuddyUserId) && fileWorkbuddy?.enabled !== false,
+      healthy: !!(workbuddyAccessToken && workbuddyRefreshToken && workbuddyUserId),
+      message: workbuddyAccessToken && workbuddyRefreshToken && workbuddyUserId ? "OAuth credentials configured" : "Missing credentials",
     },
   };
 }
@@ -293,6 +304,15 @@ function buildInitialPayload(file: FileConfig): WebConfigPayload {
         cardTemplateId: file.platforms?.dingtalk?.cardTemplateId ?? "",
         allowedUserIds: (file.platforms?.dingtalk?.allowedUserIds ?? []).join(", "),
       },
+      workbuddy: {
+        enabled: file.platforms?.workbuddy?.enabled ?? Boolean(file.platforms?.workbuddy?.accessToken && file.platforms?.workbuddy?.refreshToken && file.platforms?.workbuddy?.userId),
+        aiCommand: (file.platforms?.workbuddy?.aiCommand as "" | "claude" | "codex" | "codebuddy" | undefined) ?? "",
+        accessToken: file.platforms?.workbuddy?.accessToken ?? "",
+        refreshToken: file.platforms?.workbuddy?.refreshToken ?? "",
+        userId: file.platforms?.workbuddy?.userId ?? "",
+        baseUrl: file.platforms?.workbuddy?.baseUrl ?? "",
+        allowedUserIds: (file.platforms?.workbuddy?.allowedUserIds ?? []).join(", "),
+      },
     },
     ai: {
       aiCommand: (file.aiCommand as "claude" | "codex" | "codebuddy") ?? "claude",
@@ -329,6 +349,9 @@ function validatePayload(payload: WebConfigPayload): string[] {
   if (payload.platforms.wework.enabled && !clean(payload.platforms.wework.secret)) errors.push("WeWork secret is required.");
   if (payload.platforms.dingtalk.enabled && !clean(payload.platforms.dingtalk.clientId)) errors.push("DingTalk client ID is required.");
   if (payload.platforms.dingtalk.enabled && !clean(payload.platforms.dingtalk.clientSecret)) errors.push("DingTalk client secret is required.");
+  if (payload.platforms.workbuddy.enabled && !clean(payload.platforms.workbuddy.accessToken)) errors.push("WorkBuddy access token is required.");
+  if (payload.platforms.workbuddy.enabled && !clean(payload.platforms.workbuddy.refreshToken)) errors.push("WorkBuddy refresh token is required.");
+  if (payload.platforms.workbuddy.enabled && !clean(payload.platforms.workbuddy.userId)) errors.push("WorkBuddy user ID is required.");
   if (!clean(payload.ai.claudeWorkDir)) errors.push("Default work directory is required.");
   if (!Number.isFinite(payload.ai.claudeTimeoutMs) || payload.ai.claudeTimeoutMs <= 0) errors.push("Claude timeout must be positive.");
   if (!Number.isFinite(payload.ai.codexTimeoutMs) || payload.ai.codexTimeoutMs <= 0) errors.push("Codex timeout must be positive.");
@@ -386,6 +409,18 @@ function validateConfigForPlatform(platform: string, config: Record<string, unkn
       }
       break;
 
+    case "workbuddy":
+      if (!c.accessToken || typeof c.accessToken !== "string" || !clean(c.accessToken)) {
+        errors.push("WorkBuddy access token is required and must be a non-empty string.");
+      }
+      if (!c.refreshToken || typeof c.refreshToken !== "string" || !clean(c.refreshToken)) {
+        errors.push("WorkBuddy refresh token is required and must be a non-empty string.");
+      }
+      if (!c.userId || typeof c.userId !== "string" || !clean(c.userId)) {
+        errors.push("WorkBuddy user ID is required and must be a non-empty string.");
+      }
+      break;
+
     default:
       errors.push(`Unknown platform: ${platform}`);
   }
@@ -418,6 +453,7 @@ function createProbeConfig(values: Partial<Config>): Config {
     wechatAllowedUserIds: [],
     weworkAllowedUserIds: [],
     dingtalkAllowedUserIds: [],
+    workbuddyAllowedUserIds: [],
     aiCommand: "claude",
     codexCliPath: "codex",
     claudeWorkDir: process.cwd(),
@@ -529,6 +565,38 @@ async function probeDingTalk(config: Record<string, unknown>): Promise<string> {
   return "DingTalk credentials are valid.";
 }
 
+async function probeWorkBuddy(config: Record<string, unknown>): Promise<string> {
+  const accessToken = clean(String(config.accessToken ?? ""));
+  const refreshToken = clean(String(config.refreshToken ?? ""));
+  const userId = clean(String(config.userId ?? ""));
+  if (!accessToken || !refreshToken || !userId) throw new Error("WorkBuddy access token, refresh token, and user ID are required.");
+
+  const baseUrl = clean(String(config.baseUrl ?? "")) || "https://copilot.tencent.com";
+
+  // Validate credentials by attempting to register workspace
+  const response = await fetch(`${baseUrl}/api/copilot/workspace/register`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "authorization": `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      userId,
+      hostId: "open-im-test",
+      workspaceId: "open-im-test-workspace",
+      workspaceName: "OpenIM Test Workspace",
+    }),
+    signal: AbortSignal.timeout(TEST_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`WorkBuddy authentication failed: ${body.slice(0, 200) || `HTTP ${response.status}`}`);
+  }
+
+  return "WorkBuddy credentials are valid.";
+}
+
 export async function testPlatformConfig(platform: string, config: Record<string, unknown>): Promise<string> {
   const errors = validateConfigForPlatform(platform, config);
   if (errors.length > 0) {
@@ -546,6 +614,8 @@ export async function testPlatformConfig(platform: string, config: Record<string
       return probeWeWork(config);
     case "dingtalk":
       return probeDingTalk(config);
+    case "workbuddy":
+      return probeWorkBuddy(config);
     default:
       throw new Error(`Unknown platform: ${platform}`);
   }
@@ -630,6 +700,16 @@ function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConf
         clientSecret: clean(payload.platforms.dingtalk.clientSecret),
         cardTemplateId: clean(payload.platforms.dingtalk.cardTemplateId),
         allowedUserIds: splitCsv(payload.platforms.dingtalk.allowedUserIds),
+      },
+      workbuddy: {
+        ...existing.platforms?.workbuddy,
+        enabled: payload.platforms.workbuddy.enabled,
+        aiCommand: clean(payload.platforms.workbuddy.aiCommand) as "claude" | "codex" | "codebuddy" | undefined,
+        accessToken: clean(payload.platforms.workbuddy.accessToken),
+        refreshToken: clean(payload.platforms.workbuddy.refreshToken),
+        userId: clean(payload.platforms.workbuddy.userId),
+        baseUrl: clean(payload.platforms.workbuddy.baseUrl),
+        allowedUserIds: splitCsv(payload.platforms.workbuddy.allowedUserIds),
       },
     },
   };
@@ -900,6 +980,7 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
         const fileQQ = file.platforms?.qq;
         const fileWework = file.platforms?.wework;
         const fileDingtalk = file.platforms?.dingtalk;
+        const fileWorkbuddy = file.platforms?.workbuddy;
         const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN ?? fileTelegram?.botToken ?? file.telegramBotToken;
         const feishuAppId = process.env.FEISHU_APP_ID ?? fileFeishu?.appId ?? file.feishuAppId;
         const feishuAppSecret = process.env.FEISHU_APP_SECRET ?? fileFeishu?.appSecret ?? file.feishuAppSecret;
@@ -909,6 +990,9 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
         const weworkSecret = process.env.WEWORK_SECRET ?? fileWework?.secret;
         const dingtalkClientId = process.env.DINGTALK_CLIENT_ID ?? fileDingtalk?.clientId;
         const dingtalkClientSecret = process.env.DINGTALK_CLIENT_SECRET ?? fileDingtalk?.clientSecret;
+        const workbuddyAccessToken = fileWorkbuddy?.accessToken;
+        const workbuddyRefreshToken = fileWorkbuddy?.refreshToken;
+        const workbuddyUserId = fileWorkbuddy?.userId;
         const platforms: Record<string, { configured: boolean; enabled: boolean; healthy: boolean; message?: string }> = {};
 
         // 检查 Telegram
@@ -949,6 +1033,14 @@ export async function startWebConfigServer(options: { mode: WebFlowMode; cwd: st
           enabled: !!(dingtalkClientId && dingtalkClientSecret) && fileDingtalk?.enabled !== false,
           healthy: !!(dingtalkClientId && dingtalkClientSecret),
           message: (dingtalkClientId && dingtalkClientSecret) ? "Client ID and Secret configured" : "Missing credentials"
+        };
+
+        // 检查 WorkBuddy
+        platforms.workbuddy = {
+          configured: !!(workbuddyAccessToken && workbuddyRefreshToken && workbuddyUserId),
+          enabled: !!(workbuddyAccessToken && workbuddyRefreshToken && workbuddyUserId) && fileWorkbuddy?.enabled !== false,
+          healthy: !!(workbuddyAccessToken && workbuddyRefreshToken && workbuddyUserId),
+          message: (workbuddyAccessToken && workbuddyRefreshToken && workbuddyUserId) ? "OAuth credentials configured" : "Missing credentials"
         };
 
         json(response, 200, { platforms, serviceStatus: getServiceStatus() });

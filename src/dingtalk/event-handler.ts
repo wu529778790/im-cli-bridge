@@ -249,7 +249,16 @@ export function setupDingTalkHandlers(
     log.info(`[AI_REQUEST] Running ${aiCommand} for user ${userId}, sessionId=${sessionId ?? 'new'}`);
 
     const toolId = aiCommand;
-    const msgId = await sendThinkingMessage(chatId, replyToMessageId, toolId, dingtalkTarget);
+    let msgId: string;
+    try {
+      msgId = await sendThinkingMessage(chatId, replyToMessageId, toolId, dingtalkTarget);
+    } catch (err) {
+      log.error('Failed to send thinking message:', err);
+      try {
+        await sendTextReply(chatId, '启动 AI 处理失败，请重试。');
+      } catch { /* ignore */ }
+      return;
+    }
     const stopTyping = startTypingLoop(chatId);
     const taskKey = `${userId}:${msgId}`;
 

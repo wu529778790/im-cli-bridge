@@ -11,7 +11,9 @@ const DINGTALK_STREAM_HOST = 'wss-open-connection.dingtalk.com';
 
 let client: DWClient | null = null;
 let messageHandler: ((data: DWClientDownStream) => Promise<void>) | null = null;
-const sessionWebhookByChat = new Map<string, string>();
+// sessionWebhook 有过期时间（约 2 小时），需要记录时间戳
+const sessionWebhookByChat = new Map<string, { webhook: string; registeredAt: number }>();
+const WEBHOOK_TTL_MS = 90 * 60 * 1000; // 90 分钟后视为过期
 const unionIdByUserId = new Map<string, string>();
 let dingtalkWarnFilterInstalled = false;
 
@@ -74,14 +76,22 @@ function getClient(): DWClient {
 
 export function registerSessionWebhook(chatId: string, sessionWebhook: string): void {
   if (!chatId || !sessionWebhook) return;
-  sessionWebhookByChat.set(chatId, sessionWebhook);
+  sessionWebhookByChat.set(chatId, { webhook: sessionWebhook, registeredAt: Date.now() });
 }
 
 async function sendByWebhook(chatId: string, body: Record<string, unknown>): Promise<unknown> {
-  const sessionWebhook = sessionWebhookByChat.get(chatId);
-  if (!sessionWebhook) {
+  const entry = sessionWebhookByChat.get(chatId);
+  if (!entry) {
     throw new Error(`DingTalk sessionWebhook unavailable for chat ${chatId}`);
   }
+
+  // 检查 webhook 是否过期
+  if (Date.now() - entry.registeredAt > WEBHOOK_TTL_MS) {
+    sessionWebhookByChat.delete(chatId);
+    throw new Error(`DingTalk sessionWebhook expired for chat ${chatId}`);
+  }
+
+  const sessionWebhook = entry.webhook;
 
   const accessToken = await getClient().getAccessToken();
   const res = await fetch(sessionWebhook, {

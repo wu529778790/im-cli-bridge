@@ -4,6 +4,7 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         { key: "qq", label: "QQ", fields: ["aiCommand", "appId", "secret", "allowedUserIds"], testFields: ["appId", "secret"], requiredFields: ["appId", "secret"] },
         { key: "wework", label: "WeWork", fields: ["aiCommand", "corpId", "secret", "allowedUserIds"], testFields: ["corpId", "secret"], requiredFields: ["corpId", "secret"] },
         { key: "dingtalk", label: "DingTalk", fields: ["aiCommand", "clientId", "clientSecret", "cardTemplateId", "allowedUserIds"], testFields: ["clientId", "clientSecret"], requiredFields: ["clientId", "clientSecret"] },
+        { key: "workbuddy", label: "WorkBuddy", fields: ["aiCommand", "accessToken", "refreshToken", "userId", "baseUrl", "allowedUserIds"], testFields: ["accessToken", "refreshToken", "userId"], requiredFields: ["accessToken", "refreshToken", "userId"] },
       ];
       const platformKeys = platformDefinitions.map((platform) => platform.key);
       const aiTools = ["claude", "codex", "codebuddy"];

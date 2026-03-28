@@ -62,7 +62,7 @@ async function getOrCreateSession(
   };
 
   const baseUrl = process.env.ANTHROPIC_BASE_URL ?? '(default)';
-  log.info(`[ClaudeSDK] model param=${String(model ?? '')} resolved=${resolvedModel} baseUrl=${baseUrl}`);
+  log.info(`[V2] getOrCreateSession model param=${String(model ?? '')} resolved=${resolvedModel} baseUrl=${baseUrl}`);
 
   let session: SDKSession;
 
@@ -125,9 +125,22 @@ export class ClaudeSDKAdapter implements ToolAdapter {
     callbacks: RunCallbacks,
     options?: RunOptions
   ): RunHandle {
+    log.info(`[V2] run() entry model=${String(options?.model ?? '')} baseUrl=${process.env.ANTHROPIC_BASE_URL ?? '(default)'}`);
+
     const abortController = new AbortController();
     let streamClosed = false;
     let actualSessionId: string | undefined;
+    let pendingTempId: string | undefined; // 记录临时 ID，用于 abort 时清理
+    let runSettled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const timeoutMs = options?.timeoutMs ?? 600_000;
+
+    const clearRunTimeout = () => {
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
 
     const permissionMode = options?.skipPermissions
       ? ('bypassPermissions' as const)
@@ -138,6 +151,15 @@ export class ClaudeSDKAdapter implements ToolAdapter {
           : ('default' as const);
 
     const runSession = async () => {
+      timeoutId = setTimeout(() => {
+        if (runSettled) return;
+        runSettled = true;
+        clearRunTimeout();
+        log.warn(`[ClaudeSDK] Request timeout after ${timeoutMs}ms`);
+        abortController.abort();
+        callbacks.onError(`请求超时（${Math.round(timeoutMs / 1000)}s），请重试或缩短问题。`);
+      }, timeoutMs);
+
       try {
         // 检查环境变量
         const hasApiKey = !!process.env.ANTHROPIC_API_KEY;
@@ -148,10 +170,13 @@ export class ClaudeSDKAdapter implements ToolAdapter {
         }
 
         log.info(`[V2] Session: ${sessionId ?? 'new'}, prompt="${prompt.slice(0, 50)}..."`);
-        log.info(`ClaudeSDK model param=${String(options?.model ?? '')} baseUrl=${process.env.ANTHROPIC_BASE_URL ?? '(default)'}`);
+        log.info(`[V2] model param=${String(options?.model ?? '')} baseUrl=${process.env.ANTHROPIC_BASE_URL ?? '(default)'}`);
 
         // 获取或创建会话
-        const { session } = await getOrCreateSession(sessionId, workDir, options?.model, permissionMode);
+        const { session, sessionId: returnedId } = await getOrCreateSession(sessionId, workDir, options?.model, permissionMode);
+        if (returnedId.startsWith('pending-')) {
+          pendingTempId = returnedId;
+        }
 
         // 发送用户消息
         await session.send(prompt);
@@ -225,6 +250,8 @@ export class ClaudeSDKAdapter implements ToolAdapter {
 
               // 检查会话错误
               if (!success) {
+                runSettled = true;
+                clearRunTimeout();
                 const noConvErr = errs.find((e) => e.includes('No conversation found') || e.includes('session not found'));
                 if (noConvErr) {
                   log.warn(`Session ${actualSessionId} not found, may need to create new one`);
@@ -254,6 +281,8 @@ export class ClaudeSDKAdapter implements ToolAdapter {
                 result.result = accumulated;
               }
 
+              runSettled = true;
+              clearRunTimeout();
               callbacks.onComplete(result);
               return;
             }
@@ -262,6 +291,8 @@ export class ClaudeSDKAdapter implements ToolAdapter {
           // 如果流正常结束但没有收到 result 消息
           if (!streamClosed && accumulated) {
             log.info('Stream ended without result message, using accumulated text');
+            runSettled = true;
+            clearRunTimeout();
             callbacks.onComplete({
               success: true,
               result: accumulated,
@@ -279,15 +310,31 @@ export class ClaudeSDKAdapter implements ToolAdapter {
       } catch (err) {
         if (abortController.signal.aborted) {
           log.info('Session run aborted');
+          clearRunTimeout();
+          // 清理 pending tempId（abort 可能在 init 消息之前发生）
+          const idToClean = actualSessionId ?? pendingTempId;
+          if (idToClean?.startsWith('pending-')) {
+            activeSessions.delete(idToClean);
+            log.info(`Cleaned up pending session: ${idToClean}`);
+          }
           return;
         }
 
+        runSettled = true;
+        clearRunTimeout();
         const errorObj = err as Error;
         const msg = errorObj.message || String(err);
 
         log.error(`Claude SDK V2 error: ${msg}`);
         if (errorObj.stack) {
           log.error(`Error stack: ${errorObj.stack}`);
+        }
+
+        // 清理 pending tempId（session 在获取真实 ID 前就失败了）
+        const errIdToClean = actualSessionId ?? pendingTempId;
+        if (errIdToClean?.startsWith('pending-')) {
+          activeSessions.delete(errIdToClean);
+          log.info(`Cleaned up pending session after error: ${errIdToClean}`);
         }
 
         callbacks.onError(msg);

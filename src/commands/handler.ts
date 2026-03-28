@@ -40,7 +40,7 @@ export class CommandHandler {
     text: string,
     chatId: string,
     userId: string,
-    platform: 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework',
+    platform: 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework' | 'workbuddy',
     handleClaudeRequest: ClaudeRequestHandler
   ): Promise<boolean> {
     const t = text.trim();
@@ -68,17 +68,19 @@ export class CommandHandler {
     return false;
   }
 
-  private getClearHistoryHint(platform: 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework'): string {
+  private getClearHistoryHint(platform: 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework' | 'workbuddy'): string {
     return platform === 'feishu'
       ? '💡 提示：如需清除本对话的历史消息，请点击飞书聊天右上角「...」→ 清除聊天记录'
       : platform === 'wechat'
         ? '💡 提示：如需清除本对话的历史消息，请清除聊天记录'
         : platform === 'dingtalk'
           ? '💡 提示：如需清除本对话的历史消息，请在钉钉中清空聊天记录'
-          : '💡 提示：如需清除本对话的历史消息，请点击 Telegram 聊天右上角 ⋮ → 清除历史';
+          : platform === 'workbuddy'
+            ? '💡 提示：如需清除本对话的历史消息，请清除聊天记录'
+            : '💡 提示：如需清除本对话的历史消息，请点击 Telegram 聊天右上角 ⋮ → 清除历史';
   }
 
-  private async handleHelp(chatId: string, platform: 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework'): Promise<boolean> {
+  private async handleHelp(chatId: string, platform: 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework' | 'workbuddy'): Promise<boolean> {
     const help = [
       '📋 可用命令:',
       '',
@@ -94,7 +96,7 @@ export class CommandHandler {
     return true;
   }
 
-  private async handleNew(chatId: string, userId: string, platform: 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework'): Promise<boolean> {
+  private async handleNew(chatId: string, userId: string, platform: 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework' | 'workbuddy'): Promise<boolean> {
     const ok = this.deps.sessionManager.newSession(userId);
     await this.deps.sender.sendTextReply(
       chatId,
@@ -111,7 +113,7 @@ export class CommandHandler {
     return true;
   }
 
-  private async handleStatus(chatId: string, userId: string, platform: 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework'): Promise<boolean> {
+  private async handleStatus(chatId: string, userId: string, platform: 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework' | 'workbuddy'): Promise<boolean> {
     const aiCommand = resolvePlatformAiCommand(this.deps.config, platform);
     const version = await this.getAiVersion(aiCommand);
     const workDir = this.deps.sessionManager.getWorkDir(userId);
@@ -129,7 +131,7 @@ export class CommandHandler {
     return true;
   }
 
-  private async handleCd(chatId: string, userId: string, dir: string, platform: 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework'): Promise<boolean> {
+  private async handleCd(chatId: string, userId: string, dir: string, platform: 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework' | 'workbuddy'): Promise<boolean> {
     // 如果 dir 为空，显示目录选择界面
     if (!dir) {
       const currentDir = this.deps.sessionManager.getWorkDir(userId);

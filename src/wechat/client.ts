@@ -18,6 +18,7 @@ import type {
 const log = createLogger('WeChat');
 const TOKEN_FILE = 'wechat-token.json';
 const DEFAULT_WECHAT_WS_URL = 'wss://openclau-wechat.henryxiaoyang.workers.dev';
+const PONG_TIMEOUT_FACTOR = 3; // 3倍心跳间隔无响应则判定连接死亡
 
 // Global state
 let ws: WebSocket | null = null;
@@ -27,6 +28,9 @@ let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let reconnectAttempts = 0;
 let currentToken: WeChatToken | null = null;
 let tokenStoragePath: string | null = null;
+let lastServerResponseTime = 0; // 上次收到服务端消息的时间
+let wsConfigRef: WeChatWebSocketConfig | null = null; // 保存配置供心跳重连使用
+let isStopping = false; // 防止 stop 后重连定时器继续触发
 
 // Event handlers
 let messageHandler: ((data: unknown) => Promise<void>) | null = null;
@@ -98,6 +102,7 @@ export async function initWeChat(
 
   messageHandler = eventHandler;
   stateChangeHandler = onStateChange ?? null;
+  isStopping = false;
 
   // Set up token storage path
   const baseDir = config.logDir ?? join(process.env.HOME ?? '', '.open-im');
@@ -125,6 +130,7 @@ export async function initWeChat(
  * Connect to AGP WebSocket server
  */
 async function connectWebSocket(config: WeChatWebSocketConfig): Promise<void> {
+  wsConfigRef = config;
   if (channelState === 'connecting') {
     log.warn('WebSocket connection already in progress');
     return;
@@ -145,6 +151,7 @@ async function connectWebSocket(config: WeChatWebSocketConfig): Promise<void> {
       });
 
       ws.on('message', async (data: Buffer) => {
+        lastServerResponseTime = Date.now();
         try {
           const envelope = JSON.parse(data.toString()) as AGPEnvelope;
           log.debug('Received AGP message:', envelope.method);
@@ -237,11 +244,35 @@ function updateState(state: WeChatChannelState): void {
 
 /**
  * Start heartbeat to keep connection alive
+ * 同时检测服务端是否响应，超时无响应则主动断开触发重连
  */
 function startHeartbeat(interval: number): void {
   stopHeartbeat();
+  lastServerResponseTime = Date.now();
   heartbeatTimer = setInterval(() => {
     if (channelState === 'connected') {
+      // 检测连接是否已死：长时间未收到任何服务端响应
+      const elapsed = Date.now() - lastServerResponseTime;
+      const pongTimeout = interval * PONG_TIMEOUT_FACTOR;
+      if (lastServerResponseTime > 0 && elapsed > pongTimeout) {
+        log.warn(`No server response for ${Math.round(elapsed / 1000)}s, forcing reconnect`);
+        stopHeartbeat();
+        if (ws) {
+          try {
+            ws.removeAllListeners();
+            ws.close();
+          } catch {
+            /* ignore */
+          }
+          ws = null;
+        }
+        updateState('disconnected');
+        if (wsConfigRef) {
+          scheduleReconnect(wsConfigRef);
+        }
+        return;
+      }
+
       sendAGPMessage('ping', { timestamp: Date.now() });
     }
   }, interval);
@@ -259,18 +290,32 @@ function stopHeartbeat(): void {
 
 /**
  * Schedule reconnection attempt
+ * 超过 maxAttempts 后自动重置计数器继续重试，避免永久断连
  */
 function scheduleReconnect(config: WeChatWebSocketConfig): void {
+  if (isStopping) return;
+
   const maxAttempts = config.maxReconnectAttempts ?? 10;
-  if (reconnectAttempts >= maxAttempts) {
-    log.error('Max reconnect attempts reached');
+
+  if (reconnectTimer) {
     return;
   }
 
-  const interval = config.reconnectInterval ?? 5000;
+  // 超过最大重试次数后重置计数器，降低频率继续重试
+  if (reconnectAttempts >= maxAttempts) {
+    log.warn(`Max reconnect attempts (${maxAttempts}) reached, resetting counter and retrying at lower frequency`);
+    reconnectAttempts = 0;
+  }
+
+  const baseInterval = config.reconnectInterval ?? 5000;
+  // 超过一半次数后逐渐增加间隔，最大 60 秒
+  const backoff = Math.min(baseInterval * Math.pow(1.5, Math.floor(reconnectAttempts / 3)), 60000);
+  const interval = Math.round(backoff);
+
   reconnectTimer = setTimeout(async () => {
+    reconnectTimer = null;
     reconnectAttempts++;
-    log.info(`Reconnecting... Attempt ${reconnectAttempts}/${maxAttempts}`);
+    log.info(`Reconnecting... Attempt ${reconnectAttempts}/${maxAttempts} (interval: ${interval}ms)`);
     try {
       await connectWebSocket(config);
     } catch (err) {
@@ -324,6 +369,7 @@ function saveToken(): void {
  * Stop WeChat client
  */
 export function stopWeChat(): void {
+  isStopping = true;
   stopHeartbeat();
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
