@@ -256,6 +256,12 @@ export async function updateMessage(
 
     if (Date.now() - state.createdAt >= STREAM_SAFE_TTL_MS) {
       markExpired(state, streamId);
+      // Stream expired - fall back to text delivery for errors and final states
+      if (status === 'error' || status === 'done') {
+        const reqIdUsed = getReqId(reqId);
+        sendText(reqIdUsed, message);
+        log.info(`Stream expired, sent ${status} via text fallback: streamId=${streamId}`);
+      }
       return;
     }
 
