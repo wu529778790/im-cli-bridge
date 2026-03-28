@@ -296,21 +296,27 @@ export async function sendFinalMessages(
     parts.length > 1 ? `内容较长，已分段发送 (1/${parts.length})` : note
   );
 
-  try {
-    const state = streamStates.get(streamId);
-    const shouldFallbackToText =
-      !!state && (state.expired || Date.now() - state.createdAt >= STREAM_SAFE_TTL_MS);
+  const state = streamStates.get(streamId);
+  const shouldFallbackToText =
+    !!state && (state.expired || Date.now() - state.createdAt >= STREAM_SAFE_TTL_MS);
 
-    if (!shouldFallbackToText && state && contentToSend.length > 0) {
-      // 先发一条「输出中」带正文，再发 finish 的最终条，避免企微端一直停在「思考中」不刷新
+  // 先发一条「输出中」带正文，再发 finish 的最终条，避免企微端一直停在「思考中」不刷新
+  // 独立 try-catch：即使此步失败，仍须发送 finish=true，否则企微永远卡在「正在思考」
+  if (!shouldFallbackToText && state && contentToSend.length > 0) {
+    try {
       await updateMessage(chatId, streamId, contentToSend, 'streaming', note, toolId, reqId);
+    } catch (err) {
+      log.warn('Pre-finish streaming update failed, will still send finish=true:', err);
     }
+  }
 
-    if (state) {
-      state.closed = true;
-      state.pendingUpdate = undefined;
-    }
+  if (state) {
+    state.closed = true;
+    state.pendingUpdate = undefined;
+  }
 
+  // finish=true 是关键：必须保证发出，否则企微 UI 永远停留在「正在思考」
+  try {
     if (!shouldFallbackToText) {
       if (state) {
         const elapsed = Date.now() - state.lastSentAt;
@@ -324,27 +330,33 @@ export async function sendFinalMessages(
       sendText(getReqId(reqId), finalMessage);
       log.info(`Final stream expired, sent text fallback instead: streamId=${streamId}`);
     }
-
-    streamStates.delete(streamId);
-
-    for (let i = 1; i < parts.length; i++) {
-      try {
-        const partContent = `${parts[i]}\n\n_*(续 ${i + 1}/${parts.length})*_`;
-        const partMessage = formatWeWorkMessage(
-          title,
-          partContent,
-          'done',
-          i === parts.length - 1 ? note : undefined
-        );
-
-        sendText(getReqId(reqId), partMessage);
-        log.info(`Final message part ${i + 1}/${parts.length} sent`);
-      } catch (err) {
-        log.error(`Failed to send part ${i + 1}:`, err);
-      }
-    }
   } catch (err) {
-    log.error('Failed to send final messages:', err);
+    log.warn('Primary finish send failed, trying text fallback:', err);
+    try {
+      sendText(getReqId(reqId), finalMessage);
+      log.info(`Fallback text sent after primary finish failure, streamId=${streamId}`);
+    } catch (fallbackErr) {
+      log.error('Both primary and fallback finish sends failed:', fallbackErr);
+    }
+  }
+
+  streamStates.delete(streamId);
+
+  for (let i = 1; i < parts.length; i++) {
+    try {
+      const partContent = `${parts[i]}\n\n_*(续 ${i + 1}/${parts.length})*_`;
+      const partMessage = formatWeWorkMessage(
+        title,
+        partContent,
+        'done',
+        i === parts.length - 1 ? note : undefined
+      );
+
+      sendText(getReqId(reqId), partMessage);
+      log.info(`Final message part ${i + 1}/${parts.length} sent`);
+    } catch (err) {
+      log.error(`Failed to send part ${i + 1}:`, err);
+    }
   }
 }
 
