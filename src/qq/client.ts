@@ -40,6 +40,7 @@ let stopped = false;
 let seq: number | null = null;
 let sessionId: string | null = null;
 let reconnectAttempt = 0;
+let connecting = false; // 防止并发 connectWebSocket
 let currentConfig: Config | null = null;
 let currentHandler: ((event: QQMessageEvent) => Promise<void>) | null = null;
 let tokenState: TokenState | null = null;
@@ -199,108 +200,125 @@ function startHeartbeat(intervalMs: number): void {
 }
 
 async function connectWebSocket(config: Config, handler: (event: QQMessageEvent) => Promise<void>): Promise<void> {
-  const gatewayUrl = await getGatewayUrl(config);
-  const token = await fetchAccessToken(config);
+  // 防止并发连接
+  if (connecting) {
+    log.warn("QQ gateway connection already in progress");
+    return;
+  }
+  connecting = true;
 
-  await new Promise<void>((resolve, reject) => {
-    const socket = new WebSocket(gatewayUrl);
-    ws = socket;
-    let settled = false;
-    const settle = (fn: () => void) => {
-      if (settled) return;
-      settled = true;
-      fn();
-    };
+  try {
+    const gatewayUrl = await getGatewayUrl(config);
+    const token = await fetchAccessToken(config);
 
-    socket.on("open", () => {
-      log.info("QQ gateway connected");
-      reconnectAttempt = 0;
-    });
+    await new Promise<void>((resolve, reject) => {
+      const socket = new WebSocket(gatewayUrl);
+      ws = socket;
+      let settled = false;
+      let readyTimeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+        readyTimeoutId = null;
+        settle(() => reject(new Error("QQ gateway ready timeout")));
+      }, 15000);
 
-    socket.on("message", async (raw) => {
-      try {
-        const payload = JSON.parse(raw.toString()) as GatewayPayload;
-        if (typeof payload.s === "number") seq = payload.s;
+      const settle = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        if (readyTimeoutId) {
+          clearTimeout(readyTimeoutId);
+          readyTimeoutId = null;
+        }
+        fn();
+      };
 
-        if (payload.op === 10) {
-          const heartbeatInterval = Number((payload.d as { heartbeat_interval?: number })?.heartbeat_interval ?? 30000);
-          startHeartbeat(heartbeatInterval);
-          socket.send(
-            JSON.stringify({
-              op: sessionId ? 6 : 2,
-              d: sessionId
-                ? {
-                    token: `QQBot ${token}`,
-                    session_id: sessionId,
-                    seq,
-                  }
-                : {
-                    token: `QQBot ${token}`,
-                    intents:
-                      INTENTS.GROUP_AND_C2C |
-                      INTENTS.DIRECT_MESSAGE |
-                      INTENTS.PUBLIC_GUILD_MESSAGES,
-                    properties: {
-                      os: process.platform,
-                      browser: "open-im",
-                      device: "open-im",
+      socket.on("open", () => {
+        log.info("QQ gateway connected");
+        reconnectAttempt = 0;
+      });
+
+      socket.on("message", async (raw) => {
+        try {
+          const payload = JSON.parse(raw.toString()) as GatewayPayload;
+          if (typeof payload.s === "number") seq = payload.s;
+
+          if (payload.op === 10) {
+            const heartbeatInterval = Number((payload.d as { heartbeat_interval?: number })?.heartbeat_interval ?? 30000);
+            startHeartbeat(heartbeatInterval);
+            socket.send(
+              JSON.stringify({
+                op: sessionId ? 6 : 2,
+                d: sessionId
+                  ? {
+                      token: `QQBot ${token}`,
+                      session_id: sessionId,
+                      seq,
+                    }
+                  : {
+                      token: `QQBot ${token}`,
+                      intents:
+                        INTENTS.GROUP_AND_C2C |
+                        INTENTS.DIRECT_MESSAGE |
+                        INTENTS.PUBLIC_GUILD_MESSAGES,
+                      properties: {
+                        os: process.platform,
+                        browser: "open-im",
+                        device: "open-im",
+                      },
                     },
-                  },
-            }),
-          );
-          return;
-        }
+              }),
+            );
+            return;
+          }
 
-        if (payload.op === 0 && payload.t === "READY") {
-          sessionId = String((payload.d as { session_id?: string })?.session_id ?? "");
-          settle(resolve);
-          return;
-        }
+          if (payload.op === 0 && payload.t === "READY") {
+            sessionId = String((payload.d as { session_id?: string })?.session_id ?? "");
+            settle(resolve);
+            return;
+          }
 
-        if (payload.op === 0 && payload.t === "RESUMED") {
-          settle(resolve);
-          return;
-        }
+          if (payload.op === 0 && payload.t === "RESUMED") {
+            settle(resolve);
+            return;
+          }
 
-        const event = normalizeInboundEvent(payload);
-        if (event && (event.content || (event.attachments?.length ?? 0) > 0)) {
-          await handler(event);
+          const event = normalizeInboundEvent(payload);
+          if (event && (event.content || (event.attachments?.length ?? 0) > 0)) {
+            await handler(event);
+          }
+        } catch (error) {
+          log.error("Failed to handle QQ gateway payload:", error);
         }
-      } catch (error) {
-        log.error("Failed to handle QQ gateway payload:", error);
-      }
+      });
+
+      socket.on("error", (error) => {
+        log.error("QQ gateway error:", error);
+        settle(() => reject(error));
+      });
+
+      socket.on("close", (code, reason) => {
+        settle(() => {}); // 清理 ready timeout
+        clearTimers();
+        ws = null;
+        log.info(`QQ gateway closed: ${code} ${reason.toString()}`);
+        if (stopped) return;
+        if (code === 4004 || code === 4006 || code === 4007 || code === 4009) {
+          tokenState = null;
+          sessionId = null;
+          seq = null;
+        }
+        const delay = RECONNECT_DELAYS_MS[Math.min(reconnectAttempt, RECONNECT_DELAYS_MS.length - 1)];
+        reconnectAttempt += 1;
+        reconnectTimer = setTimeout(() => {
+          if (currentConfig && currentHandler) {
+            connectWebSocket(currentConfig, currentHandler).catch((err) => {
+              log.error("QQ reconnect failed:", err);
+            });
+          }
+        }, delay);
+      });
     });
-
-    socket.on("error", (error) => {
-      log.error("QQ gateway error:", error);
-      settle(() => reject(error));
-    });
-
-    socket.on("close", (code, reason) => {
-      clearTimers();
-      ws = null;
-      log.info(`QQ gateway closed: ${code} ${reason.toString()}`);
-      if (stopped) return;
-      if (code === 4004 || code === 4006 || code === 4007 || code === 4009) {
-        tokenState = null;
-        sessionId = null;
-        seq = null;
-      }
-      const delay = RECONNECT_DELAYS_MS[Math.min(reconnectAttempt, RECONNECT_DELAYS_MS.length - 1)];
-      reconnectAttempt += 1;
-      reconnectTimer = setTimeout(() => {
-        if (currentConfig && currentHandler) {
-          connectWebSocket(currentConfig, currentHandler).catch((err) => {
-            log.error("QQ reconnect failed:", err);
-          });
-        }
-      }, delay);
-    });
-
-    setTimeout(() => {
-      settle(() => reject(new Error("QQ gateway ready timeout")));
-    }, 15000);
-  });
+  } finally {
+    connecting = false;
+  }
 }
 
 export function getQQBot(): QQClient {

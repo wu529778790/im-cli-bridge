@@ -30,6 +30,7 @@ let currentToken: WeChatToken | null = null;
 let tokenStoragePath: string | null = null;
 let lastServerResponseTime = 0; // 上次收到服务端消息的时间
 let wsConfigRef: WeChatWebSocketConfig | null = null; // 保存配置供心跳重连使用
+let isStopping = false; // 防止 stop 后重连定时器继续触发
 
 // Event handlers
 let messageHandler: ((data: unknown) => Promise<void>) | null = null;
@@ -101,6 +102,7 @@ export async function initWeChat(
 
   messageHandler = eventHandler;
   stateChangeHandler = onStateChange ?? null;
+  isStopping = false;
 
   // Set up token storage path
   const baseDir = config.logDir ?? join(process.env.HOME ?? '', '.open-im');
@@ -291,6 +293,8 @@ function stopHeartbeat(): void {
  * 超过 maxAttempts 后自动重置计数器继续重试，避免永久断连
  */
 function scheduleReconnect(config: WeChatWebSocketConfig): void {
+  if (isStopping) return;
+
   const maxAttempts = config.maxReconnectAttempts ?? 10;
 
   if (reconnectTimer) {
@@ -365,6 +369,7 @@ function saveToken(): void {
  * Stop WeChat client
  */
 export function stopWeChat(): void {
+  isStopping = true;
   stopHeartbeat();
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);

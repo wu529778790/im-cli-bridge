@@ -130,6 +130,7 @@ export class ClaudeSDKAdapter implements ToolAdapter {
     const abortController = new AbortController();
     let streamClosed = false;
     let actualSessionId: string | undefined;
+    let pendingTempId: string | undefined; // 记录临时 ID，用于 abort 时清理
     let runSettled = false;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const timeoutMs = options?.timeoutMs ?? 600_000;
@@ -172,7 +173,10 @@ export class ClaudeSDKAdapter implements ToolAdapter {
         log.info(`[V2] model param=${String(options?.model ?? '')} baseUrl=${process.env.ANTHROPIC_BASE_URL ?? '(default)'}`);
 
         // 获取或创建会话
-        const { session } = await getOrCreateSession(sessionId, workDir, options?.model, permissionMode);
+        const { session, sessionId: returnedId } = await getOrCreateSession(sessionId, workDir, options?.model, permissionMode);
+        if (returnedId.startsWith('pending-')) {
+          pendingTempId = returnedId;
+        }
 
         // 发送用户消息
         await session.send(prompt);
@@ -307,10 +311,11 @@ export class ClaudeSDKAdapter implements ToolAdapter {
         if (abortController.signal.aborted) {
           log.info('Session run aborted');
           clearRunTimeout();
-          // 清理 pending tempId
-          if (actualSessionId?.startsWith('pending-')) {
-            activeSessions.delete(actualSessionId);
-            log.info(`Cleaned up pending session: ${actualSessionId}`);
+          // 清理 pending tempId（abort 可能在 init 消息之前发生）
+          const idToClean = actualSessionId ?? pendingTempId;
+          if (idToClean?.startsWith('pending-')) {
+            activeSessions.delete(idToClean);
+            log.info(`Cleaned up pending session: ${idToClean}`);
           }
           return;
         }
@@ -326,9 +331,10 @@ export class ClaudeSDKAdapter implements ToolAdapter {
         }
 
         // 清理 pending tempId（session 在获取真实 ID 前就失败了）
-        if (actualSessionId?.startsWith('pending-')) {
-          activeSessions.delete(actualSessionId);
-          log.info(`Cleaned up pending session after error: ${actualSessionId}`);
+        const errIdToClean = actualSessionId ?? pendingTempId;
+        if (errIdToClean?.startsWith('pending-')) {
+          activeSessions.delete(errIdToClean);
+          log.info(`Cleaned up pending session after error: ${errIdToClean}`);
         }
 
         callbacks.onError(msg);
