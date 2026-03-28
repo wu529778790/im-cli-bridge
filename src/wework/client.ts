@@ -24,6 +24,7 @@ import {
 const log = createLogger('WeWork');
 const DEFAULT_WS_URL = 'wss://openws.work.weixin.qq.com';
 const HEARTBEAT_INTERVAL = 30000; // 30秒
+const PONG_TIMEOUT = HEARTBEAT_INTERVAL * 3; // 90秒无任何服务端响应则判定连接死亡
 const MAX_RECONNECT_ATTEMPTS = 100;
 
 // Global state
@@ -34,6 +35,7 @@ let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let reconnectAttempts = 0;
 let shouldReconnect = false;
 let isStopping = false;
+let lastServerResponseTime = 0; // 上次收到服务端消息的时间
 
 // Event handlers
 let messageHandler: ((data: WeWorkCallbackMessage) => Promise<void>) | null = null;
@@ -209,6 +211,7 @@ async function connectWebSocket(): Promise<void> {
       });
 
       ws.on('message', async (data: Buffer) => {
+        lastServerResponseTime = Date.now();
         try {
           const message = JSON.parse(data.toString()) as WeWorkCallbackMessage | WeWorkResponse;
           await handleMessage(message);
@@ -382,11 +385,30 @@ function updateState(state: WeWorkConnectionState): void {
 
 /**
  * Start heartbeat to keep connection alive
+ * 同时检测服务端是否响应，超时无响应则主动断开触发重连
  */
 function startHeartbeat(): void {
   stopHeartbeat();
+  lastServerResponseTime = Date.now();
   heartbeatTimer = setInterval(() => {
     if (connectionState === 'connected' && ws) {
+      // 检测连接是否已死：长时间未收到任何服务端响应
+      const elapsed = Date.now() - lastServerResponseTime;
+      if (lastServerResponseTime > 0 && elapsed > PONG_TIMEOUT) {
+        log.warn(`No server response for ${Math.round(elapsed / 1000)}s, forcing reconnect`);
+        stopHeartbeat();
+        try {
+          ws.removeAllListeners();
+          ws.close();
+        } catch {
+          /* ignore */
+        }
+        ws = null;
+        updateState('disconnected');
+        scheduleReconnect();
+        return;
+      }
+
       const pingMessage = {
         cmd: WeWorkCommand.PING,
         headers: {
@@ -416,26 +438,31 @@ function stopHeartbeat(): void {
 
 /**
  * Schedule reconnection attempt
+ * 超过 MAX_RECONNECT_ATTEMPTS 后自动重置计数器继续重试，避免永久断连
  */
 function scheduleReconnect(): void {
   if (isStopping || !shouldReconnect) {
     return;
   }
 
-  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-    log.error('Max reconnect attempts reached');
-    return;
-  }
-
-  const interval = 5000; // 5秒后重连
   if (reconnectTimer) {
     return;
   }
 
+  // 超过最大重试次数后重置计数器，降低频率继续重试
+  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    log.warn(`Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached, resetting counter and retrying at lower frequency`);
+    reconnectAttempts = 0;
+  }
+
+  // 逐步增加间隔，5s → 7.5s → 11s → ... 最大 60s
+  const backoff = Math.min(5000 * Math.pow(1.5, Math.floor(reconnectAttempts / 5)), 60000);
+  const interval = Math.round(backoff);
+
   reconnectTimer = setTimeout(async () => {
     reconnectTimer = null;
     reconnectAttempts++;
-    log.info(`Reconnecting... Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
+    log.info(`Reconnecting... Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} (interval: ${interval}ms)`);
     try {
       await connectWebSocket();
     } catch (err) {
