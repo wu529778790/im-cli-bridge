@@ -20,15 +20,12 @@ interface ExistingConfig {
     qq?: { enabled?: boolean; appId?: string; secret?: string; allowedUserIds?: string[] };
     wechat?: {
       enabled?: boolean;
-      appId?: string;
-      appSecret?: string;
-      token?: string;
-      jwtToken?: string;
-      loginKey?: string;
-      guid?: string;
       userId?: string;
-      wsUrl?: string;
       allowedUserIds?: string[];
+      workbuddyAccessToken?: string;
+      workbuddyRefreshToken?: string;
+      workbuddyBaseUrl?: string;
+      workbuddyHostId?: string;
     };
     wework?: { enabled?: boolean; corpId?: string; secret?: string; allowedUserIds?: string[] };
     dingtalk?: { enabled?: boolean; clientId?: string; clientSecret?: string; allowedUserIds?: string[]; cardTemplateId?: string };
@@ -69,8 +66,7 @@ function getConfiguredPlatforms(existing: ExistingConfig | null): string[] {
       if (k === "telegram") return !!p.botToken;
       if (k === "feishu") return !!(p.appId && p.appSecret);
       if (k === "qq") return !!(p.appId && p.secret);
-      // 微信支持 AGP 协议（token + guid + userId）或标准协议（appId + appSecret）
-      if (k === "wechat") return !!(p.token && p.guid && p.userId) || !!(p.appId && p.appSecret);
+      if (k === "wechat") return !!(p.workbuddyAccessToken && p.workbuddyRefreshToken);
       if (k === "wework") return !!(p.corpId && p.secret);
       if (k === "dingtalk") return !!(p.clientId && p.clientSecret);
       return false;
@@ -141,9 +137,9 @@ function printManualInstructions(configPath: string): void {
     },
     "wechat": {
       "enabled": false,
-      "appId": "你的微信 App ID（可选，测试中）",
-      "appSecret": "你的微信 App Secret（可选）",
-      "wsUrl": "AGP WebSocket URL（可选）",
+      "workbuddyAccessToken": "（由 open-im init 在浏览器完成 WorkBuddy 登录后自动写入）",
+      "workbuddyRefreshToken": "",
+      "userId": "",
       "allowedUserIds": ["允许访问的微信用户 ID（可选）"]
     }
   }
@@ -151,7 +147,7 @@ function printManualInstructions(configPath: string): void {
   console.log("");
   console.log("提示：至少需要配置 Telegram、Feishu、QQ、WeChat、WeWork 或 DingTalk 其中一个平台");
   console.log(
-    "或设置环境变量: TELEGRAM_BOT_TOKEN=xxx、FEISHU_APP_ID=xxx、QQ_BOT_APPID=xxx、WECHAT_APP_ID=xxx、WEWORK_CORP_ID=xxx 或 DINGTALK_CLIENT_ID=xxx 后再运行",
+    "或设置环境变量: TELEGRAM_BOT_TOKEN=xxx、FEISHU_APP_ID=xxx、QQ_BOT_APPID=xxx、WECHAT_WORKBUDDY_ACCESS_TOKEN=xxx、WEWORK_CORP_ID=xxx 或 DINGTALK_CLIENT_ID=xxx 后再运行",
   );
   console.log("");
 }
@@ -321,7 +317,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
   const hasFs = !!(existing?.platforms?.feishu?.appId && existing?.platforms?.feishu?.appSecret);
   const hasQq = !!(existing?.platforms?.qq?.appId && existing?.platforms?.qq?.secret);
   const wc = existing?.platforms?.wechat;
-  const hasWc = !!(wc?.token && wc?.guid && wc?.userId) || !!(wc?.appId && wc?.appSecret);
+  const hasWc = !!(wc?.workbuddyAccessToken && wc?.workbuddyRefreshToken);
   const hasWw = !!(existing?.platforms?.wework?.corpId && existing?.platforms?.wework?.secret);
   const hasDt = !!(existing?.platforms?.dingtalk?.clientId && existing?.platforms?.dingtalk?.clientSecret);
 
@@ -493,35 +489,30 @@ export async function runInteractiveSetup(): Promise<boolean> {
 
   if (selectedPlatforms.includes("wechat")) {
     const wc = existing?.platforms?.wechat as Record<string, unknown> | undefined;
-    const hasToken = !!(wc?.token && wc?.guid && wc?.userId);
     const hasWbCreds = !!(wc?.workbuddyAccessToken && wc?.workbuddyRefreshToken);
 
     const wechatModeResp = await prompts(
       {
         type: "select",
         name: "mode",
-        message: "微信登录方式",
+        message: "微信（WorkBuddy / CodeBuddy OAuth）",
         choices: [
           {
-            title: "WorkBuddy OAuth - 在浏览器中完成 CodeBuddy 登录（推荐）",
-            value: "workbuddy",
+            title: "在浏览器中完成 CodeBuddy 登录并绑定微信客服（推荐）",
+            value: "oauth",
           },
           {
-            title: "扫码登录 - 用微信扫描二维码获取 token",
-            value: "qr",
-          },
-          {
-            title: "使用已有配置" + (hasToken || hasWbCreds ? " ✓" : "（需已配置）"),
+            title: "使用已有 WorkBuddy 凭证" + (hasWbCreds ? " ✓" : ""),
             value: "keep",
-            disabled: !hasToken && !hasWbCreds,
+            disabled: !hasWbCreds,
           },
         ],
-        initial: hasWbCreds ? 0 : (hasToken ? 1 : 0),
+        initial: hasWbCreds ? 1 : 0,
       },
       { onCancel }
     );
 
-    if (wechatModeResp.mode === "workbuddy") {
+    if (wechatModeResp.mode === "oauth") {
       console.log("\n正在启动 WorkBuddy OAuth 登录...\n");
 
       try {
@@ -549,14 +540,12 @@ export async function runInteractiveSetup(): Promise<boolean> {
         const userId = ((accountInfo as Record<string, unknown>)?.uid as string)?.toString() ?? "";
 
         (config.platforms as Record<string, unknown>).wechat = {
-          loginMode: 'workbuddy',
           enabled: true,
           workbuddyAccessToken: tokenResult.accessToken,
           workbuddyRefreshToken: tokenResult.refreshToken,
           userId,
         };
 
-        // Step 3: WeChat KF binding
         console.log("\n正在获取微信客服绑定链接...");
         const sessionId = oauth.buildSessionId();
         const linkResult = await oauth.getWeChatKfLink(sessionId);
@@ -581,32 +570,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
         console.error("\n❌ WorkBuddy 登录失败:", err instanceof Error ? err.message : String(err));
         if (platform === "wechat") return false;
       }
-    } else if (wechatModeResp.mode === "qr") {
-      console.log("\n正在启动微信扫码登录...\n");
-
-      try {
-        const { performWeChatLogin } = await import("./wechat/auth/index.js");
-        const credentials = await performWeChatLogin({
-          envName: "production",
-          appId: (wc?.appId as string | undefined) || undefined,
-        });
-        (config.platforms as Record<string, unknown>).wechat = {
-          loginMode: 'qclaw',
-          appId: wc?.appId,
-          enabled: true,
-          token: credentials.channelToken,
-          jwtToken: credentials.jwtToken,
-          loginKey: credentials.loginKey,
-          guid: credentials.guid,
-          userId: credentials.userId,
-          wsUrl: "wss://mmgrcalltoken.3g.qq.com/agentwss",
-        };
-        console.log("\n✅ 微信登录成功，配置已获取");
-      } catch (err) {
-        console.error("\n❌ 微信登录失败:", err instanceof Error ? err.message : String(err));
-        if (platform === "wechat") return false;
-      }
-    } else if (hasToken || hasWbCreds) {
+    } else if (hasWbCreds) {
       (config.platforms as Record<string, unknown>).wechat = {
         ...wc,
         enabled: true,
@@ -1036,19 +1000,19 @@ export async function runInteractiveSetup(): Promise<boolean> {
 
   if (selectedPlatforms.includes("wechat")) {
     const wcConfig = (config.platforms as Record<string, unknown>)?.wechat as Record<string, unknown> | undefined;
-    (out.platforms as Record<string, unknown>).wechat = {
-      ...(base?.platforms?.wechat as object),
+    const baseWc = base?.platforms?.wechat as Record<string, unknown> | undefined;
+    const wbOut: Record<string, unknown> = {
       enabled: true,
-      appId: wcConfig?.appId ?? base?.platforms?.wechat?.appId,
-      appSecret: wcConfig?.appSecret ?? base?.platforms?.wechat?.appSecret,
-      token: wcConfig?.token ?? base?.platforms?.wechat?.token,
-      jwtToken: wcConfig?.jwtToken ?? base?.platforms?.wechat?.jwtToken,
-      loginKey: wcConfig?.loginKey ?? base?.platforms?.wechat?.loginKey,
-      guid: wcConfig?.guid ?? base?.platforms?.wechat?.guid,
-      userId: wcConfig?.userId ?? base?.platforms?.wechat?.userId,
-      wsUrl: wcConfig?.wsUrl ?? base?.platforms?.wechat?.wsUrl,
+      workbuddyAccessToken: wcConfig?.workbuddyAccessToken ?? baseWc?.workbuddyAccessToken,
+      workbuddyRefreshToken: wcConfig?.workbuddyRefreshToken ?? baseWc?.workbuddyRefreshToken,
+      userId: wcConfig?.userId ?? baseWc?.userId ?? "",
       allowedUserIds: wechatIds,
     };
+    const wbBaseUrl = wcConfig?.workbuddyBaseUrl ?? baseWc?.workbuddyBaseUrl;
+    const wbHostId = wcConfig?.workbuddyHostId ?? baseWc?.workbuddyHostId;
+    if (wbBaseUrl) wbOut.workbuddyBaseUrl = wbBaseUrl;
+    if (wbHostId) wbOut.workbuddyHostId = wbHostId;
+    (out.platforms as Record<string, unknown>).wechat = wbOut;
   } else if (basePlatforms?.wechat) {
     outPlatforms.wechat = {
       ...basePlatforms.wechat,

@@ -1,6 +1,5 @@
 /**
- * WeChat Transport Interface
- * 抽象 QClaw 和 WorkBuddy 两种 WebSocket 传输方式
+ * WeChat Transport Interface — WorkBuddy Centrifuge 实现
  */
 
 import type { AGPEnvelope } from './types.js';
@@ -15,7 +14,6 @@ export type StateChangeHandler = (state: WeChatChannelState) => void;
 /**
  * WeChat 传输接口
  *
- * 所有传输方式（QClaw WebSocket、WorkBuddy Centrifuge）都实现此接口。
  * client.ts 通过此接口与传输层交互，无需关心底层协议。
  */
 export interface WeChatTransport {

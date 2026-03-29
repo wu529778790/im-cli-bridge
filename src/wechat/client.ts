@@ -1,12 +1,8 @@
 /**
- * WeChat Client - 薄封装层，根据 loginMode 委托给对应 transport
- *
- * 支持两种通道：
- * - workbuddy: 通过 Centrifuge WebSocket 连接（默认）
- * - qclaw: 直连腾讯 JPRX 网关
+ * WeChat Client — 通过 WorkBuddy（CodeBuddy OAuth + Centrifuge）连接微信
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { createLogger } from '../logger.js';
 import type { Config } from '../config.js';
@@ -16,7 +12,6 @@ import type {
   WeChatToken,
 } from './types.js';
 import type { WeChatTransport } from './transport.js';
-import { QClawTransport, type QClawTransportConfig } from './qclaw-transport.js';
 import { WorkBuddyTransport, type WorkBuddyTransportConfig } from './workbuddy-transport.js';
 
 const log = createLogger('WeChat');
@@ -27,8 +22,6 @@ let transport: WeChatTransport | null = null;
 let channelState: WeChatChannelState = 'disconnected';
 let currentToken: WeChatToken | null = null;
 let tokenStoragePath: string | null = null;
-let isStopping = false;
-
 // Event handlers
 let messageHandler: ((data: unknown) => Promise<void>) | null = null;
 let stateChangeHandler: ((state: WeChatChannelState) => void) | null = null;
@@ -42,7 +35,6 @@ export async function dispatchIncomingAGPEnvelope(
 ): Promise<void> {
   switch (envelope.method) {
     case 'ping':
-      // Respond to ping with pong via transport
       if (transport) {
         transport.send('ping', { timestamp: Date.now() }, envelope.msg_id);
       }
@@ -89,29 +81,17 @@ export async function initWeChat(
 ): Promise<void> {
   messageHandler = eventHandler;
   stateChangeHandler = onStateChange ?? null;
-  isStopping = false;
-
-  // Set up token storage path
   const baseDir = config.logDir ?? join(process.env.HOME ?? '', '.open-im');
   tokenStoragePath = join(baseDir, 'data');
   if (!existsSync(tokenStoragePath)) {
     mkdirSync(tokenStoragePath, { recursive: true });
   }
 
-  // Load existing token if available
   await loadToken();
 
-  // Determine login mode from config
-  const loginMode = config.platforms.wechat?.loginMode ?? 'workbuddy';
-  log.info(`Initializing WeChat with loginMode: ${loginMode}`);
+  log.info('Initializing WeChat (WorkBuddy)');
+  transport = createWorkBuddyTransport(config);
 
-  if (loginMode === 'workbuddy') {
-    transport = createWorkBuddyTransport(config);
-  } else {
-    transport = createQClawTransport(config);
-  }
-
-  // Wire up transport callbacks
   transport.onMessage(async (envelope) => {
     await dispatchIncomingAGPEnvelope(envelope, messageHandler);
   });
@@ -124,28 +104,9 @@ export async function initWeChat(
   });
 
   await transport.start();
-  log.info(`WeChat client initialized (${loginMode} mode)`);
+  log.info('WeChat client initialized (WorkBuddy)');
 }
 
-/**
- * Create QClaw transport from config
- */
-function createQClawTransport(config: Config): QClawTransport {
-  const qclawConfig: QClawTransportConfig = {
-    channelToken: config.wechatToken,
-    jwtToken: config.wechatJwtToken ?? config.platforms.wechat?.jwtToken,
-    loginKey: config.wechatLoginKey ?? config.platforms.wechat?.loginKey,
-    guid: config.wechatGuid,
-    userId: config.wechatUserId,
-    wsUrl: config.wechatWsUrl,
-  };
-
-  return new QClawTransport(qclawConfig);
-}
-
-/**
- * Create WorkBuddy transport from config
- */
 function createWorkBuddyTransport(config: Config): WorkBuddyTransport {
   const wp = config.platforms.wechat;
   const workbuddyConfig: WorkBuddyTransportConfig = {
@@ -179,7 +140,6 @@ export function sendAGPMessage<T>(
  * Stop WeChat client
  */
 export function stopWeChat(): void {
-  isStopping = true;
   if (transport) {
     transport.stop();
     transport = null;
@@ -210,20 +170,5 @@ async function loadToken(): Promise<void> {
       log.error('Error loading token:', err);
       currentToken = null;
     }
-  }
-}
-
-/**
- * Save token to storage
- */
-function saveToken(): void {
-  if (!currentToken || !tokenStoragePath) return;
-
-  try {
-    const tokenPath = join(tokenStoragePath, TOKEN_FILE);
-    writeFileSync(tokenPath, JSON.stringify(currentToken, null, 2), 'utf-8');
-    log.info('Token saved to storage');
-  } catch (err) {
-    log.error('Error saving token:', err);
   }
 }
