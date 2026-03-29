@@ -180,9 +180,10 @@ export class WorkBuddyOAuth {
   /**
    * Build sessionId for WorkBuddy workspace
    */
-  buildSessionId(workspacePath?: string): string {
-    const wp = workspacePath || `${process.env.HOME || process.env.USERPROFILE}/WorkBuddy/Claw`;
-    return `${this.userId}_${this.hostId}_${wp}`;
+  buildSessionId(_workspacePath?: string): string {
+    // Keep session ID ≤64 chars: WeChat KF uses it as `touser` in send_msg.
+    // userId (36) + "_" + hostId (≤26) is always well under the 64-char limit.
+    return `${this.userId}_${this.hostId}`;
   }
 
   /**

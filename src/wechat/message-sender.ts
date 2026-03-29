@@ -114,43 +114,26 @@ export async function sendFinalMessages(
   const title = getToolTitle(toolId, 'done');
   const parts = splitLongContent(fullContent, MAX_WECHAT_MESSAGE_LENGTH);
 
-  try {
-    const firstPartNote =
-      parts.length > 1 ? `内容较长，后续消息继续发送 (1/${parts.length})` : note;
-    const firstMessage = formatWeChatMessage(title, parts[0], 'done', firstPartNote);
-
-    sendAGPMessage('session.update', {
-      session_id: chatId,
-      updates: {
-        status: 'done',
-        content: firstMessage,
-      },
-    });
-    log.info('Final message updated in-place');
-  } catch (err) {
-    log.error('Failed to update final message in-place:', err);
-  }
-
-  for (let i = 1; i < parts.length; i++) {
+  for (let i = 0; i < parts.length; i++) {
     try {
-      const partContent = `${parts[i]}\n\n_*(续 ${i + 1}/${parts.length})*_`;
-      const message = formatWeChatMessage(
-        title,
-        partContent,
-        'done',
-        i === parts.length - 1 ? note : undefined,
-      );
+      const isLast = i === parts.length - 1;
+      const partNote = parts.length > 1
+        ? (isLast ? note : `内容较长，后续消息继续发送 (${i + 1}/${parts.length})`)
+        : note;
+      const partContent = i > 0 ? `${parts[i]}\n\n_*(续 ${i + 1}/${parts.length})*_` : parts[i];
+      const message = formatWeChatMessage(title, partContent, 'done', partNote);
 
+      // Use session.promptResponse so the reply goes via HTTP to WeChat KF.
+      // session.update only publishes on the Centrifuge channel and never reaches the user.
       sendAGPMessage('session.promptResponse', {
         session_id: chatId,
         content: message,
         status: 'success',
-        metadata: { part: i + 1, total: parts.length },
       });
 
-      log.info(`Final message part ${i + 1}/${parts.length} sent`);
+      log.info(parts.length > 1 ? `Final message part ${i + 1}/${parts.length} sent` : 'Final message sent');
     } catch (err) {
-      log.error(`Failed to send part ${i + 1}:`, err);
+      log.error(`Failed to send final message part ${i + 1}:`, err);
     }
   }
 }

@@ -81,9 +81,9 @@ export class WorkBuddyTransport implements WeChatTransport {
 
       log.info(`Workspace registered: channel=${tokens.channel}`);
 
-      // workspaceSessionId must match the sessionId used when the WeChat KF was bound
-      const workspacePath = this.config.workspacePath ?? join(homedir(), 'WorkBuddy', 'Claw');
-      const workspaceSessionId = `${this.config.userId}_${hostId}_${workspacePath}`;
+      // workspaceSessionId must match the sessionId used when the WeChat KF was bound.
+      // Keep it ≤64 chars: WeChat KF API uses it as `touser` (max 64 chars limit).
+      const workspaceSessionId = `${this.config.userId}_${hostId}`;
       const channel = tokens.channel;
       const oauth = this.oauth;
 
@@ -214,36 +214,68 @@ export class WorkBuddyTransport implements WeChatTransport {
     }
 
     const msgId = replyTo ?? randomUUID();
+    const p = payload as Record<string, unknown>;
 
-    // For prompt responses, use HTTP path (WorkBuddy's requirement)
+    // Normalize content: accepts string, content-array [{type,text}], or updates.content string.
+    const extractText = (): string => {
+      const raw = p.content;
+      if (typeof raw === 'string') return raw;
+      if (Array.isArray(raw)) {
+        return (raw as Array<{ text?: string }>).map((c) => c.text ?? '').join('');
+      }
+      // session.update AGP format: {updates: {content: string, status}}
+      const updates = p.updates as Record<string, unknown> | undefined;
+      if (typeof updates?.content === 'string') return updates.content as string;
+      return '';
+    };
+
+    // For prompt responses, send via HTTP COPILOT_RESPONSE (WorkBuddy requirement)
     if (method === 'session.promptResponse') {
-      const p = payload as Record<string, unknown>;
+      const text = extractText();
+      const isError = !!(p.error) || p.status === 'error';
       this.centrifugeClient.sendPromptResponse(
         {
           session_id: p.session_id as string,
-          prompt_id: p.prompt_id as string ?? msgId,
-          content: p.content as Array<{ type: string; text?: string }> | undefined,
+          prompt_id: (p.prompt_id as string) ?? msgId,
+          content: text ? [{ type: 'text', text }] : undefined,
           error: p.error as string | undefined,
-          stop_reason: (p.stop_reason as 'end_turn' | 'max_tokens' | 'tool_use' | 'stop_sequence' | 'error') ?? 'end_turn',
+          stop_reason: isError ? 'error' : 'end_turn',
         },
         this.config.guid,
         this.config.userId,
       );
+      log.debug(`WorkBuddy sendPromptResponse: session=${p.session_id as string}, textLen=${text.length}`);
       return;
     }
 
-    // Use sendMessageChunk for session.update, sendToolCall for tool calls
+    // session.update → stream a chunk via Centrifuge
     if (method === 'session.update') {
-      const p = payload as Record<string, unknown>;
       const sessionId = p.session_id as string;
-      const promptId = p.prompt_id as string ?? msgId;
-
-      const content = p.content as Array<{ type: string; text?: string }> | undefined;
-      if (content?.[0]?.text) {
+      const promptId = (p.prompt_id as string) ?? msgId;
+      const text = extractText();
+      if (text) {
         this.centrifugeClient.sendMessageChunk(
           sessionId,
           promptId,
-          { type: 'text', text: content[0].text },
+          { type: 'text', text },
+          this.config.guid,
+          this.config.userId,
+        );
+        log.debug(`WorkBuddy sendMessageChunk: session=${sessionId}, textLen=${text.length}`);
+      }
+      return;
+    }
+
+    // session.prompt used as a "thinking" status — send as a short chunk so the
+    // user gets immediate feedback that the AI is working.
+    if (method === 'session.prompt') {
+      const text = extractText();
+      const sessionId = p.session_id as string;
+      if (sessionId && text) {
+        this.centrifugeClient.sendMessageChunk(
+          sessionId,
+          msgId,
+          { type: 'text', text },
           this.config.guid,
           this.config.userId,
         );
@@ -251,8 +283,7 @@ export class WorkBuddyTransport implements WeChatTransport {
       return;
     }
 
-    // Fallback: send via Centrifuge publish
-    log.debug(`WorkBuddy send: method=${method}, msg_id=${msgId}`);
+    log.debug(`WorkBuddy send (unhandled): method=${method}`);
   }
 
   onMessage(handler: MessageHandler): void {

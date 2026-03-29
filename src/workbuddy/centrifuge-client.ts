@@ -217,20 +217,25 @@ export class WorkBuddyCentrifugeClient {
     // WeChat KF messages: send via HTTP COPILOT_RESPONSE
     if (this.config.httpBaseUrl && this.config.httpAccessToken) {
       const message = payload.content?.map((c) => c.text).join('') || payload.error || '';
+      // chatId format: "<wechatUserId>::origin::wechatkfProxy"
+      // Extract user ID for toUser field; keep full chatId for routing.
+      const chatIdFull = payload.session_id;
+      const toUser = chatIdFull.includes('::') ? chatIdFull.split('::')[0] : chatIdFull;
       const httpPayload = {
         type: 'COPILOT_RESPONSE',
         msgId: payload.prompt_id,
-        chatId: payload.session_id,
+        chatId: chatIdFull,
+        toUser,
         success: payload.stop_reason === 'end_turn',
         message,
         metadata: {
           sessionId: this.config.workspaceSessionId || payload.session_id,
-          requestId: payload.prompt_id,
-          state: payload.stop_reason === 'end_turn' ? 'completed' : payload.stop_reason,
+          toUser,
         },
       };
 
       const url = `${this.config.httpBaseUrl}/v2/backgroundagent/wecom/local-proxy/receive`;
+      log.debug(`${this.logPrefix} HTTP COPILOT_RESPONSE → ${url} chatId=${payload.session_id} msgLen=${message.length}`);
       fetch(url, {
         method: 'POST',
         headers: {
@@ -241,9 +246,11 @@ export class WorkBuddyCentrifugeClient {
         signal: AbortSignal.timeout(30_000),
       })
         .then(async (res) => {
+          const body = await res.text().catch(() => '');
           if (!res.ok) {
-            const body = await res.text().catch(() => '');
-            log.error(`${this.logPrefix} HTTP COPILOT_RESPONSE failed: ${res.status} ${body.substring(0, 200)}`);
+            log.error(`${this.logPrefix} HTTP COPILOT_RESPONSE failed: ${res.status} ${body.substring(0, 300)}`);
+          } else {
+            log.info(`${this.logPrefix} HTTP COPILOT_RESPONSE ok: ${res.status} ${body.substring(0, 200)}`);
           }
         })
         .catch((err) => {
