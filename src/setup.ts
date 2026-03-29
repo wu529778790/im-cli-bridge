@@ -555,6 +555,27 @@ export async function runInteractiveSetup(): Promise<boolean> {
           workbuddyRefreshToken: tokenResult.refreshToken,
           userId,
         };
+
+        // Step 3: WeChat KF binding
+        console.log("\n正在获取微信客服绑定链接...");
+        const sessionId = oauth.buildSessionId();
+        const linkResult = await oauth.getWeChatKfLink(sessionId);
+        if (linkResult.success && linkResult.url) {
+          console.log("\n━━━ 微信客服绑定 ━━━");
+          console.log("请复制以下链接，在微信中发给「文件传输助手」并点击打开：");
+          console.log(linkResult.url);
+          console.log("\n等待绑定完成（最长 5 分钟）...\n");
+
+          const bindResult = await oauth.pollBindStatus(sessionId);
+          if (bindResult.bound) {
+            console.log(`✅ 微信客服绑定成功！${bindResult.nickname ? ` 用户: ${bindResult.nickname}` : ""}`);
+          } else {
+            console.log("⚠️ 绑定超时，你可以稍后重新运行 open-im init 完成绑定");
+          }
+        } else {
+          console.log("⚠️ 获取微信客服链接失败，你可以稍后重新运行 open-im init 完成绑定");
+        }
+
         console.log("\n✅ WorkBuddy 登录成功，配置已保存");
       } catch (err) {
         console.error("\n❌ WorkBuddy 登录失败:", err instanceof Error ? err.message : String(err));
