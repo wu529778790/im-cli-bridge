@@ -526,6 +526,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
           appId: wc?.appId || undefined,
         });
         (config.platforms as Record<string, unknown>).wechat = {
+          loginMode: 'qclaw',
           appId: wc?.appId,
           enabled: true,
           token: credentials.channelToken,
