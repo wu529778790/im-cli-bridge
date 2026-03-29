@@ -302,19 +302,27 @@ export class ClaudeSDKAdapter implements ToolAdapter {
           }
 
           // 如果流正常结束但没有收到 result 消息
-          if (!streamClosed && accumulated) {
-            log.info('Stream ended without result message, using accumulated text');
-            runSettled = true;
-            clearRunTimeout();
-            callbacks.onComplete({
-              success: true,
-              result: accumulated,
-              accumulated,
-              cost: 0,
-              durationMs: 0,
-              numTurns: 1,
-              toolStats,
-            });
+          if (!streamClosed) {
+            if (accumulated) {
+              log.info('Stream ended without result message, using accumulated text');
+              runSettled = true;
+              clearRunTimeout();
+              callbacks.onComplete({
+                success: true,
+                result: accumulated,
+                accumulated,
+                cost: 0,
+                durationMs: 0,
+                numTurns: 1,
+                toolStats,
+              });
+            } else {
+              // 流结束但无 result 也无 accumulated：必须触发回调，否则 Promise 永远挂起
+              log.warn('Stream ended with no result and no accumulated text, calling onError to prevent stuck state');
+              runSettled = true;
+              clearRunTimeout();
+              callbacks.onError('AI 响应异常结束（无输出），请重试');
+            }
           }
         } finally {
           // 从活跃列表中移除流

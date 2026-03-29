@@ -272,7 +272,7 @@ export function setupTelegramHandlers(
         }
       };
 
-      return (content: string, toolNote?: string) => {
+      const wrapper = (content: string, toolNote?: string) => {
         if (content.startsWith("💭 **思考中...**")) {
           return;
         }
@@ -300,6 +300,19 @@ export function setupTelegramHandlers(
           Math.max(DEBOUNCE_MS, baseDelay),
         );
       };
+
+      // flush 排队的 debounce 更新，防止 sendComplete 时仍有 streaming 更新在排队
+      wrapper.flush = async () => {
+        if (debounceTimer) {
+          clearTimeout(debounceTimer);
+          debounceTimer = null;
+        }
+        while (updateInProgress) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+      };
+
+      return wrapper;
     };
 
     const streamUpdateWrapper = createStreamUpdateWrapper();
@@ -324,6 +337,8 @@ export function setupTelegramHandlers(
         },
         sendComplete: async (content, note) => {
           throttle.reset();
+          // 先 flush 排队的 streaming 更新，防止它覆盖后续的 done 消息
+          await streamUpdateWrapper.flush?.();
           try {
             await sendFinalMessages(chatId, msgId, content, note, toolId);
           } catch (err) {
