@@ -8,6 +8,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PID_FILE = join(APP_HOME, "open-im.pid");
 const READY_FILE = join(APP_HOME, "open-im.ready");
 
+function logError(prefix: string, err: unknown): void {
+  const msg = err instanceof Error ? err.message : String(err);
+  process.stderr.write(`[manager-control] ${prefix} ${msg}\n`);
+}
+
 function getManagerEntry(): { command: string; args: string[] } {
   const extension = extname(fileURLToPath(import.meta.url));
   if (extension === ".ts") {
@@ -108,6 +113,9 @@ export async function startManagerProcess(cwd: string): Promise<{ pid: number }>
     cwd,
     env: process.env,
     windowsHide: process.platform === "win32",
+  });
+  child.on("error", (err) => {
+    logError("Manager process spawn failed:", err);
   });
   child.unref();
 

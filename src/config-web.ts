@@ -241,10 +241,21 @@ function clean(value: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+const MAX_REQUEST_BODY_BYTES = 1 * 1024 * 1024; // 1 MB
+
 function readJson<T>(request: IncomingMessage): Promise<T> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    request.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+    let totalBytes = 0;
+    request.on("data", (chunk) => {
+      totalBytes += chunk.length;
+      if (totalBytes > MAX_REQUEST_BODY_BYTES) {
+        reject(new Error("Request body too large (max 1 MB)"));
+        request.destroy();
+        return;
+      }
+      chunks.push(Buffer.from(chunk));
+    });
     request.on("end", () => {
       try {
         const raw = Buffer.concat(chunks).toString("utf-8");
@@ -262,6 +273,11 @@ function json(response: ServerResponse, statusCode: number, body: unknown): void
   response.end(JSON.stringify(body));
 }
 
+function maskSecret(value: string | undefined): string {
+  if (!value || value.length <= 4) return value ? "****" : "";
+  return value.slice(0, 2) + "****" + value.slice(-2);
+}
+
 function buildInitialPayload(file: FileConfig): WebConfigPayload {
   // Load Claude settings from ~/.claude/settings.json
   const claudeEnv = loadClaudeSettingsEnv();
@@ -271,7 +287,7 @@ function buildInitialPayload(file: FileConfig): WebConfigPayload {
       telegram: {
         enabled: file.platforms?.telegram?.enabled ?? Boolean(file.platforms?.telegram?.botToken),
         aiCommand: (file.platforms?.telegram?.aiCommand as "" | "claude" | "codex" | "codebuddy" | undefined) ?? "",
-        botToken: file.platforms?.telegram?.botToken ?? "",
+        botToken: maskSecret(file.platforms?.telegram?.botToken),
         proxy: file.platforms?.telegram?.proxy ?? "",
         allowedUserIds: (file.platforms?.telegram?.allowedUserIds ?? []).join(", "),
       },
@@ -279,36 +295,36 @@ function buildInitialPayload(file: FileConfig): WebConfigPayload {
         enabled: file.platforms?.feishu?.enabled ?? Boolean(file.platforms?.feishu?.appId && file.platforms?.feishu?.appSecret),
         aiCommand: (file.platforms?.feishu?.aiCommand as "" | "claude" | "codex" | "codebuddy" | undefined) ?? "",
         appId: file.platforms?.feishu?.appId ?? "",
-        appSecret: file.platforms?.feishu?.appSecret ?? "",
+        appSecret: maskSecret(file.platforms?.feishu?.appSecret),
         allowedUserIds: (file.platforms?.feishu?.allowedUserIds ?? []).join(", "),
       },
       qq: {
         enabled: file.platforms?.qq?.enabled ?? Boolean(file.platforms?.qq?.appId && file.platforms?.qq?.secret),
         aiCommand: (file.platforms?.qq?.aiCommand as "" | "claude" | "codex" | "codebuddy" | undefined) ?? "",
         appId: file.platforms?.qq?.appId ?? "",
-        secret: file.platforms?.qq?.secret ?? "",
+        secret: maskSecret(file.platforms?.qq?.secret),
         allowedUserIds: (file.platforms?.qq?.allowedUserIds ?? []).join(", "),
       },
       wework: {
         enabled: file.platforms?.wework?.enabled ?? Boolean(file.platforms?.wework?.corpId && file.platforms?.wework?.secret),
         aiCommand: (file.platforms?.wework?.aiCommand as "" | "claude" | "codex" | "codebuddy" | undefined) ?? "",
         corpId: file.platforms?.wework?.corpId ?? "",
-        secret: file.platforms?.wework?.secret ?? "",
+        secret: maskSecret(file.platforms?.wework?.secret),
         allowedUserIds: (file.platforms?.wework?.allowedUserIds ?? []).join(", "),
       },
       dingtalk: {
         enabled: file.platforms?.dingtalk?.enabled ?? Boolean(file.platforms?.dingtalk?.clientId && file.platforms?.dingtalk?.clientSecret),
         aiCommand: (file.platforms?.dingtalk?.aiCommand as "" | "claude" | "codex" | "codebuddy" | undefined) ?? "",
         clientId: file.platforms?.dingtalk?.clientId ?? "",
-        clientSecret: file.platforms?.dingtalk?.clientSecret ?? "",
+        clientSecret: maskSecret(file.platforms?.dingtalk?.clientSecret),
         cardTemplateId: file.platforms?.dingtalk?.cardTemplateId ?? "",
         allowedUserIds: (file.platforms?.dingtalk?.allowedUserIds ?? []).join(", "),
       },
       workbuddy: {
         enabled: file.platforms?.workbuddy?.enabled ?? Boolean(file.platforms?.workbuddy?.accessToken && file.platforms?.workbuddy?.refreshToken && file.platforms?.workbuddy?.userId),
         aiCommand: (file.platforms?.workbuddy?.aiCommand as "" | "claude" | "codex" | "codebuddy" | undefined) ?? "",
-        accessToken: file.platforms?.workbuddy?.accessToken ?? "",
-        refreshToken: file.platforms?.workbuddy?.refreshToken ?? "",
+        accessToken: maskSecret(file.platforms?.workbuddy?.accessToken),
+        refreshToken: maskSecret(file.platforms?.workbuddy?.refreshToken),
         userId: file.platforms?.workbuddy?.userId ?? "",
         baseUrl: file.platforms?.workbuddy?.baseUrl ?? "",
         allowedUserIds: (file.platforms?.workbuddy?.allowedUserIds ?? []).join(", "),
@@ -321,7 +337,7 @@ function buildInitialPayload(file: FileConfig): WebConfigPayload {
       claudeConfigPath: process.platform === 'win32'
         ? getClaudeConfigHome() + "\\.claude\\settings.json"
         : getClaudeConfigHome() + "/.claude/settings.json",
-      claudeAuthToken: claudeEnv.ANTHROPIC_AUTH_TOKEN ?? "",
+      claudeAuthToken: maskSecret(claudeEnv.ANTHROPIC_AUTH_TOKEN),
       claudeBaseUrl: claudeEnv.ANTHROPIC_BASE_URL ?? "",
       claudeModel: claudeEnv.ANTHROPIC_MODEL ?? "",
       claudeProxy: file.tools?.claude?.proxy ?? "",

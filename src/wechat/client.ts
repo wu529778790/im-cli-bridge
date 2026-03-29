@@ -139,10 +139,25 @@ async function connectWebSocket(config: WeChatWebSocketConfig): Promise<void> {
   updateState('connecting');
 
   return new Promise((resolve, reject) => {
+    let settled = false;
+    // Connection timeout to prevent promise from hanging forever
+    const connectionTimeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      const err = new Error('WeChat WebSocket connection timeout');
+      log.error(err.message);
+      updateState('error');
+      try { ws?.close(); } catch { /* ignore */ }
+      reject(err);
+    }, 30000);
+
     try {
       ws = new WebSocket(config.url);
 
       ws.on('open', () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(connectionTimeout);
         log.info('WeChat WebSocket connected');
         reconnectAttempts = 0;
         updateState('connected');
@@ -162,18 +177,33 @@ async function connectWebSocket(config: WeChatWebSocketConfig): Promise<void> {
       });
 
       ws.on('error', (err) => {
+        if (settled) {
+          // Late error after connection was established — just log it
+          log.error('WeChat WebSocket error (after open):', err);
+          return;
+        }
+        settled = true;
+        clearTimeout(connectionTimeout);
         log.error('WeChat WebSocket error:', err);
         updateState('error');
         reject(err);
       });
 
       ws.on('close', () => {
+        clearTimeout(connectionTimeout);
         log.info('WeChat WebSocket closed');
         stopHeartbeat();
         updateState('disconnected');
+        if (!settled) {
+          settled = true;
+          reject(new Error('WeChat WebSocket closed before open'));
+          return;
+        }
         scheduleReconnect(config);
       });
     } catch (err) {
+      settled = true;
+      clearTimeout(connectionTimeout);
       log.error('Error creating WebSocket connection:', err);
       updateState('error');
       reject(err);

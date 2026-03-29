@@ -14,6 +14,18 @@ interface PendingReplyState {
 
 const pendingReplies = new Map<string, PendingReplyState>();
 
+// Periodic cleanup of orphaned pending replies
+const PENDING_MAX_AGE_MS = 10 * 60 * 1000; // 10 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, state] of pendingReplies) {
+    // pendingReplies don't have timestamps, but we can clear old ones based on size
+    if (pendingReplies.size > 100) {
+      pendingReplies.delete(id);
+    }
+  }
+}, PENDING_MAX_AGE_MS);
+
 function parseChatTarget(chatId: string): { kind: "group" | "private"; id: string } {
   if (chatId.startsWith("group:")) {
     return { kind: "group", id: chatId.slice("group:".length) };

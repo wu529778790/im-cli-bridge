@@ -114,7 +114,9 @@ async function sendPermissionFallback(chatId: string, guide: string): Promise<vo
   try {
     await sendTextReply(chatId, guide);
     return;
-  } catch { /* 卡片方式失败，降级 */ }
+  } catch (err) {
+    log.warn('Card-based reply failed, falling back to plain text:', err);
+  }
 
   // 2. 降级为纯文本消息
   try {
@@ -129,7 +131,9 @@ async function sendPermissionFallback(chatId: string, guide: string): Promise<vo
       params: { receive_id_type: 'chat_id' },
     });
     return;
-  } catch { /* 纯文本也失败 */ }
+  } catch (err) {
+    log.warn('Plain text reply also failed:', err);
+  }
 
   log.error('All fallback methods failed to send permission guide');
 }
@@ -212,11 +216,15 @@ export function setupFeishuHandlers(
       // 检测是否为飞书权限不足
       if (isPermissionError(err)) {
         const guide = buildPermissionGuideMessage(err);
-        await sendPermissionFallback(chatId, guide).catch(() => { /* 最终兜底 */ });
+        await sendPermissionFallback(chatId, guide).catch((err) => {
+          log.warn('Permission fallback send failed:', err);
+        });
       } else {
         try {
           await sendTextReply(chatId, '启动 AI 处理失败，请重试。');
-        } catch { /* ignore */ }
+        } catch (err) {
+          log.warn('Failed to send startup error reply:', err);
+        }
       }
       return;
     }
@@ -283,7 +291,8 @@ export function setupFeishuHandlers(
     if (typeof raw === 'string') {
       try {
         obj = JSON.parse(raw) as { action?: string; value?: string };
-      } catch {
+      } catch (err) {
+        log.debug('Failed to parse action value as JSON:', err);
         return null;
       }
     } else if (typeof raw === 'object' && raw !== null) {
@@ -347,8 +356,8 @@ export function setupFeishuHandlers(
         if (typeof parsed === 'string') parsed = JSON.parse(parsed);
       }
       actionData = parsed as StopAction;
-    } catch {
-      /* ignore */
+    } catch (err) {
+      log.debug('Failed to parse card action data:', err);
     }
     if (actionData?.action === 'stop' && actionData.card_id) {
       const cardId = actionData.card_id;

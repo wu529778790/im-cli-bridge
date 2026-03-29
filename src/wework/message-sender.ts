@@ -147,6 +147,19 @@ interface StreamState {
 
 const streamStates = new Map<string, StreamState>();
 
+// Periodic cleanup of expired/orphaned stream states
+const STREAM_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, state] of streamStates) {
+    if (now - state.createdAt >= STREAM_SAFE_TTL_MS) {
+      state.closed = true;
+      streamStates.delete(id);
+      log.info(`Cleaned up expired stream state: ${id}`);
+    }
+  }
+}, STREAM_CLEANUP_INTERVAL_MS);
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

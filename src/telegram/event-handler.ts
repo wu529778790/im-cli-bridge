@@ -169,7 +169,9 @@ export function setupTelegramHandlers(
       log.error("Failed to send thinking message:", err);
       try {
         await sendTextReply(chatId, "启动 AI 处理失败，请重试。");
-      } catch { /* ignore */ }
+      } catch (err) {
+        log.warn('Failed to send startup error reply:', err);
+      }
       return;
     }
 
@@ -258,7 +260,8 @@ export function setupTelegramHandlers(
           );
           throttle.recordSuccess();
           lastUpdateTime = Date.now();
-        } catch {
+        } catch (err) {
+          log.debug('Stream update failed:', err);
           throttle.recordError();
         } finally {
           updateInProgress = false;

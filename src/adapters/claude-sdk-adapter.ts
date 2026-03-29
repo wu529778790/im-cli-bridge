@@ -23,6 +23,21 @@ const activeSessions = new Map<string, SDKSession>();
 // 存储正在进行的流式迭代器，用于中断
 const activeStreams = new Set<AsyncIterator<SDKMessage>>();
 
+// Mutex to serialize process.chdir() calls across concurrent users
+let chdirMutex: Promise<void> = Promise.resolve();
+function withChdirMutex<T>(fn: () => T): Promise<T> {
+  const previous = chdirMutex;
+  let resolve!: () => void;
+  chdirMutex = new Promise<void>((r) => { resolve = r; });
+  return previous.then(() => {
+    try {
+      return fn();
+    } finally {
+      resolve();
+    }
+  });
+}
+
 function isStreamEvent(msg: SDKMessage): boolean {
   return (msg as { type?: string }).type === 'stream_event';
 }
@@ -63,44 +78,44 @@ async function getOrCreateSession(
   const baseUrl = process.env.ANTHROPIC_BASE_URL ?? '(default)';
   log.info(`[V2] getOrCreateSession model param=${String(model ?? '')} resolved=${resolvedModel} baseUrl=${baseUrl} workDir=${workDir}`);
 
-  let session: SDKSession;
+  // Use mutex to serialize process.chdir() calls across concurrent users
+  return withChdirMutex(() => {
+    let session: SDKSession;
 
-  // SDK V2 的 SDKSessionOptions 没有 cwd 字段，
-  // 需要通过 process.chdir() 临时切换工作目录。
-  // 因为 createSession/resumeSession 是同步调用，且 JS 单线程，所以是安全的。
-  const originalCwd = process.cwd();
-  try {
-    if (workDir && workDir !== originalCwd) {
-      process.chdir(workDir);
-    }
+    const originalCwd = process.cwd();
+    try {
+      if (workDir && workDir !== originalCwd) {
+        process.chdir(workDir);
+      }
 
-    if (sessionId) {
-      // 尝试恢复已有会话
-      try {
-        log.info(`Attempting to resume session: ${sessionId}`);
-        session = unstable_v2_resumeSession(sessionId, sessionOptions);
-        activeSessions.set(sessionId, session);
-        log.info(`Successfully resumed session: ${sessionId}`);
-        return { session, sessionId };
-      } catch (err) {
-        log.warn(`Failed to resume session ${sessionId}, creating new one: ${err}`);
-        // 恢复失败，创建新会话
+      if (sessionId) {
+        // 尝试恢复已有会话
+        try {
+          log.info(`Attempting to resume session: ${sessionId}`);
+          session = unstable_v2_resumeSession(sessionId, sessionOptions);
+          activeSessions.set(sessionId, session);
+          log.info(`Successfully resumed session: ${sessionId}`);
+          return { session, sessionId };
+        } catch (err) {
+          log.warn(`Failed to resume session ${sessionId}, creating new one: ${err}`);
+          // 恢复失败，创建新会话
+        }
+      }
+
+      // 创建新会话
+      session = unstable_v2_createSession(sessionOptions);
+      // 新会话的 sessionId 需要从第一个消息中获取
+      // 暂时返回 undefined，稍后在 init 消息中获取
+      const tempId = `pending-${Date.now()}`;
+      activeSessions.set(tempId, session);
+      log.info(`Created new session (tempId: ${tempId})`);
+      return { session, sessionId: tempId };
+    } finally {
+      if (workDir && workDir !== originalCwd) {
+        process.chdir(originalCwd);
       }
     }
-
-    // 创建新会话
-    session = unstable_v2_createSession(sessionOptions);
-    // 新会话的 sessionId 需要从第一个消息中获取
-    // 暂时返回 undefined，稍后在 init 消息中获取
-    const tempId = `pending-${Date.now()}`;
-    activeSessions.set(tempId, session);
-    log.info(`Created new session (tempId: ${tempId})`);
-    return { session, sessionId: tempId };
-  } finally {
-    if (workDir && workDir !== originalCwd) {
-      process.chdir(originalCwd);
-    }
-  }
+  });
 }
 
 export class ClaudeSDKAdapter implements ToolAdapter {

@@ -195,7 +195,11 @@ function startHeartbeat(intervalMs: number): void {
   if (heartbeatTimer) clearInterval(heartbeatTimer);
   heartbeatTimer = setInterval(() => {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    ws.send(JSON.stringify({ op: 1, d: seq }));
+    try {
+      ws.send(JSON.stringify({ op: 1, d: seq }));
+    } catch (err) {
+      log.warn('QQ heartbeat send failed:', err);
+    }
   }, intervalMs);
 }
 

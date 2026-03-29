@@ -17,6 +17,16 @@ import {
 const log = createLogger("TgSender");
 const lastSentByMsg = new Map<string, string>();
 
+// Periodic cleanup of orphaned entries (entries not cleaned by done/error)
+const LAST_SENT_MAX_AGE_MS = 30 * 60 * 1000; // 30 minutes
+setInterval(() => {
+  // lastSentByMsg doesn't store timestamps, so clear all entries periodically
+  // since they are just dedup cache entries, clearing is safe
+  if (lastSentByMsg.size > 0) {
+    lastSentByMsg.clear();
+  }
+}, LAST_SENT_MAX_AGE_MS);
+
 export type MessageStatus = "thinking" | "streaming" | "done" | "error";
 
 const STATUS_ICONS: Record<MessageStatus, string> = {

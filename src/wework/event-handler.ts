@@ -180,7 +180,8 @@ export async function buildMediaPrompt(data: WeWorkCallbackMessage, kind: MediaK
           localPath: savedPath,
           text: contextText,
         });
-      } catch {
+      } catch (err) {
+        log.warn('Failed to download WeWork image, falling back to URL reference:', err);
         imageReference = `Remote image URL: ${imagePayload.url}`;
       }
     }
@@ -210,8 +211,8 @@ export async function buildMediaPrompt(data: WeWorkCallbackMessage, kind: MediaK
         localPath: savedPath,
         text: contextText,
       });
-    } catch {
-      // Fall back to metadata-only prompt.
+    } catch (err) {
+      log.warn('Failed to download WeWork media, falling back to metadata-only prompt:', err);
     }
   }
 
@@ -277,7 +278,9 @@ export function setupWeWorkHandlers(
         log.error('Failed to send thinking message:', err);
         try {
           await sendTextReply(chatId, '启动 AI 处理失败，请重试。', reqId);
-        } catch { /* ignore */ }
+        } catch (err) {
+          log.warn('Failed to send startup error reply:', err);
+        }
         return;
       }
       const stopTyping = startTypingLoop(chatId);
