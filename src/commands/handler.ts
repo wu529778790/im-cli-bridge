@@ -50,8 +50,8 @@ export class CommandHandler {
       return true;
     }
 
-    if (t === '/help') return this.handleHelp(chatId, platform);
-    if (t === '/new') return this.handleNew(chatId, userId, platform);
+    if (t === '/help') return this.handleHelp(chatId);
+    if (t === '/new') return this.handleNew(chatId, userId);
     if (t === '/pwd') return this.handlePwd(chatId, userId);
     if (t === '/status') return this.handleStatus(chatId, userId, platform);
 
@@ -68,19 +68,7 @@ export class CommandHandler {
     return false;
   }
 
-  private getClearHistoryHint(platform: 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework' | 'workbuddy'): string {
-    return platform === 'feishu'
-      ? '💡 提示：如需清除本对话的历史消息，请点击飞书聊天右上角「...」→ 清除聊天记录'
-      : platform === 'wechat'
-        ? '💡 提示：如需清除本对话的历史消息，请清除聊天记录'
-        : platform === 'dingtalk'
-          ? '💡 提示：如需清除本对话的历史消息，请在钉钉中清空聊天记录'
-          : platform === 'workbuddy'
-            ? '💡 提示：如需清除本对话的历史消息，请清除聊天记录'
-            : '💡 提示：如需清除本对话的历史消息，请点击 Telegram 聊天右上角 ⋮ → 清除历史';
-  }
-
-  private async handleHelp(chatId: string, platform: 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework' | 'workbuddy'): Promise<boolean> {
+  private async handleHelp(chatId: string): Promise<boolean> {
     const help = [
       '📋 可用命令:',
       '',
@@ -89,19 +77,17 @@ export class CommandHandler {
       '/status - 显示状态',
       '/cd <路径> - 切换工作目录',
       '/pwd - 当前工作目录',
-      '',
-      this.getClearHistoryHint(platform),
     ].join('\n');
     await this.deps.sender.sendTextReply(chatId, help);
     return true;
   }
 
-  private async handleNew(chatId: string, userId: string, platform: 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework' | 'workbuddy'): Promise<boolean> {
+  private async handleNew(chatId: string, userId: string): Promise<boolean> {
     const ok = this.deps.sessionManager.newSession(userId);
     await this.deps.sender.sendTextReply(
       chatId,
       ok
-        ? `✅ AI 会话已重置，下一条消息将使用全新上下文。\n\n${this.getClearHistoryHint(platform)}`
+        ? '✅ AI 会话已重置，下一条消息将使用全新上下文。'
         : '当前没有活动会话。'
     );
     return true;
@@ -150,8 +136,7 @@ export class CommandHandler {
       await this.deps.sender.sendTextReply(
         chatId,
         `📁 工作目录已切换到: ${escapePathForMarkdown(resolved)}\n\n` +
-        `🔄 AI 会话已重置，下一条消息将使用全新上下文。\n` +
-        this.getClearHistoryHint(platform)
+        `🔄 AI 会话已重置，下一条消息将使用全新上下文。`
       );
     } catch (err) {
       await this.deps.sender.sendTextReply(chatId, err instanceof Error ? err.message : String(err));
