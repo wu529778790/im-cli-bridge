@@ -13,7 +13,6 @@ const PLATFORM_LABELS: Record<Platform, string> = {
   telegram: "Telegram",
   feishu: "Feishu",
   qq: "QQ",
-  wechat: "微信",
   wework: "企业微信",
   dingtalk: "钉钉",
   workbuddy: "WorkBuddy",
@@ -31,10 +30,6 @@ export const CHANNEL_CAPABILITIES: Record<Platform, ChannelCapabilities> = {
   qq: {
     inbound: { text: "native", image: "fallback", file: "fallback", voice: "fallback", video: "fallback" },
     outbound: { streamEdit: "none", streamPush: "none", image: "fallback", card: "fallback", typing: "fallback" },
-  },
-  wechat: {
-    inbound: { text: "native", image: "fallback", file: "fallback", voice: "fallback", video: "fallback" },
-    outbound: { streamEdit: "native", streamPush: "fallback", image: "fallback", card: "native", typing: "native" },
   },
   wework: {
     inbound: { text: "native", image: "fallback", file: "fallback", voice: "fallback", video: "fallback" },

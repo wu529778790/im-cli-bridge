@@ -466,7 +466,6 @@ function createProbeConfig(values: Partial<Config>): Config {
     telegramAllowedUserIds: [],
     feishuAllowedUserIds: [],
     qqAllowedUserIds: [],
-    wechatAllowedUserIds: [],
     weworkAllowedUserIds: [],
     dingtalkAllowedUserIds: [],
     workbuddyAllowedUserIds: [],

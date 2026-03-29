@@ -18,14 +18,13 @@ interface ExistingConfig {
     telegram?: { enabled?: boolean; botToken?: string; allowedUserIds?: string[]; proxy?: string };
     feishu?: { enabled?: boolean; appId?: string; appSecret?: string; allowedUserIds?: string[] };
     qq?: { enabled?: boolean; appId?: string; secret?: string; allowedUserIds?: string[] };
-    wechat?: {
+    workbuddy?: {
       enabled?: boolean;
       userId?: string;
       allowedUserIds?: string[];
-      workbuddyAccessToken?: string;
-      workbuddyRefreshToken?: string;
-      workbuddyBaseUrl?: string;
-      workbuddyHostId?: string;
+      accessToken?: string;
+      refreshToken?: string;
+      baseUrl?: string;
     };
     wework?: { enabled?: boolean; corpId?: string; secret?: string; allowedUserIds?: string[] };
     dingtalk?: { enabled?: boolean; clientId?: string; clientSecret?: string; allowedUserIds?: string[]; cardTemplateId?: string };
@@ -57,7 +56,7 @@ function getConfiguredPlatforms(existing: ExistingConfig | null): string[] {
     { k: "feishu", label: "飞书" },
     { k: "wework", label: "企业微信" },
     { k: "dingtalk", label: "钉钉" },
-    { k: "wechat", label: "微信" },
+    { k: "workbuddy", label: "WorkBuddy (微信)" },
   ];
   return names
     .filter(({ k }) => {
@@ -66,7 +65,7 @@ function getConfiguredPlatforms(existing: ExistingConfig | null): string[] {
       if (k === "telegram") return !!p.botToken;
       if (k === "feishu") return !!(p.appId && p.appSecret);
       if (k === "qq") return !!(p.appId && p.secret);
-      if (k === "wechat") return !!(p.workbuddyAccessToken && p.workbuddyRefreshToken);
+      if (k === "workbuddy") return !!(p.accessToken && p.refreshToken);
       if (k === "wework") return !!(p.corpId && p.secret);
       if (k === "dingtalk") return !!(p.clientId && p.clientSecret);
       return false;
@@ -316,8 +315,8 @@ export async function runInteractiveSetup(): Promise<boolean> {
   const hasTg = !!existing?.platforms?.telegram?.botToken;
   const hasFs = !!(existing?.platforms?.feishu?.appId && existing?.platforms?.feishu?.appSecret);
   const hasQq = !!(existing?.platforms?.qq?.appId && existing?.platforms?.qq?.secret);
-  const wc = existing?.platforms?.wechat;
-  const hasWc = !!(wc?.workbuddyAccessToken && wc?.workbuddyRefreshToken);
+  const wc = existing?.platforms?.workbuddy;
+  const hasWc = !!(wc?.accessToken && wc?.refreshToken);
   const hasWw = !!(existing?.platforms?.wework?.corpId && existing?.platforms?.wework?.secret);
   const hasDt = !!(existing?.platforms?.dingtalk?.clientId && existing?.platforms?.dingtalk?.clientSecret);
 
@@ -358,9 +357,9 @@ export async function runInteractiveSetup(): Promise<boolean> {
         },
         {
           title:
-            "微信 (WeChat)" +
+            "WorkBuddy 微信客服 (WeChat KF)" +
             (hasWc ? " ✓已配置" : ""),
-          value: "wechat",
+          value: "workbuddy",
         },
         { title: "配置多个平台", value: "multi" },
       ],
@@ -389,7 +388,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
           { title: "飞书 (Feishu)" + (hasFs ? " ✓已配置" : ""), value: "feishu", selected: hasFs },
           { title: "企业微信 (WeWork)" + (hasWw ? " ✓已配置" : ""), value: "wework", selected: hasWw },
           { title: "钉钉 (DingTalk)" + (hasDt ? " ✓已配置" : ""), value: "dingtalk", selected: hasDt },
-          { title: "微信 (WeChat，测试中)" + (hasWc ? " ✓已配置" : ""), value: "wechat", selected: hasWc },
+          { title: "WorkBuddy 微信客服 (WeChat KF)" + (hasWc ? " ✓已配置" : ""), value: "workbuddy", selected: hasWc },
         ],
       },
       { onCancel },
@@ -487,15 +486,15 @@ export async function runInteractiveSetup(): Promise<boolean> {
     }
   }
 
-  if (selectedPlatforms.includes("wechat")) {
-    const wc = existing?.platforms?.wechat as Record<string, unknown> | undefined;
-    const hasWbCreds = !!(wc?.workbuddyAccessToken && wc?.workbuddyRefreshToken);
+  if (selectedPlatforms.includes("workbuddy")) {
+    const wb = existing?.platforms?.workbuddy as Record<string, unknown> | undefined;
+    const hasWbCreds = !!(wb?.accessToken && wb?.refreshToken);
 
-    const wechatModeResp = await prompts(
+    const wbModeResp = await prompts(
       {
         type: "select",
         name: "mode",
-        message: "微信（WorkBuddy / CodeBuddy OAuth）",
+        message: "WorkBuddy 微信客服（CodeBuddy OAuth）",
         choices: [
           {
             title: "在浏览器中完成 CodeBuddy 登录并绑定微信客服（推荐）",
@@ -512,7 +511,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
       { onCancel }
     );
 
-    if (wechatModeResp.mode === "oauth") {
+    if (wbModeResp.mode === "oauth") {
       console.log("\n正在启动 WorkBuddy OAuth 登录...\n");
 
       try {
@@ -540,14 +539,12 @@ export async function runInteractiveSetup(): Promise<boolean> {
         const userId = ((accountInfo as Record<string, unknown>)?.uid as string)?.toString() ?? "";
 
         // Set oauth.userId so buildSessionId() produces the correct sessionId.
-        // Without this, the binding sessionId has an empty userId prefix, which
-        // won't match the sessionId the transport uses at runtime.
         oauth.userId = userId;
 
-        (config.platforms as Record<string, unknown>).wechat = {
+        (config.platforms as Record<string, unknown>).workbuddy = {
           enabled: true,
-          workbuddyAccessToken: tokenResult.accessToken,
-          workbuddyRefreshToken: tokenResult.refreshToken,
+          accessToken: tokenResult.accessToken,
+          refreshToken: tokenResult.refreshToken,
           userId,
         };
 
@@ -573,14 +570,14 @@ export async function runInteractiveSetup(): Promise<boolean> {
         console.log("\n✅ WorkBuddy 登录成功，配置已保存");
       } catch (err) {
         console.error("\n❌ WorkBuddy 登录失败:", err instanceof Error ? err.message : String(err));
-        if (platform === "wechat") return false;
+        if (platform === "workbuddy") return false;
       }
     } else if (hasWbCreds) {
-      (config.platforms as Record<string, unknown>).wechat = {
-        ...wc,
+      (config.platforms as Record<string, unknown>).workbuddy = {
+        ...wb,
         enabled: true,
       };
-    } else if (platform === "wechat") {
+    } else if (platform === "workbuddy") {
       return false;
     }
   }
@@ -665,7 +662,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
   const tgIds = existing?.platforms?.telegram?.allowedUserIds?.join(", ") ?? "";
   const fsIds = existing?.platforms?.feishu?.allowedUserIds?.join(", ") ?? "";
   const qqIds = existing?.platforms?.qq?.allowedUserIds?.join(", ") ?? "";
-  const wcIds = existing?.platforms?.wechat?.allowedUserIds?.join(", ") ?? "";
+  const wcIds = existing?.platforms?.workbuddy?.allowedUserIds?.join(", ") ?? "";
   const wwIds = existing?.platforms?.wework?.allowedUserIds?.join(", ") ?? "";
   const dtIds = existing?.platforms?.dingtalk?.allowedUserIds?.join(", ") ?? "";
   const aiIdx = ["claude", "codex", "codebuddy"].indexOf(existing?.aiCommand ?? "claude");
@@ -695,11 +692,11 @@ export async function runInteractiveSetup(): Promise<boolean> {
       initial: fsIds,
     });
   }
-  if (selectedPlatforms.includes("wechat")) {
+  if (selectedPlatforms.includes("workbuddy")) {
     commonPrompts.push({
       type: "text",
-      name: "wechatAllowedUserIds",
-      message: "微信白名单用户 ID（可选，逗号分隔，留空=所有人可访问）",
+      name: "workbuddyAllowedUserIds",
+      message: "WorkBuddy 白名单用户 ID（可选，逗号分隔，留空=所有人可访问）",
       initial: wcIds,
     });
   }
@@ -855,9 +852,9 @@ export async function runInteractiveSetup(): Promise<boolean> {
   const qqIdsFinal = selectedPlatforms.includes("qq")
     ? parseIds(commonResp.qqAllowedUserIds)
     : parseIds(existing?.platforms?.qq?.allowedUserIds?.join(", "));
-  const wechatIds = selectedPlatforms.includes("wechat")
-    ? parseIds(commonResp.wechatAllowedUserIds)
-    : parseIds(existing?.platforms?.wechat?.allowedUserIds?.join(", "));
+  const workbuddyIds = selectedPlatforms.includes("workbuddy")
+    ? parseIds(commonResp.workbuddyAllowedUserIds)
+    : parseIds(existing?.platforms?.workbuddy?.allowedUserIds?.join(", "));
   const weworkIds = selectedPlatforms.includes("wework")
     ? parseIds(commonResp.weworkAllowedUserIds)
     : parseIds(existing?.platforms?.wework?.allowedUserIds?.join(", "));
@@ -1003,28 +1000,26 @@ export async function runInteractiveSetup(): Promise<boolean> {
     outPlatforms.qq = { enabled: false, allowedUserIds: qqIdsFinal };
   }
 
-  if (selectedPlatforms.includes("wechat")) {
-    const wcConfig = (config.platforms as Record<string, unknown>)?.wechat as Record<string, unknown> | undefined;
-    const baseWc = base?.platforms?.wechat as Record<string, unknown> | undefined;
+  if (selectedPlatforms.includes("workbuddy")) {
+    const wbConfig = (config.platforms as Record<string, unknown>)?.workbuddy as Record<string, unknown> | undefined;
+    const baseWb = base?.platforms?.workbuddy as Record<string, unknown> | undefined;
     const wbOut: Record<string, unknown> = {
       enabled: true,
-      workbuddyAccessToken: wcConfig?.workbuddyAccessToken ?? baseWc?.workbuddyAccessToken,
-      workbuddyRefreshToken: wcConfig?.workbuddyRefreshToken ?? baseWc?.workbuddyRefreshToken,
-      userId: wcConfig?.userId ?? baseWc?.userId ?? "",
-      allowedUserIds: wechatIds,
+      accessToken: wbConfig?.accessToken ?? baseWb?.accessToken,
+      refreshToken: wbConfig?.refreshToken ?? baseWb?.refreshToken,
+      userId: wbConfig?.userId ?? baseWb?.userId ?? "",
+      allowedUserIds: workbuddyIds,
     };
-    const wbBaseUrl = wcConfig?.workbuddyBaseUrl ?? baseWc?.workbuddyBaseUrl;
-    const wbHostId = wcConfig?.workbuddyHostId ?? baseWc?.workbuddyHostId;
-    if (wbBaseUrl) wbOut.workbuddyBaseUrl = wbBaseUrl;
-    if (wbHostId) wbOut.workbuddyHostId = wbHostId;
-    (out.platforms as Record<string, unknown>).wechat = wbOut;
-  } else if (basePlatforms?.wechat) {
-    outPlatforms.wechat = {
-      ...basePlatforms.wechat,
-      allowedUserIds: wechatIds.length > 0 ? wechatIds : basePlatforms.wechat.allowedUserIds ?? [],
+    const wbBaseUrl = wbConfig?.baseUrl ?? baseWb?.baseUrl;
+    if (wbBaseUrl) wbOut.baseUrl = wbBaseUrl;
+    (out.platforms as Record<string, unknown>).workbuddy = wbOut;
+  } else if (basePlatforms?.workbuddy) {
+    outPlatforms.workbuddy = {
+      ...basePlatforms.workbuddy,
+      allowedUserIds: workbuddyIds.length > 0 ? workbuddyIds : basePlatforms.workbuddy.allowedUserIds ?? [],
     };
   } else {
-    outPlatforms.wechat = { enabled: false, allowedUserIds: wechatIds };
+    outPlatforms.workbuddy = { enabled: false, allowedUserIds: workbuddyIds };
   }
 
   if (selectedPlatforms.includes("wework")) {
@@ -1079,11 +1074,10 @@ const PLATFORM_LABELS: Record<Platform, string> = {
   feishu: "飞书",
   wework: "企业微信",
   dingtalk: "钉钉",
-  wechat: "微信（测试中）",
-  workbuddy: "WorkBuddy",
+  workbuddy: "WorkBuddy 微信客服",
 };
 
-const ALL_PLATFORMS: Platform[] = ["telegram", "feishu", "qq", "wework", "dingtalk", "wechat", "workbuddy"];
+const ALL_PLATFORMS: Platform[] = ["telegram", "feishu", "qq", "wework", "dingtalk", "workbuddy"];
 
 /**
  * 启动时让用户选择要启用的平台（无论单通道还是多通道）

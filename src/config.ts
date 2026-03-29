@@ -13,7 +13,7 @@ import { APP_HOME } from './constants.js';
 
 const log = createLogger('config');
 
-export type Platform = 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework' | 'workbuddy';
+export type Platform = 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wework' | 'workbuddy';
 
 export type AiCommand = 'claude' | 'codex' | 'codebuddy';
 const AI_COMMANDS: readonly AiCommand[] = ['claude', 'codex', 'codebuddy'];
@@ -25,8 +25,6 @@ export interface Config {
   telegramBotToken?: string;
   feishuAppId?: string;
   feishuAppSecret?: string;
-  /** WorkBuddy 用户 ID（可选，与 platforms.wechat.userId 二选一，环境变量 WECHAT_USER_ID） */
-  wechatUserId?: string;
   weworkCorpId?: string;  // 企业微信 Bot ID
   weworkSecret?: string;   // 企业微信 Secret
   weworkWsUrl?: string;    // 企业微信 WebSocket URL（可选，默认使用官方服务）
@@ -42,7 +40,6 @@ export interface Config {
   telegramAllowedUserIds: string[];
   feishuAllowedUserIds: string[];
   qqAllowedUserIds: string[];
-  wechatAllowedUserIds: string[];
   weworkAllowedUserIds: string[];
   dingtalkAllowedUserIds: string[];
   workbuddyAllowedUserIds: string[];
@@ -78,16 +75,6 @@ export interface Config {
       enabled: boolean;
       aiCommand?: AiCommand;
       allowedUserIds: string[];
-    };
-    wechat?: {
-      enabled: boolean;
-      aiCommand?: AiCommand;
-      userId?: string;
-      allowedUserIds: string[];
-      workbuddyAccessToken?: string;
-      workbuddyRefreshToken?: string;
-      workbuddyBaseUrl?: string;
-      workbuddyHostId?: string;
     };
     wework?: {
       enabled: boolean;
@@ -419,19 +406,21 @@ export function needsSetup(): boolean {
   const tg = file.platforms?.telegram;
   const fs = file.platforms?.feishu;
   const qq = file.platforms?.qq;
-  const wc = file.platforms?.wechat;
   const ww = file.platforms?.wework;
   const dt = file.platforms?.dingtalk;
+  const wb = file.platforms?.workbuddy;
+  // Also check legacy platforms.wechat for migration path
+  const legacyWc = (file.platforms as Record<string, unknown>)?.wechat as FilePlatformWechat | undefined;
 
   const hasTelegram = !!tg?.botToken;
   const hasFeishu = !!(fs?.appId && fs?.appSecret);
   const hasQQ = !!(qq?.appId && qq?.secret);
-  const hasWechat = !!(wc?.workbuddyAccessToken && wc?.workbuddyRefreshToken);
-  // 企业微信只需要 corpId 和 secret
   const hasWework = !!(ww?.corpId && ww?.secret);
   const hasDingtalk = !!(dt?.clientId && dt?.clientSecret);
+  const hasWorkBuddy = !!(wb?.accessToken && wb?.refreshToken && wb?.userId);
+  const hasLegacyWechat = !!(legacyWc?.workbuddyAccessToken && legacyWc?.workbuddyRefreshToken);
 
-  return !hasTelegram && !hasFeishu && !hasQQ && !hasWechat && !hasWework && !hasDingtalk;
+  return !hasTelegram && !hasFeishu && !hasQQ && !hasWework && !hasDingtalk && !hasWorkBuddy && !hasLegacyWechat;
 }
 
 function parseCommaSeparated(value: string): string[] {
@@ -463,10 +452,20 @@ export function loadConfig(): Config {
   const fileTelegram = file.platforms?.telegram;
   const fileFeishu = file.platforms?.feishu;
   const fileQQ = file.platforms?.qq;
-  const fileWechat = file.platforms?.wechat;
   const fileWework = file.platforms?.wework;
   const fileDingtalk = file.platforms?.dingtalk;
-  const fileWorkBuddy = file.platforms?.workbuddy;
+  // Auto-migrate legacy platforms.wechat WorkBuddy credentials → platforms.workbuddy
+  const legacyWechat = (file.platforms as Record<string, unknown>)?.wechat as FilePlatformWechat | undefined;
+  const fileWorkBuddy = file.platforms?.workbuddy ?? (
+    legacyWechat?.workbuddyAccessToken && legacyWechat?.workbuddyRefreshToken
+      ? {
+          accessToken: legacyWechat.workbuddyAccessToken,
+          refreshToken: legacyWechat.workbuddyRefreshToken,
+          userId: legacyWechat.userId,
+          baseUrl: legacyWechat.workbuddyBaseUrl,
+        }
+      : undefined
+  );
 
   // 1. 加载各平台凭证（env 优先，其次新结构，最后旧字段）
   const telegramBotToken =
@@ -489,23 +488,6 @@ export function loadConfig(): Config {
   const qqSecret =
     process.env.QQ_BOT_SECRET ??
     fileQQ?.secret;
-
-  const wechatUserId =
-    process.env.WECHAT_USER_ID ??
-    fileWechat?.userId;
-
-  const wechatWorkbuddyAccessToken =
-    process.env.WECHAT_WORKBUDDY_ACCESS_TOKEN ??
-    fileWechat?.workbuddyAccessToken;
-  const wechatWorkbuddyRefreshToken =
-    process.env.WECHAT_WORKBUDDY_REFRESH_TOKEN ??
-    fileWechat?.workbuddyRefreshToken;
-  const wechatWorkbuddyBaseUrl =
-    process.env.WECHAT_WORKBUDDY_BASE_URL ??
-    fileWechat?.workbuddyBaseUrl;
-  const wechatWorkbuddyHostId =
-    process.env.WECHAT_WORKBUDDY_HOST_ID ??
-    fileWechat?.workbuddyHostId;
 
   const weworkCorpId =
     process.env.WEWORK_CORP_ID ??
@@ -553,7 +535,6 @@ export function loadConfig(): Config {
   const telegramEnabledFlag = fileTelegram?.enabled;
   const feishuEnabledFlag = fileFeishu?.enabled;
   const qqEnabledFlag = fileQQ?.enabled;
-  const wechatEnabledFlag = fileWechat?.enabled;
   const weworkEnabledFlag = fileWework?.enabled;
   const dingtalkEnabledFlag = fileDingtalk?.enabled;
   const workbuddyEnabledFlag = fileWorkBuddy?.enabled;
@@ -564,21 +545,16 @@ export function loadConfig(): Config {
     !!(feishuAppId && feishuAppSecret) && (feishuEnabledFlag !== false);
   const qqEnabled =
     !!(qqAppId && qqSecret) && (qqEnabledFlag !== false);
-  const hasWechatWorkbuddyCreds = !!(wechatWorkbuddyAccessToken && wechatWorkbuddyRefreshToken);
-  const wechatEnabled = hasWechatWorkbuddyCreds && (wechatEnabledFlag !== false);
-  // 企业微信只需要 corpId (botId) 和 secret
   const weworkEnabled =
     !!(weworkCorpId && weworkSecret) && (weworkEnabledFlag !== false);
   const dingtalkEnabled =
     !!(dingtalkClientId && dingtalkClientSecret) && (dingtalkEnabledFlag !== false);
-  // WorkBuddy 需要 OAuth 凭证
   const workbuddyEnabled =
     !!(workbuddyAccessToken && workbuddyRefreshToken && workbuddyUserId) && (workbuddyEnabledFlag !== false);
 
   if (telegramEnabled) enabledPlatforms.push('telegram');
   if (feishuEnabled) enabledPlatforms.push('feishu');
   if (qqEnabled) enabledPlatforms.push('qq');
-  if (wechatEnabled) enabledPlatforms.push('wechat');
   if (weworkEnabled) enabledPlatforms.push('wework');
   if (dingtalkEnabled) enabledPlatforms.push('dingtalk');
   if (workbuddyEnabled) enabledPlatforms.push('workbuddy');
@@ -608,11 +584,6 @@ export function loadConfig(): Config {
     process.env.QQ_ALLOWED_USER_IDS !== undefined
       ? parseCommaSeparated(process.env.QQ_ALLOWED_USER_IDS)
       : fileQQ?.allowedUserIds ?? allowedUserIds;
-
-  const wechatAllowedUserIds =
-    process.env.WECHAT_ALLOWED_USER_IDS !== undefined
-      ? parseCommaSeparated(process.env.WECHAT_ALLOWED_USER_IDS)
-      : fileWechat?.allowedUserIds ?? allowedUserIds;
 
   const weworkAllowedUserIds =
     process.env.WEWORK_ALLOWED_USER_IDS !== undefined
@@ -836,27 +807,6 @@ export function loadConfig(): Config {
           aiCommand: normalizeAiCommand(file.platforms?.qq?.aiCommand, aiCommand),
           allowedUserIds: qqAllowedUserIds,
         },
-    wechat: wechatEnabled
-      ? {
-          enabled: true,
-          aiCommand: normalizeAiCommand(file.platforms?.wechat?.aiCommand, aiCommand),
-          userId: wechatUserId,
-          allowedUserIds: wechatAllowedUserIds,
-          workbuddyAccessToken: wechatWorkbuddyAccessToken,
-          workbuddyRefreshToken: wechatWorkbuddyRefreshToken,
-          workbuddyBaseUrl: wechatWorkbuddyBaseUrl,
-          workbuddyHostId: wechatWorkbuddyHostId,
-        }
-      : {
-          enabled: false,
-          aiCommand: normalizeAiCommand(file.platforms?.wechat?.aiCommand, aiCommand),
-          userId: wechatUserId,
-          allowedUserIds: wechatAllowedUserIds,
-          workbuddyAccessToken: wechatWorkbuddyAccessToken,
-          workbuddyRefreshToken: wechatWorkbuddyRefreshToken,
-          workbuddyBaseUrl: wechatWorkbuddyBaseUrl,
-          workbuddyHostId: wechatWorkbuddyHostId,
-        },
     wework: weworkEnabled
       ? {
           enabled: true,
@@ -913,7 +863,6 @@ export function loadConfig(): Config {
     feishuAppSecret: feishuAppSecret ?? '',
     qqAppId: qqAppId ?? '',
     qqSecret: qqSecret ?? '',
-    wechatUserId: wechatUserId,
     weworkCorpId: weworkCorpId ?? '',
     weworkSecret: weworkSecret ?? '',
     weworkWsUrl: weworkWsUrl,
@@ -924,7 +873,6 @@ export function loadConfig(): Config {
     telegramAllowedUserIds,
     feishuAllowedUserIds,
     qqAllowedUserIds,
-    wechatAllowedUserIds,
     weworkAllowedUserIds,
     dingtalkAllowedUserIds,
     workbuddyAllowedUserIds,
@@ -944,7 +892,7 @@ export function loadConfig(): Config {
   };
 }
 
-/** 获取已配置凭证的平台列表（用于多通道启动时让用户选择），顺序：Telegram、飞书、企业微信、微信 */
+/** 获取已配置凭证的平台列表 */
 export function getPlatformsWithCredentials(config: Config): Platform[] {
   const r: Platform[] = [];
   if (config.telegramBotToken) r.push('telegram');
@@ -952,8 +900,8 @@ export function getPlatformsWithCredentials(config: Config): Platform[] {
   if (config.qqAppId && config.qqSecret) r.push('qq');
   if (config.weworkCorpId && config.weworkSecret) r.push('wework');
   if (config.dingtalkClientId && config.dingtalkClientSecret) r.push('dingtalk');
-  const wc = config.platforms.wechat;
-  if (wc?.workbuddyAccessToken && wc?.workbuddyRefreshToken) r.push('wechat');
+  const wb = config.platforms.workbuddy;
+  if (wb?.accessToken && wb?.refreshToken) r.push('workbuddy');
   return r;
 }
 
