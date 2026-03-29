@@ -492,8 +492,9 @@ export async function runInteractiveSetup(): Promise<boolean> {
   }
 
   if (selectedPlatforms.includes("wechat")) {
-    const wc = existing?.platforms?.wechat;
+    const wc = existing?.platforms?.wechat as Record<string, unknown> | undefined;
     const hasToken = !!(wc?.token && wc?.guid && wc?.userId);
+    const hasWbCreds = !!(wc?.workbuddyAccessToken && wc?.workbuddyRefreshToken);
 
     const wechatModeResp = await prompts(
       {
@@ -502,28 +503,71 @@ export async function runInteractiveSetup(): Promise<boolean> {
         message: "微信登录方式",
         choices: [
           {
-            title: "扫码登录（推荐）- 用微信扫描二维码，自动获取 token",
+            title: "WorkBuddy OAuth - 在浏览器中完成 CodeBuddy 登录（推荐）",
+            value: "workbuddy",
+          },
+          {
+            title: "扫码登录 - 用微信扫描二维码获取 token（QClaw/AGP 协议）",
             value: "qr",
           },
           {
-            title: "使用已有配置" + (hasToken ? " ✓" : "（需已通过扫码登录获取）"),
+            title: "使用已有配置" + (hasToken || hasWbCreds ? " ✓" : "（需已配置）"),
             value: "keep",
-            disabled: !hasToken,
+            disabled: !hasToken && !hasWbCreds,
           },
         ],
-        initial: hasToken ? 1 : 0,
+        initial: hasWbCreds ? 0 : (hasToken ? 1 : 0),
       },
       { onCancel }
     );
 
-    if (wechatModeResp.mode === "qr") {
+    if (wechatModeResp.mode === "workbuddy") {
+      console.log("\n正在启动 WorkBuddy OAuth 登录...\n");
+
+      try {
+        const { WorkBuddyOAuth } = await import("./workbuddy/oauth.js");
+        const oauth = new WorkBuddyOAuth();
+
+        console.log("步骤 1/3: 获取登录链接...");
+        const { authUrl, state } = await oauth.fetchAuthState();
+
+        console.log("\n请在浏览器中打开以下链接完成登录：");
+        console.log(authUrl);
+        console.log("\n等待登录完成（最长 5 分钟）...\n");
+
+        const tokenResult = await oauth.pollToken(state);
+
+        console.log("✅ 登录成功！ 正在获取账号信息...");
+
+        let accountInfo: Record<string, unknown> = {};
+        try {
+          accountInfo = await oauth.getAccount(state);
+        } catch {
+          // account info is optional
+        }
+
+        const userId = ((accountInfo as Record<string, unknown>)?.uid as string)?.toString() ?? "";
+
+        (config.platforms as Record<string, unknown>).wechat = {
+          loginMode: 'workbuddy',
+          enabled: true,
+          workbuddyAccessToken: tokenResult.accessToken,
+          workbuddyRefreshToken: tokenResult.refreshToken,
+          userId,
+        };
+        console.log("\n✅ WorkBuddy 登录成功，配置已保存");
+      } catch (err) {
+        console.error("\n❌ WorkBuddy 登录失败:", err instanceof Error ? err.message : String(err));
+        if (platform === "wechat") return false;
+      }
+    } else if (wechatModeResp.mode === "qr") {
       console.log("\n正在启动微信扫码登录...\n");
 
       try {
         const { performWeChatLogin } = await import("./wechat/auth/index.js");
         const credentials = await performWeChatLogin({
           envName: "production",
-          appId: wc?.appId || undefined,
+          appId: (wc?.appId as string | undefined) || undefined,
         });
         (config.platforms as Record<string, unknown>).wechat = {
           loginMode: 'qclaw',
@@ -541,7 +585,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
         console.error("\n❌ 微信登录失败:", err instanceof Error ? err.message : String(err));
         if (platform === "wechat") return false;
       }
-    } else if (hasToken) {
+    } else if (hasToken || hasWbCreds) {
       (config.platforms as Record<string, unknown>).wechat = {
         ...wc,
         enabled: true,

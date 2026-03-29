@@ -6,6 +6,9 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { hostname } from 'node:os';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { createLogger } from '../logger.js';
 import type { AGPEnvelope, WeChatChannelState } from './types.js';
 import type { WeChatTransport, MessageHandler, StateChangeHandler } from './transport.js';
@@ -49,14 +52,20 @@ export class WorkBuddyTransport implements WeChatTransport {
 
       // Register workspace to get Centrifuge tokens
       log.info('Registering workspace for Centrifuge tokens...');
+      const hostId = this.config.hostId ?? hostname();
+      const workspaceId = randomUUID();
       const tokens = await this.oauth.registerWorkspace({
         userId: this.config.userId,
-        hostId: this.config.hostId ?? randomUUID(),
-        workspaceId: randomUUID(),
+        hostId,
+        workspaceId,
         workspaceName: 'open-im-wechat',
       });
 
       log.info(`Workspace registered: channel=${tokens.channel}`);
+
+      // Build workspaceSessionId for HTTP COPILOT_RESPONSE metadata
+      const workspacePath = this.config.workspacePath ?? join(homedir(), 'WorkBuddy', 'Claw');
+      const workspaceSessionId = `${this.config.userId}_${hostId}_${workspacePath}`;
 
       // Create Centrifuge client
       const clientConfig: CentrifugeClientConfig = {
@@ -68,6 +77,7 @@ export class WorkBuddyTransport implements WeChatTransport {
         userId: this.config.userId,
         httpBaseUrl: this.config.baseUrl ?? 'https://copilot.tencent.com',
         httpAccessToken: this.config.accessToken,
+        workspaceSessionId,
       };
 
       const callbacks: CentrifugeCallbacks = {
