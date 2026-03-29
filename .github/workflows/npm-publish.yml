@@ -88,7 +88,7 @@ jobs:
             }
           }
 
-          // 读取线上所有已发布版本，按 semver 解析
+          // 读取线上所有已发布版本
           const rawVersions = npmView(
             'npm view @wu529778790/open-im versions --json',
             '[]'
@@ -107,42 +107,68 @@ jobs:
             .map((v) => (semver.valid(v) ? v : null))
             .filter((v) => v !== null);
 
-          // 所有稳定版（无 prerelease）
+          // 线上最新稳定版
           const stableVersions = validVersions.filter((v) => !semver.prerelease(v));
           const stableLatest = stableVersions.length
             ? stableVersions.sort(semver.rcompare)[0]
             : '0.0.0';
 
-          // 计算下一个稳定基线版本（不一定会直接发布，只是作为 beta/rc 的 base）
+          // 下一个稳定基线（所有渠道的参考点）
           const nextStableBase = semver.inc(stableLatest, bump);
           if (!nextStableBase) {
             throw new Error(`Failed to calculate next stable base from ${stableLatest} with bump ${bump}`);
           }
 
+          console.error(`Current stable latest: ${stableLatest}`);
+          console.error(`Next stable base: ${nextStableBase}`);
+
           if (channel === 'stable') {
-            // 稳定渠道：直接在线上最新稳定版基础上 +1
+            // 稳定渠道：直接在最新稳定版基础上 bump
             console.log(nextStableBase);
             process.exit(0);
           }
 
-          // 非 stable 渠道：按对应的 prerelease 渠道继续 +1
+          // 非稳定渠道：查找该渠道线上已有的版本
           const channelVersions = validVersions.filter((v) => {
             const pre = semver.prerelease(v);
             return pre && pre[0] === channel;
           });
 
           if (channelVersions.length > 0) {
-            // 线上已有该渠道的版本：在最新的渠道版本上做 prerelease +1
             const latestChannelVersion = channelVersions.sort(semver.rcompare)[0];
-            const continued = semver.inc(latestChannelVersion, 'prerelease', channel);
-            if (!continued) {
-              throw new Error(`Failed to continue ${channel} prerelease from ${latestChannelVersion}`);
+            const channelBase = semver.coerce(latestChannelVersion)?.version ?? '0.0.0';
+
+            console.error(`Latest ${channel}: ${latestChannelVersion} (base: ${channelBase})`);
+
+            // 如果该渠道最新版本的 base 已经等于 nextStableBase，继续递增 prerelease
+            if (semver.eq(channelBase, nextStableBase)) {
+              const continued = semver.inc(latestChannelVersion, 'prerelease', channel);
+              if (!continued) {
+                throw new Error(`Failed to continue ${channel} prerelease from ${latestChannelVersion}`);
+              }
+              console.log(continued);
+              process.exit(0);
             }
-            console.log(continued);
+
+            // 如果渠道 base >= nextStableBase（比如 bump 是 patch，但渠道已经在更高 base），
+            // 继续在渠道最新版本上递增
+            if (semver.gt(channelBase, nextStableBase)) {
+              const continued = semver.inc(latestChannelVersion, 'prerelease', channel);
+              if (!continued) {
+                throw new Error(`Failed to continue ${channel} prerelease from ${latestChannelVersion}`);
+              }
+              console.log(continued);
+              process.exit(0);
+            }
+
+            // 渠道 base 低于 nextStableBase，从新基线起编
+            // 例如 stable 已到 1.9.0，beta 还在 1.8.1-beta.20，则新版本为 1.9.0-beta.0
+            console.error(`Channel base ${channelBase} is behind next stable ${nextStableBase}, starting fresh`);
+            console.log(`${nextStableBase}-${channel}.0`);
             process.exit(0);
           }
 
-          // 该渠道还没有版本：从新的稳定基线起一个 x.y.z-channel.0
+          // 该渠道还没有版本：从新稳定基线起编
           console.log(`${nextStableBase}-${channel}.0`);
           NODEEOF
 

@@ -25,7 +25,7 @@ export async function sendTextReply(
 
   log.info(`Sending WorkBuddy reply to chatId=${chatId}, msgId=${msgId}`);
 
-  client.sendPromptResponse({
+  await client.sendPromptResponse({
     session_id: chatId,
     prompt_id: msgId,
     content: [{ type: 'text', text }],
@@ -50,7 +50,7 @@ export async function sendErrorReply(
 
   log.info(`Sending WorkBuddy error to chatId=${chatId}, msgId=${msgId}`);
 
-  client.sendPromptResponse({
+  await client.sendPromptResponse({
     session_id: chatId,
     prompt_id: msgId,
     error,

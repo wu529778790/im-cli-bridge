@@ -181,8 +181,9 @@ export class WorkBuddyOAuth {
    * Build sessionId for WorkBuddy workspace
    */
   buildSessionId(workspacePath?: string): string {
-    const wp = workspacePath || `${process.env.HOME || process.env.USERPROFILE}/WorkBuddy/Claw`;
-    return `${this.userId}_${this.hostId}_${wp}`;
+    // Must match the plugin's format: ${userId}_${hostId}_${workspacePath}
+    // The server uses this as the chatId/routing key for WeChat KF messages.
+    return `${this.userId}_${this.hostId}_${workspacePath ?? ''}`;
   }
 
   /**

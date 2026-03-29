@@ -29,6 +29,13 @@ export interface CentrifugeClientConfig {
   httpBaseUrl?: string;
   httpAccessToken?: string;
   workspaceSessionId?: string;
+  /**
+   * Called before sending a WeChat KF reply to update the channel's channelId
+   * to the current WeChat user's externalUserId.  The WorkBuddy server uses the
+   * registered channelId as the WeChat send_msg `touser`, so this must match the
+   * customer we are replying to.
+   */
+  registerChannelFn?: (externalUserId: string) => Promise<void>;
 }
 
 /** Client callbacks */
@@ -213,42 +220,58 @@ export class WorkBuddyCentrifugeClient {
   /**
    * Send prompt response (for WeChat KF, use HTTP instead)
    */
-  sendPromptResponse(payload: PromptResponsePayload, _guid?: string, _userId?: string): void {
+  async sendPromptResponse(payload: PromptResponsePayload, _guid?: string, _userId?: string): Promise<void> {
     // WeChat KF messages: send via HTTP COPILOT_RESPONSE
     if (this.config.httpBaseUrl && this.config.httpAccessToken) {
       const message = payload.content?.map((c) => c.text).join('') || payload.error || '';
+      const sessionId = payload.session_id; // e.g. "wmXXX::origin::wechatkfProxy"
+
+      // The WorkBuddy server uses the registered channelId as the WeChat KF send_msg
+      // `touser`.  Re-register the channel with the current WeChat user's externalUserId
+      // so that the server sends the reply to the correct customer.
+      if (this.config.registerChannelFn && sessionId.includes('::')) {
+        const externalUserId = sessionId.split('::')[0];
+        try {
+          await this.config.registerChannelFn(externalUserId);
+        } catch (err) {
+          log.warn(`${this.logPrefix} registerChannelFn failed (reply may go to wrong user):`, err);
+        }
+      }
+
       const httpPayload = {
         type: 'COPILOT_RESPONSE',
         msgId: payload.prompt_id,
-        chatId: payload.session_id,
+        chatId: sessionId,
         success: payload.stop_reason === 'end_turn',
         message,
         metadata: {
-          sessionId: this.config.workspaceSessionId || payload.session_id,
+          sessionId: this.config.workspaceSessionId || sessionId,
           requestId: payload.prompt_id,
           state: payload.stop_reason === 'end_turn' ? 'completed' : payload.stop_reason,
         },
       };
 
       const url = `${this.config.httpBaseUrl}/v2/backgroundagent/wecom/local-proxy/receive`;
-      fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.config.httpAccessToken}`,
-        },
-        body: JSON.stringify(httpPayload),
-        signal: AbortSignal.timeout(30_000),
-      })
-        .then(async (res) => {
-          if (!res.ok) {
-            const body = await res.text().catch(() => '');
-            log.error(`${this.logPrefix} HTTP COPILOT_RESPONSE failed: ${res.status} ${body.substring(0, 200)}`);
-          }
-        })
-        .catch((err) => {
-          log.error(`${this.logPrefix} HTTP COPILOT_RESPONSE error:`, err);
+      log.debug(`${this.logPrefix} HTTP COPILOT_RESPONSE → ${url} chatId=${sessionId} msgLen=${message.length}`);
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${this.config.httpAccessToken}`,
+          },
+          body: JSON.stringify(httpPayload),
+          signal: AbortSignal.timeout(30_000),
         });
+        const body = await res.text().catch(() => '');
+        if (!res.ok) {
+          log.error(`${this.logPrefix} HTTP COPILOT_RESPONSE failed: ${res.status} ${body.substring(0, 300)}`);
+        } else {
+          log.info(`${this.logPrefix} HTTP COPILOT_RESPONSE ok: ${res.status} ${body.substring(0, 200)}`);
+        }
+      } catch (err) {
+        log.error(`${this.logPrefix} HTTP COPILOT_RESPONSE error:`, err);
+      }
       return;
     }
 

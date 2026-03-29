@@ -1,4 +1,4 @@
-import { resolvePlatformAiCommand, type Config } from '../config.js';
+import { resolvePlatformAiCommand, type Config, type Platform } from '../config.js';
 import type { SessionManager } from '../session/session-manager.js';
 import type { RequestQueue } from '../queue/request-queue.js';
 import { escapePathForMarkdown } from '../shared/utils.js';
@@ -40,7 +40,7 @@ export class CommandHandler {
     text: string,
     chatId: string,
     userId: string,
-    platform: 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework' | 'workbuddy',
+    platform: Platform,
     handleClaudeRequest: ClaudeRequestHandler
   ): Promise<boolean> {
     const t = text.trim();
@@ -99,7 +99,7 @@ export class CommandHandler {
     return true;
   }
 
-  private async handleStatus(chatId: string, userId: string, platform: 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework' | 'workbuddy'): Promise<boolean> {
+  private async handleStatus(chatId: string, userId: string, platform: Platform): Promise<boolean> {
     const aiCommand = resolvePlatformAiCommand(this.deps.config, platform);
     const version = await this.getAiVersion(aiCommand);
     const workDir = this.deps.sessionManager.getWorkDir(userId);
@@ -117,7 +117,7 @@ export class CommandHandler {
     return true;
   }
 
-  private async handleCd(chatId: string, userId: string, dir: string, platform: 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wechat' | 'wework' | 'workbuddy'): Promise<boolean> {
+  private async handleCd(chatId: string, userId: string, dir: string, platform: Platform): Promise<boolean> {
     // 如果 dir 为空，显示目录选择界面
     if (!dir) {
       const currentDir = this.deps.sessionManager.getWorkDir(userId);
