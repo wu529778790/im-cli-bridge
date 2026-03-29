@@ -208,25 +208,36 @@ export function setupFeishuHandlers(
     const toolId = aiCommand;
 
     // 使用 CardKit 打字机效果（80ms 节流，约 12 次/秒，比 patch 5 QPS 更流畅）
-    let cardHandle: { messageId: string; cardId: string };
-    try {
-      cardHandle = await sendThinkingCard(chatId, toolId);
-    } catch (err) {
-      log.error('Failed to send thinking card:', err);
-      // 检测是否为飞书权限不足
-      if (isPermissionError(err)) {
-        const guide = buildPermissionGuideMessage(err);
-        await sendPermissionFallback(chatId, guide).catch((err) => {
-          log.warn('Permission fallback send failed:', err);
-        });
-      } else {
-        try {
-          await sendTextReply(chatId, '启动 AI 处理失败，请重试。');
-        } catch (err) {
-          log.warn('Failed to send startup error reply:', err);
+    let cardHandle!: { messageId: string; cardId: string };
+    const MAX_SEND_RETRIES = 3;
+    for (let attempt = 1; attempt <= MAX_SEND_RETRIES; attempt++) {
+      try {
+        cardHandle = await sendThinkingCard(chatId, toolId);
+        break;
+      } catch (err) {
+        const isRetryable = err && typeof err === 'object' && 'code' in err &&
+          ((err as {code?: string}).code === 'ETIMEDOUT' || (err as {code?: string}).code === 'ECONNRESET' || (err as {code?: string}).code === 'ECONNREFUSED');
+        if (isRetryable && attempt < MAX_SEND_RETRIES) {
+          log.warn(`sendThinkingCard attempt ${attempt}/${MAX_SEND_RETRIES} failed (${(err as {code?: string}).code}), retrying...`);
+          await new Promise((r) => setTimeout(r, 1000 * attempt));
+          continue;
         }
+        log.error(`Failed to send thinking card after ${attempt} attempts:`, err);
+        // 检测是否为飞书权限不足
+        if (isPermissionError(err)) {
+          const guide = buildPermissionGuideMessage(err);
+          await sendPermissionFallback(chatId, guide).catch((err) => {
+            log.warn('Permission fallback send failed:', err);
+          });
+        } else {
+          try {
+            await sendTextReply(chatId, '启动 AI 处理失败，请重试。');
+          } catch (err) {
+            log.warn('Failed to send startup error reply:', err);
+          }
+        }
+        return;
       }
-      return;
     }
 
     const { messageId: msgId, cardId } = cardHandle;
