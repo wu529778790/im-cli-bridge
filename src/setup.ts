@@ -518,25 +518,15 @@ export async function runInteractiveSetup(): Promise<boolean> {
 
     if (wechatModeResp.mode === "qr") {
       console.log("\n正在启动微信扫码登录...\n");
-      const appIdResp = await prompts(
-        {
-          type: "text",
-          name: "appId",
-          message: "请输入微信 AppID",
-          initial: wc?.appId ?? "",
-          validate: (v: string) => (v.trim() ? true : "AppID 不能为空"),
-        },
-        { onCancel }
-      );
 
       try {
         const { performWeChatLogin } = await import("./wechat/auth/index.js");
         const credentials = await performWeChatLogin({
           envName: "production",
-          appId: appIdResp.appId?.trim() || wc?.appId || "",
+          appId: wc?.appId || undefined,
         });
         (config.platforms as Record<string, unknown>).wechat = {
-          appId: appIdResp.appId?.trim() || wc?.appId,
+          appId: wc?.appId,
           enabled: true,
           token: credentials.channelToken,
           jwtToken: credentials.jwtToken,

@@ -11,6 +11,8 @@ import { getDeviceGuid } from './device-guid.js';
 import { getEnvironment } from './environments.js';
 import { performDeviceBinding } from './device-bind.js';
 
+const DEFAULT_WX_APP_ID = 'wx9d11056dd75b7240';
+
 const log = createLogger('WeChatLogin');
 
 function nested(obj: unknown, ...keys: string[]): unknown {
@@ -103,10 +105,7 @@ export async function performWeChatLogin(
   options: PerformWeChatLoginOptions = {}
 ): Promise<LoginCredentials> {
   const envName = options.envName ?? 'production';
-  const appId = options.appId;
-  if (!appId) {
-    throw new Error('appId is required. 请在配置中提供 wechatAppId 或通过环境变量 WECHAT_APP_ID 设置');
-  }
+  const appId = options.appId || DEFAULT_WX_APP_ID;
   const env = getEnvironment(envName, appId);
   const guid = getDeviceGuid();
   const api = new QClawAPI(env, guid);
