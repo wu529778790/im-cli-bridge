@@ -362,7 +362,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
         },
         {
           title:
-            "微信 (WeChat) - 扫码登录获取 token（QClaw/AGP 协议，测试中）" +
+            "微信 (WeChat)" +
             (hasWc ? " ✓已配置" : ""),
           value: "wechat",
         },
@@ -507,7 +507,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
             value: "workbuddy",
           },
           {
-            title: "扫码登录 - 用微信扫描二维码获取 token（QClaw/AGP 协议）",
+            title: "扫码登录 - 用微信扫描二维码获取 token",
             value: "qr",
           },
           {
