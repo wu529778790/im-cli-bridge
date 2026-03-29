@@ -119,8 +119,8 @@ jobs:
             throw new Error(`Failed to calculate next stable base from ${stableLatest} with bump ${bump}`);
           }
 
-          console.log(`Current stable latest: ${stableLatest}`);
-          console.log(`Next stable base: ${nextStableBase}`);
+          console.error(`Current stable latest: ${stableLatest}`);
+          console.error(`Next stable base: ${nextStableBase}`);
 
           if (channel === 'stable') {
             // 稳定渠道：直接在最新稳定版基础上 bump
@@ -138,7 +138,7 @@ jobs:
             const latestChannelVersion = channelVersions.sort(semver.rcompare)[0];
             const channelBase = semver.coerce(latestChannelVersion)?.version ?? '0.0.0';
 
-            console.log(`Latest ${channel}: ${latestChannelVersion} (base: ${channelBase})`);
+            console.error(`Latest ${channel}: ${latestChannelVersion} (base: ${channelBase})`);
 
             // 如果该渠道最新版本的 base 已经等于 nextStableBase，继续递增 prerelease
             if (semver.eq(channelBase, nextStableBase)) {
@@ -163,7 +163,7 @@ jobs:
 
             // 渠道 base 低于 nextStableBase，从新基线起编
             // 例如 stable 已到 1.9.0，beta 还在 1.8.1-beta.20，则新版本为 1.9.0-beta.0
-            console.log(`Channel base ${channelBase} is behind next stable ${nextStableBase}, starting fresh`);
+            console.error(`Channel base ${channelBase} is behind next stable ${nextStableBase}, starting fresh`);
             console.log(`${nextStableBase}-${channel}.0`);
             process.exit(0);
           }
