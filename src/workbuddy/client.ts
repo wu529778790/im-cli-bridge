@@ -110,6 +110,19 @@ async function connect(): Promise<void> {
     centrifugeClient = null;
   }
 
+  // Re-registers the WeChat KF channel with the given externalUserId as channelId.
+  // The WorkBuddy server uses channelId as the WeChat send_msg `touser`, so this
+  // must be called with the customer's external_userid before sending each reply.
+  const registerChannelFn = async (externalUserId: string): Promise<void> => {
+    const clawSessionId = oauth.buildSessionId(clawPath);
+    await oauth.registerChannel({
+      type: 'wechatkf',
+      sessionId: clawSessionId,
+      channelId: externalUserId,
+      userId: pc.userId ?? '',
+    });
+  };
+
   centrifugeClient = new WorkBuddyCentrifugeClient(
     {
       url: tokens.url,
@@ -121,6 +134,7 @@ async function connect(): Promise<void> {
       httpBaseUrl: baseUrl,
       httpAccessToken: pc.accessToken ?? '',
       workspaceSessionId,
+      registerChannelFn,
     },
     {
       onConnected: () => {
