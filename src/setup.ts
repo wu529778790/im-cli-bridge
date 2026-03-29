@@ -538,10 +538,22 @@ export async function runInteractiveSetup(): Promise<boolean> {
           // account info is optional
         }
 
-        const userId = ((accountInfo as Record<string, unknown>)?.uid as string)?.toString() ?? "";
+        const ai = accountInfo as Record<string, unknown>;
+        // Try multiple field names; fall back to tokenResult.userId, then existing config
+        const existingUserId = (wb as Record<string, unknown>)?.userId as string | undefined;
+        const userId = String(
+          ai?.uid ?? ai?.userId ?? ai?.user_id ??
+          tokenResult.userId ??
+          existingUserId ?? ""
+        );
+
+        if (!userId) {
+          console.warn("⚠️ 未能获取 WorkBuddy 用户 ID，sessionId 可能不正确，建议稍后重试");
+        }
 
         // Set oauth.userId so buildSessionId() produces the correct sessionId.
         oauth.userId = userId;
+        console.log(`   userId: ${userId || "(空)"}, sessionId 将为: ${oauth.buildSessionId()}`);
 
         // Save credentials immediately — even if binding fails below
         (config.platforms as Record<string, unknown>).workbuddy = {
@@ -554,22 +566,18 @@ export async function runInteractiveSetup(): Promise<boolean> {
         oauthOk = true;
         console.log("\n✅ WorkBuddy 凭证已获取，正在生成微信客服绑定链接...");
 
-        // Phase 2: WeChat KF binding (non-fatal)
+        // Phase 2: WeChat KF binding link (non-fatal, no polling needed)
         try {
-          const sessionId = oauth.buildSessionId();
+          const { join: pathJoin } = await import("node:path");
+          const { homedir } = await import("node:os");
+          const clawPath = pathJoin(homedir(), "WorkBuddy", "Claw");
+          const sessionId = oauth.buildSessionId(clawPath);
           const linkResult = await oauth.getWeChatKfLink(sessionId);
           if (linkResult.success && linkResult.url) {
             console.log("\n━━━ 微信客服绑定 ━━━");
-            console.log("请复制以下链接，在微信中发给「文件传输助手」并点击打开：");
+            console.log("请将以下链接发给微信「文件传输助手」并点击打开，即完成绑定：");
             console.log(linkResult.url);
-            console.log("\n等待绑定完成（最长 5 分钟）...\n");
-
-            const bindResult = await oauth.pollBindStatus(sessionId);
-            if (bindResult.bound) {
-              console.log(`✅ 微信客服绑定成功！${bindResult.nickname ? ` 用户: ${bindResult.nickname}` : ""}`);
-            } else {
-              console.log("⚠️ 绑定超时，你可以稍后重新运行 open-im init 完成绑定");
-            }
+            console.log("\n绑定完成后运行 open-im start 启动服务即可收发消息。");
           } else {
             console.log(`⚠️ 获取微信客服链接失败: ${linkResult.message ?? "未知错误"}`);
             console.log("   凭证已保存，稍后重新运行 open-im init 可重试绑定");
@@ -603,20 +611,17 @@ export async function runInteractiveSetup(): Promise<boolean> {
           userId: wb?.userId as string ?? '',
         });
         oauthKeep.userId = wb?.userId as string ?? '';
-        const sessionId = oauthKeep.buildSessionId();
+        const { join: pathJoin2 } = await import("node:path");
+        const { homedir: homedir2 } = await import("node:os");
+        const clawPath2 = pathJoin2(homedir2(), "WorkBuddy", "Claw");
+        const sessionId = oauthKeep.buildSessionId(clawPath2);
         console.log(`\n正在获取微信客服绑定链接... (sessionId: ${sessionId})`);
         const linkResult = await oauthKeep.getWeChatKfLink(sessionId);
         if (linkResult.success && linkResult.url) {
           console.log("\n━━━ 微信客服绑定 ━━━");
-          console.log("请复制以下链接，在微信中发给「文件传输助手」并点击打开：");
+          console.log("请将以下链接发给微信「文件传输助手」并点击打开，即完成绑定：");
           console.log(linkResult.url);
-          console.log("\n等待绑定完成（最长 5 分钟）...\n");
-          const bindResult = await oauthKeep.pollBindStatus(sessionId);
-          if (bindResult.bound) {
-            console.log(`✅ 微信客服绑定成功！${bindResult.nickname ? ` 用户: ${bindResult.nickname}` : ""}`);
-          } else {
-            console.log("⚠️ 绑定超时，你可以稍后重新运行 open-im init 完成绑定");
-          }
+          console.log("\n绑定完成后运行 open-im start 启动服务即可收发消息。");
         } else {
           console.log(`⚠️ 获取绑定链接失败: ${linkResult.message ?? "未知"}`);
         }

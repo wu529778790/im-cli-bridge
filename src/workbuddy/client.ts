@@ -8,7 +8,7 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { hostname } from 'node:os';
+import { hostname, homedir } from 'node:os';
 import { createLogger } from '../logger.js';
 import type { Config } from '../config.js';
 import { WorkBuddyOAuth } from './oauth.js';
@@ -78,29 +78,32 @@ async function connect(): Promise<void> {
   const pc = platformConfig;
   const baseUrl = pc.baseUrl ?? 'https://copilot.tencent.com';
   const hostId = hostname();
-  const stableWorkspaceId = `${pc.userId}-open-im-workbuddy`;
+  // Claw workspace path — matches the plugin's WorkBuddy Claw installation path.
+  // The directory does NOT need to exist; the server uses it as a string identifier.
+  const clawPath = join(homedir(), 'WorkBuddy', 'Claw');
 
-  log.info('Registering WorkBuddy workspace...');
+  log.info('Registering WorkBuddy host workspace...');
   let tokens: CentrifugeTokens;
   try {
+    // Step 1: Register host workspace (workspaceId="") — gets the Centrifuge connection
     tokens = await oauth.registerWorkspace({
       userId: pc.userId ?? '',
       hostId,
-      workspaceId: stableWorkspaceId,
-      workspaceName: 'open-im-workbuddy',
+      workspaceId: '',
+      workspaceName: 'Host Channel',
     });
   } catch (err) {
-    log.error('Workspace registration failed:', err);
+    log.error('Host workspace registration failed:', err);
     scheduleReconnect();
     return;
   }
 
-  // sessionId ≤64 chars (WeChat KF uses it as `touser`)
-  const workspaceSessionId = oauth.buildSessionId();
+  // sessionId = userId_hostId_clawPath (matches plugin's buildSessionId format)
+  const workspaceSessionId = oauth.buildSessionId(clawPath);
   const channel = tokens.channel;
   const guid = pc.guid ?? randomUUID();
 
-  log.info(`Workspace registered: channel=${channel}, sessionId=${workspaceSessionId}`);
+  log.info(`Host workspace registered: channel=${channel}, clawSessionId=${workspaceSessionId}`);
 
   if (centrifugeClient) {
     centrifugeClient.stop();
@@ -122,25 +125,56 @@ async function connect(): Promise<void> {
     {
       onConnected: () => {
         log.info('WorkBuddy Centrifuge connected');
-        log.info(`sessionId (must match WeChat KF binding): ${workspaceSessionId}`);
+        log.info(`WeChat KF sessionId: ${workspaceSessionId}`);
         reconnectAttempt = 0;
         updateState('connected');
 
-        const doRegister = () => {
-          if (stopped || channelState !== 'connected') return;
-          oauth.registerChannel({
-            type: 'wechatkf',
-            sessionId: workspaceSessionId,
-            channelId: channel,
-            userId: pc.userId ?? '',
-          })
-            .then((res) => log.info(`WeChat KF channel registered (online): ${JSON.stringify(res)}`))
-            .catch((err: unknown) => log.warn(`registerChannel failed: ${String(err)}`));
-        };
+        // Step 2: Register Claw workspace to get WeChat KF routing channel + sessionId
+        oauth.registerWorkspace({
+          userId: pc.userId ?? '',
+          hostId,
+          workspaceId: clawPath,
+          workspaceName: 'Claw',
+        }).then((clawParams: CentrifugeTokens & { sessionId?: string }) => {
+          const clawSessionId = clawParams.sessionId ?? workspaceSessionId;
+          log.info(`Claw workspace registered: channel=${clawParams.channel}, sessionId=${clawSessionId}`);
 
-        doRegister();
-        if (heartbeatTimer) clearInterval(heartbeatTimer);
-        heartbeatTimer = setInterval(doRegister, CHANNEL_HEARTBEAT_MS);
+          // Subscribe to Claw channel — WeChat KF messages are published here
+          centrifugeClient?.subscribeChannel(clawParams.channel, clawParams.subscriptionToken);
+
+          const doRegister = () => {
+            if (stopped || channelState !== 'connected') return;
+            oauth.registerChannel({
+              type: 'wechatkf',
+              sessionId: clawSessionId,
+              channelId: pc.userId ?? '',  // plugin uses userId, not full channel name
+              userId: pc.userId ?? '',
+            })
+              .then((res) => log.info(`WeChat KF channel registered (online): ${JSON.stringify(res)}`))
+              .catch((err: unknown) => log.warn(`registerChannel failed: ${String(err)}`));
+          };
+
+          doRegister();
+          if (heartbeatTimer) clearInterval(heartbeatTimer);
+          heartbeatTimer = setInterval(doRegister, CHANNEL_HEARTBEAT_MS);
+        }).catch((err: unknown) => {
+          log.error('Claw workspace registration failed:', err);
+          // Fallback: register with host sessionId
+          const doRegister = () => {
+            if (stopped || channelState !== 'connected') return;
+            oauth.registerChannel({
+              type: 'wechatkf',
+              sessionId: workspaceSessionId,
+              channelId: pc.userId ?? '',
+              userId: pc.userId ?? '',
+            })
+              .then((res) => log.info(`WeChat KF channel registered (fallback): ${JSON.stringify(res)}`))
+              .catch((e: unknown) => log.warn(`registerChannel failed: ${String(e)}`));
+          };
+          doRegister();
+          if (heartbeatTimer) clearInterval(heartbeatTimer);
+          heartbeatTimer = setInterval(doRegister, CHANNEL_HEARTBEAT_MS);
+        });
       },
       onDisconnected: (reason) => {
         log.info(`WorkBuddy Centrifuge disconnected: ${reason}`);
