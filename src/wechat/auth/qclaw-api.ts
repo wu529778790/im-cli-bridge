@@ -23,7 +23,7 @@ export interface QClawApiResponse {
 export class QClawAPI {
   private env: QClawEnvironment;
   private guid: string;
-  loginKey = 'm83qdao0AmE5';
+  loginKey = process.env.QCLAW_LOGIN_KEY || 'm83qdao0AmE5';
   jwtToken = '';
   userId = '';
 

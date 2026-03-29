@@ -114,7 +114,9 @@ async function sendPermissionFallback(chatId: string, guide: string): Promise<vo
   try {
     await sendTextReply(chatId, guide);
     return;
-  } catch { /* 卡片方式失败，降级 */ }
+  } catch (err) {
+    log.warn('Card-based reply failed, falling back to plain text:', err);
+  }
 
   // 2. 降级为纯文本消息
   try {
@@ -129,7 +131,9 @@ async function sendPermissionFallback(chatId: string, guide: string): Promise<vo
       params: { receive_id_type: 'chat_id' },
     });
     return;
-  } catch { /* 纯文本也失败 */ }
+  } catch (err) {
+    log.warn('Plain text reply also failed:', err);
+  }
 
   log.error('All fallback methods failed to send permission guide');
 }
@@ -204,21 +208,36 @@ export function setupFeishuHandlers(
     const toolId = aiCommand;
 
     // 使用 CardKit 打字机效果（80ms 节流，约 12 次/秒，比 patch 5 QPS 更流畅）
-    let cardHandle: { messageId: string; cardId: string };
-    try {
-      cardHandle = await sendThinkingCard(chatId, toolId);
-    } catch (err) {
-      log.error('Failed to send thinking card:', err);
-      // 检测是否为飞书权限不足
-      if (isPermissionError(err)) {
-        const guide = buildPermissionGuideMessage(err);
-        await sendPermissionFallback(chatId, guide).catch(() => { /* 最终兜底 */ });
-      } else {
-        try {
-          await sendTextReply(chatId, '启动 AI 处理失败，请重试。');
-        } catch { /* ignore */ }
+    let cardHandle!: { messageId: string; cardId: string };
+    const MAX_SEND_RETRIES = 3;
+    for (let attempt = 1; attempt <= MAX_SEND_RETRIES; attempt++) {
+      try {
+        cardHandle = await sendThinkingCard(chatId, toolId);
+        break;
+      } catch (err) {
+        const isRetryable = err && typeof err === 'object' && 'code' in err &&
+          ((err as {code?: string}).code === 'ETIMEDOUT' || (err as {code?: string}).code === 'ECONNRESET' || (err as {code?: string}).code === 'ECONNREFUSED');
+        if (isRetryable && attempt < MAX_SEND_RETRIES) {
+          log.warn(`sendThinkingCard attempt ${attempt}/${MAX_SEND_RETRIES} failed (${(err as {code?: string}).code}), retrying...`);
+          await new Promise((r) => setTimeout(r, 1000 * attempt));
+          continue;
+        }
+        log.error(`Failed to send thinking card after ${attempt} attempts:`, err);
+        // 检测是否为飞书权限不足
+        if (isPermissionError(err)) {
+          const guide = buildPermissionGuideMessage(err);
+          await sendPermissionFallback(chatId, guide).catch((err) => {
+            log.warn('Permission fallback send failed:', err);
+          });
+        } else {
+          try {
+            await sendTextReply(chatId, '启动 AI 处理失败，请重试。');
+          } catch (err) {
+            log.warn('Failed to send startup error reply:', err);
+          }
+        }
+        return;
       }
-      return;
     }
 
     const { messageId: msgId, cardId } = cardHandle;
@@ -283,7 +302,8 @@ export function setupFeishuHandlers(
     if (typeof raw === 'string') {
       try {
         obj = JSON.parse(raw) as { action?: string; value?: string };
-      } catch {
+      } catch (err) {
+        log.debug('Failed to parse action value as JSON:', err);
         return null;
       }
     } else if (typeof raw === 'object' && raw !== null) {
@@ -347,8 +367,8 @@ export function setupFeishuHandlers(
         if (typeof parsed === 'string') parsed = JSON.parse(parsed);
       }
       actionData = parsed as StopAction;
-    } catch {
-      /* ignore */
+    } catch (err) {
+      log.debug('Failed to parse card action data:', err);
     }
     if (actionData?.action === 'stop' && actionData.card_id) {
       const cardId = actionData.card_id;

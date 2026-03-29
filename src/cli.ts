@@ -53,7 +53,7 @@ async function cmdStart(): Promise<void> {
     console.log("\nopen-im is already running in the background.");
     console.log(`  pid: ${status.pid}`);
     console.log(`  config page: ${getWebConfigUrl()}`);
-    return;
+    process.exit(0);
   }
 
   if (!(await ensureConfigured("start"))) {
@@ -73,19 +73,21 @@ async function cmdStart(): Promise<void> {
     console.log("  A one-time login URL (with login_token) has been printed by the config-web server logger.");
     console.log("  Please use that URL (replacing 127.0.0.1 with your server IP/hostname) for the first login.");
   }
+  process.exit(0);
 }
 
 async function cmdStop(): Promise<void> {
   const status = getManagerStatus();
   if (!status.pid) {
     console.log("open-im is not running in the background.");
-    return;
+    process.exit(0);
   }
 
   await stopBackgroundService();
   const result = await stopManagerProcess();
   console.log("\nopen-im stopped.");
   console.log(`  pid: ${result.pid}`);
+  process.exit(0);
 }
 
 async function cmdRestart(): Promise<void> {
@@ -109,6 +111,7 @@ async function cmdRestart(): Promise<void> {
   console.log("\nopen-im restarted in the background.");
   console.log(`  pid: ${child.pid}`);
   console.log(`  config page: ${getWebConfigUrl()}`);
+  process.exit(0);
 }
 
 async function cmdInit(): Promise<void> {

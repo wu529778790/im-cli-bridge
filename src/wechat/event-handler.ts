@@ -79,7 +79,8 @@ export function setupWeChatHandlers(
         return null;
       }
       return parsed as unknown as WeChatIncomingMessage;
-    } catch {
+    } catch (err) {
+      log.debug('Failed to parse WeChat incoming message JSON:', err);
       return null;
     }
   }
@@ -119,8 +120,8 @@ export function setupWeChatHandlers(
           localPath: savedPath,
           text: contextText,
         });
-      } catch {
-        // Fall through to metadata-only prompt.
+      } catch (err) {
+        log.warn('Failed to download WeChat media, falling back to metadata-only prompt:', err);
       }
     }
 
@@ -173,7 +174,9 @@ export function setupWeChatHandlers(
       log.error('Failed to send thinking message:', err);
       try {
         await sendTextReply(chatId, '启动 AI 处理失败，请重试。');
-      } catch { /* ignore */ }
+      } catch (err) {
+        log.warn('Failed to send startup error reply:', err);
+      }
       return;
     }
 

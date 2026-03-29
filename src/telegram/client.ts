@@ -50,7 +50,9 @@ export async function initTelegram(
       // 不再 exit(1)，让其他通道继续运行
     }
   };
-  void launchWithRetry();
+  void launchWithRetry().catch((err) => {
+    log.error("Telegram launchWithRetry failed fatally:", err);
+  });
   log.info("Telegram bot launched");
 }
 

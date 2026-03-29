@@ -133,7 +133,8 @@ async function buildMediaPrompt(
         basenameHint: typeof payload.fileName === 'string' ? payload.fileName : undefined,
         fallbackExtension: kind === 'image' ? 'jpg' : 'bin',
       });
-    } catch {
+    } catch (err) {
+      log.warn('Failed to download DingTalk media from URL:', err);
       localPath = undefined;
     }
   }
@@ -155,7 +156,8 @@ async function buildMediaPrompt(
           (typeof payload.fileName === 'string' ? payload.fileName : undefined);
         localPath = await saveBufferMedia(downloaded.buffer, extension, basenameHint);
       }
-    } catch {
+    } catch (err) {
+      log.warn('Failed to download DingTalk media via robotCode:', err);
       localPath = undefined;
     }
   }
@@ -256,7 +258,9 @@ export function setupDingTalkHandlers(
       log.error('Failed to send thinking message:', err);
       try {
         await sendTextReply(chatId, '启动 AI 处理失败，请重试。');
-      } catch { /* ignore */ }
+      } catch (err) {
+        log.warn('Failed to send startup error reply:', err);
+      }
       return;
     }
     const stopTyping = startTypingLoop(chatId);

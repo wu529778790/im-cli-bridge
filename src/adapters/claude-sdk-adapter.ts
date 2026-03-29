@@ -23,6 +23,21 @@ const activeSessions = new Map<string, SDKSession>();
 // 存储正在进行的流式迭代器，用于中断
 const activeStreams = new Set<AsyncIterator<SDKMessage>>();
 
+// Mutex to serialize process.chdir() calls across concurrent users
+let chdirMutex: Promise<void> = Promise.resolve();
+function withChdirMutex<T>(fn: () => T): Promise<T> {
+  const previous = chdirMutex;
+  let resolve!: () => void;
+  chdirMutex = new Promise<void>((r) => { resolve = r; });
+  return previous.then(() => {
+    try {
+      return fn();
+    } finally {
+      resolve();
+    }
+  });
+}
+
 function isStreamEvent(msg: SDKMessage): boolean {
   return (msg as { type?: string }).type === 'stream_event';
 }
@@ -50,7 +65,7 @@ function isResult(msg: SDKMessage): boolean {
  */
 async function getOrCreateSession(
   sessionId: string | undefined,
-  _workDir: string, // 保留参数以备将来使用
+  workDir: string,
   model: string | undefined,
   permissionMode: 'default' | 'bypassPermissions' | 'acceptEdits' | 'plan'
 ): Promise<{ session: SDKSession; sessionId: string }> {
@@ -58,36 +73,49 @@ async function getOrCreateSession(
   const sessionOptions = {
     model: resolvedModel,
     permissionMode,
-    // 可以添加其他选项，如 hooks, allowedTools 等
   };
 
   const baseUrl = process.env.ANTHROPIC_BASE_URL ?? '(default)';
-  log.info(`[V2] getOrCreateSession model param=${String(model ?? '')} resolved=${resolvedModel} baseUrl=${baseUrl}`);
+  log.info(`[V2] getOrCreateSession model param=${String(model ?? '')} resolved=${resolvedModel} baseUrl=${baseUrl} workDir=${workDir}`);
 
-  let session: SDKSession;
+  // Use mutex to serialize process.chdir() calls across concurrent users
+  return withChdirMutex(() => {
+    let session: SDKSession;
 
-  if (sessionId) {
-    // 尝试恢复已有会话
+    const originalCwd = process.cwd();
     try {
-      log.info(`Attempting to resume session: ${sessionId}`);
-      session = unstable_v2_resumeSession(sessionId, sessionOptions);
-      activeSessions.set(sessionId, session);
-      log.info(`Successfully resumed session: ${sessionId}`);
-      return { session, sessionId };
-    } catch (err) {
-      log.warn(`Failed to resume session ${sessionId}, creating new one: ${err}`);
-      // 恢复失败，创建新会话
-    }
-  }
+      if (workDir && workDir !== originalCwd) {
+        process.chdir(workDir);
+      }
 
-  // 创建新会话
-  session = unstable_v2_createSession(sessionOptions);
-  // 新会话的 sessionId 需要从第一个消息中获取
-  // 暂时返回 undefined，稍后在 init 消息中获取
-  const tempId = `pending-${Date.now()}`;
-  activeSessions.set(tempId, session);
-  log.info(`Created new session (tempId: ${tempId})`);
-  return { session, sessionId: tempId };
+      if (sessionId) {
+        // 尝试恢复已有会话
+        try {
+          log.info(`Attempting to resume session: ${sessionId}`);
+          session = unstable_v2_resumeSession(sessionId, sessionOptions);
+          activeSessions.set(sessionId, session);
+          log.info(`Successfully resumed session: ${sessionId}`);
+          return { session, sessionId };
+        } catch (err) {
+          log.warn(`Failed to resume session ${sessionId}, creating new one: ${err}`);
+          // 恢复失败，创建新会话
+        }
+      }
+
+      // 创建新会话
+      session = unstable_v2_createSession(sessionOptions);
+      // 新会话的 sessionId 需要从第一个消息中获取
+      // 暂时返回 undefined，稍后在 init 消息中获取
+      const tempId = `pending-${Date.now()}`;
+      activeSessions.set(tempId, session);
+      log.info(`Created new session (tempId: ${tempId})`);
+      return { session, sessionId: tempId };
+    } finally {
+      if (workDir && workDir !== originalCwd) {
+        process.chdir(originalCwd);
+      }
+    }
+  });
 }
 
 export class ClaudeSDKAdapter implements ToolAdapter {
@@ -132,15 +160,6 @@ export class ClaudeSDKAdapter implements ToolAdapter {
     let actualSessionId: string | undefined;
     let pendingTempId: string | undefined; // 记录临时 ID，用于 abort 时清理
     let runSettled = false;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    const timeoutMs = options?.timeoutMs ?? 600_000;
-
-    const clearRunTimeout = () => {
-      if (timeoutId !== null) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-    };
 
     const permissionMode = options?.skipPermissions
       ? ('bypassPermissions' as const)
@@ -151,15 +170,6 @@ export class ClaudeSDKAdapter implements ToolAdapter {
           : ('default' as const);
 
     const runSession = async () => {
-      timeoutId = setTimeout(() => {
-        if (runSettled) return;
-        runSettled = true;
-        clearRunTimeout();
-        log.warn(`[ClaudeSDK] Request timeout after ${timeoutMs}ms`);
-        abortController.abort();
-        callbacks.onError(`请求超时（${Math.round(timeoutMs / 1000)}s），请重试或缩短问题。`);
-      }, timeoutMs);
-
       try {
         // 检查环境变量
         const hasApiKey = !!process.env.ANTHROPIC_API_KEY;
@@ -251,7 +261,7 @@ export class ClaudeSDKAdapter implements ToolAdapter {
               // 检查会话错误
               if (!success) {
                 runSettled = true;
-                clearRunTimeout();
+
                 const noConvErr = errs.find((e) => e.includes('No conversation found') || e.includes('session not found'));
                 if (noConvErr) {
                   log.warn(`Session ${actualSessionId} not found, may need to create new one`);
@@ -282,26 +292,31 @@ export class ClaudeSDKAdapter implements ToolAdapter {
               }
 
               runSettled = true;
-              clearRunTimeout();
               callbacks.onComplete(result);
               return;
             }
           }
 
           // 如果流正常结束但没有收到 result 消息
-          if (!streamClosed && accumulated) {
-            log.info('Stream ended without result message, using accumulated text');
-            runSettled = true;
-            clearRunTimeout();
-            callbacks.onComplete({
-              success: true,
-              result: accumulated,
-              accumulated,
-              cost: 0,
-              durationMs: 0,
-              numTurns: 1,
-              toolStats,
-            });
+          if (!streamClosed) {
+            if (accumulated) {
+              log.info('Stream ended without result message, using accumulated text');
+              runSettled = true;
+              callbacks.onComplete({
+                success: true,
+                result: accumulated,
+                accumulated,
+                cost: 0,
+                durationMs: 0,
+                numTurns: 1,
+                toolStats,
+              });
+            } else {
+              // 流结束但无 result 也无 accumulated：必须触发回调，否则 Promise 永远挂起
+              log.warn('Stream ended with no result and no accumulated text, calling onError to prevent stuck state');
+              runSettled = true;
+              callbacks.onError('AI 响应异常结束（无输出），请重试');
+            }
           }
         } finally {
           // 从活跃列表中移除流
@@ -310,7 +325,6 @@ export class ClaudeSDKAdapter implements ToolAdapter {
       } catch (err) {
         if (abortController.signal.aborted) {
           log.info('Session run aborted');
-          clearRunTimeout();
           // 清理 pending tempId（abort 可能在 init 消息之前发生）
           const idToClean = actualSessionId ?? pendingTempId;
           if (idToClean?.startsWith('pending-')) {
@@ -321,7 +335,6 @@ export class ClaudeSDKAdapter implements ToolAdapter {
         }
 
         runSettled = true;
-        clearRunTimeout();
         const errorObj = err as Error;
         const msg = errorObj.message || String(err);
 

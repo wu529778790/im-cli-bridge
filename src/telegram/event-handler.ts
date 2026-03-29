@@ -169,7 +169,9 @@ export function setupTelegramHandlers(
       log.error("Failed to send thinking message:", err);
       try {
         await sendTextReply(chatId, "启动 AI 处理失败，请重试。");
-      } catch { /* ignore */ }
+      } catch (err) {
+        log.warn('Failed to send startup error reply:', err);
+      }
       return;
     }
 
@@ -258,7 +260,8 @@ export function setupTelegramHandlers(
           );
           throttle.recordSuccess();
           lastUpdateTime = Date.now();
-        } catch {
+        } catch (err) {
+          log.debug('Stream update failed:', err);
           throttle.recordError();
         } finally {
           updateInProgress = false;
@@ -272,7 +275,7 @@ export function setupTelegramHandlers(
         }
       };
 
-      return (content: string, toolNote?: string) => {
+      const wrapper = (content: string, toolNote?: string) => {
         if (content.startsWith("💭 **思考中...**")) {
           return;
         }
@@ -300,6 +303,19 @@ export function setupTelegramHandlers(
           Math.max(DEBOUNCE_MS, baseDelay),
         );
       };
+
+      // flush 排队的 debounce 更新，防止 sendComplete 时仍有 streaming 更新在排队
+      wrapper.flush = async () => {
+        if (debounceTimer) {
+          clearTimeout(debounceTimer);
+          debounceTimer = null;
+        }
+        while (updateInProgress) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+      };
+
+      return wrapper;
     };
 
     const streamUpdateWrapper = createStreamUpdateWrapper();
@@ -324,11 +340,30 @@ export function setupTelegramHandlers(
         },
         sendComplete: async (content, note) => {
           throttle.reset();
-          try {
-            await sendFinalMessages(chatId, msgId, content, note, toolId);
-          } catch (err) {
-            log.error("Failed to send complete message:", err);
-            await updateMessage(chatId, msgId, content, "done", note, toolId);
+          // 先 flush 排队的 streaming 更新，防止它覆盖后续的 done 消息
+          await streamUpdateWrapper.flush?.();
+          const maxAttempts = 3;
+          for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+              await sendFinalMessages(chatId, msgId, content, note, toolId);
+              return;
+            } catch (err) {
+              log.error(`Failed to send complete message (attempt ${attempt}/${maxAttempts}):`, err);
+              if (attempt < maxAttempts) {
+                await new Promise((r) => setTimeout(r, 2000 * attempt));
+              } else {
+                // 最终失败：尝试发送纯文本作为最后手段
+                try {
+                  await sendTextReply(
+                    chatId,
+                    `⚠️ 消息更新失败（网络异常），以下是 AI 回复：\n\n${content.slice(0, 4000)}`,
+                  );
+                } catch (fallbackErr) {
+                  log.error("All send attempts failed:", fallbackErr);
+                  throw err;
+                }
+              }
+            }
           }
         },
         sendError: async (error) => {

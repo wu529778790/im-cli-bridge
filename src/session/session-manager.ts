@@ -261,7 +261,17 @@ export class SessionManager {
   private async resolveAndValidate(baseDir: string, targetDir: string): Promise<string> {
     const resolved = resolveWorkDirInput(baseDir, targetDir);
     if (!existsSync(resolved)) throw new Error(`目录不存在: \`${resolved}\``);
-    return realpath(resolved);
+    const real = await realpath(resolved);
+    // Block access to sensitive system directories
+    const blockedPrefixes = process.platform === 'win32'
+      ? ['C:\\Windows', 'C:\\Program Files', 'C:\\Program Files (x86)', 'C:\\ProgramData']
+      : ['/etc', '/proc', '/sys', '/dev', '/boot', '/root', '/sbin', '/usr/sbin'];
+    for (const prefix of blockedPrefixes) {
+      if (real.toLowerCase().startsWith(prefix.toLowerCase())) {
+        throw new Error(`不允许访问系统目录: \`${real}\``);
+      }
+    }
+    return real;
   }
 
   private load(previousDefaultWorkDir?: string): void {

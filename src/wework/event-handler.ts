@@ -41,6 +41,8 @@ import { buildErrorNote, buildProgressNote } from '../shared/message-note.js';
 
 const log = createLogger('WeWorkHandler');
 const WEWORK_MEDIA_TIMEOUT_MS = 60_000;
+// Safety timeout: abort hung tasks before stream expires (5 min TTL → 4.5 min safety)
+const WEWORK_TASK_SAFETY_TIMEOUT_MS = 4.5 * 60 * 1000;
 
 type MediaKind = 'image' | 'file' | 'voice' | 'video';
 
@@ -178,7 +180,8 @@ export async function buildMediaPrompt(data: WeWorkCallbackMessage, kind: MediaK
           localPath: savedPath,
           text: contextText,
         });
-      } catch {
+      } catch (err) {
+        log.warn('Failed to download WeWork image, falling back to URL reference:', err);
         imageReference = `Remote image URL: ${imagePayload.url}`;
       }
     }
@@ -208,8 +211,8 @@ export async function buildMediaPrompt(data: WeWorkCallbackMessage, kind: MediaK
         localPath: savedPath,
         text: contextText,
       });
-    } catch {
-      // Fall back to metadata-only prompt.
+    } catch (err) {
+      log.warn('Failed to download WeWork media, falling back to metadata-only prompt:', err);
     }
   }
 
@@ -275,11 +278,33 @@ export function setupWeWorkHandlers(
         log.error('Failed to send thinking message:', err);
         try {
           await sendTextReply(chatId, '启动 AI 处理失败，请重试。', reqId);
-        } catch { /* ignore */ }
+        } catch (err) {
+          log.warn('Failed to send startup error reply:', err);
+        }
         return;
       }
       const stopTyping = startTypingLoop(chatId);
       const taskKey = `${userId}:${msgId}`;
+
+      // Safety timeout: abort hung tasks before stream expires, unblocking the queue
+      let safetyTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+        safetyTimer = null;
+        const state = runningTasks.get(taskKey);
+        if (state) {
+          log.warn(`[SAFETY_TIMEOUT] Task ${taskKey} exceeded ${WEWORK_TASK_SAFETY_TIMEOUT_MS}ms, aborting`);
+          state.handle.abort();
+          runningTasks.delete(taskKey);
+          stopTyping();
+          sendTextReply(chatId, `AI 处理超时（${Math.round(WEWORK_TASK_SAFETY_TIMEOUT_MS / 1000)}s），已自动取消。请重试。`, reqId).catch(() => {});
+        }
+      }, WEWORK_TASK_SAFETY_TIMEOUT_MS);
+
+      const clearSafetyTimer = () => {
+        if (safetyTimer) {
+          clearTimeout(safetyTimer);
+          safetyTimer = null;
+        }
+      };
 
       await runAITask(
         { config, sessionManager },
@@ -303,6 +328,7 @@ export function setupWeWorkHandlers(
             await updateMessage(chatId, msgId, `Error: ${error}`, 'error', buildErrorNote(), toolId, reqId);
           },
           extraCleanup: () => {
+            clearSafetyTimer();
             stopTyping();
             runningTasks.delete(taskKey);
           },

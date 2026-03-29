@@ -73,7 +73,8 @@ async function buildAttachmentPrompt(event: QQMessageEvent): Promise<string | nu
                   ? "mp4"
                   : "bin",
         });
-      } catch {
+      } catch (err) {
+        log.warn('Failed to download QQ media attachment:', err);
         localPath = undefined;
       }
     }
@@ -194,7 +195,9 @@ export function setupQQHandlers(
       log.error("Failed to send thinking message:", err);
       try {
         await sendTextReply(chatId, "启动 AI 处理失败，请重试。");
-      } catch { /* ignore */ }
+      } catch (err) {
+        log.warn('Failed to send startup error reply:', err);
+      }
       return;
     }
     const stopTyping = startTypingLoop();

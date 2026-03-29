@@ -152,6 +152,33 @@ export async function downloadMediaFromUrl(
   url: string,
   options?: { basenameHint?: string; fallbackExtension?: string },
 ): Promise<string> {
+  // SSRF protection: validate URL before fetching
+  const BLOCKED_HOSTS = ['127.0.0.1', 'localhost', '0.0.0.0', '[::1]', '169.254.169.254'];
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(url);
+  } catch {
+    throw new Error(`Invalid URL: ${url}`);
+  }
+  const protocol = parsedUrl.protocol.toLowerCase();
+  if (protocol !== 'https:' && protocol !== 'http:') {
+    throw new Error(`Unsupported URL protocol: ${protocol}`);
+  }
+  const hostname = parsedUrl.hostname.toLowerCase();
+  for (const blocked of BLOCKED_HOSTS) {
+    if (hostname === blocked) {
+      throw new Error(`Blocked URL host: ${hostname}`);
+    }
+  }
+  // Block link-local and private IPs (e.g., 10.x.x.x, 172.16-31.x.x, 192.168.x.x)
+  const ipMatch = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipMatch) {
+    const [, a, b] = ipMatch.map(Number);
+    if (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || a === 0) {
+      throw new Error(`Blocked private/internal IP: ${hostname}`);
+    }
+  }
+
   await mkdir(IMAGE_DIR, { recursive: true });
   const response = await fetch(url, { signal: AbortSignal.timeout(MEDIA_DOWNLOAD_TIMEOUT_MS) });
   if (!response.ok) {

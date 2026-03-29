@@ -61,6 +61,20 @@ interface StreamState {
 let senderSettings: SenderSettings = {};
 const streamStates = new Map<string, StreamState>();
 
+// Periodic cleanup of orphaned stream states (max 30 minutes)
+const STREAM_MAX_AGE_MS = 30 * 60 * 1000;
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, state] of streamStates) {
+    // streamStates in DingTalk don't have createdAt, clean up by size
+    if (streamStates.size > 50) {
+      streamStates.delete(id);
+      log.info(`Cleaned up old DingTalk stream state: ${id}`);
+      break; // Clean one at a time to avoid blocking
+    }
+  }
+}, STREAM_MAX_AGE_MS);
+
 function generateMessageId(): string {
   return `${Date.now()}-${randomBytes(6).toString('hex')}`;
 }

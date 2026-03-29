@@ -96,6 +96,10 @@ export function startBackgroundService(cwd: string): { pid: number } {
     env: process.env,
     windowsHide: process.platform === "win32",
   });
+  child.on("error", (err) => {
+    // Spawn failure (ENOENT etc.) — report via stderr since logger may not be initialized
+    process.stderr.write(`[service-control] Spawn failed: ${err.message}\n`);
+  });
   child.unref();
 
   if (!child.pid) {

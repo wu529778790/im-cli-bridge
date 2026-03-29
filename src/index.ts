@@ -363,6 +363,16 @@ export async function main() {
 
   process.on("SIGINT", () => shutdown().catch(() => process.exit(1)));
   process.on("SIGTERM", () => shutdown().catch(() => process.exit(1)));
+
+  // Global error handlers to prevent unhandled crashes
+  process.on("unhandledRejection", (reason) => {
+    log.error("Unhandled Promise rejection:", reason);
+  });
+  process.on("uncaughtException", (err) => {
+    log.error("Uncaught exception (process will exit):", err);
+    closeLogger();
+    process.exit(1);
+  });
 }
 
 const isEntry =
