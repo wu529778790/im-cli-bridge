@@ -2,8 +2,8 @@
  * WeChat Client - 薄封装层，根据 loginMode 委托给对应 transport
  *
  * 支持两种通道：
- * - qclaw: 直连腾讯 JPRX 网关（默认）
- * - workbuddy: 通过 Centrifuge WebSocket 连接
+ * - workbuddy: 通过 Centrifuge WebSocket 连接（默认）
+ * - qclaw: 直连腾讯 JPRX 网关
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
@@ -102,7 +102,7 @@ export async function initWeChat(
   await loadToken();
 
   // Determine login mode from config
-  const loginMode = config.platforms.wechat?.loginMode ?? 'qclaw';
+  const loginMode = config.platforms.wechat?.loginMode ?? 'workbuddy';
   log.info(`Initializing WeChat with loginMode: ${loginMode}`);
 
   if (loginMode === 'workbuddy') {

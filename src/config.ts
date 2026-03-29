@@ -513,7 +513,7 @@ export function loadConfig(): Config {
   // 微信支持两种协议：
   // 1. AGP 协议：token + guid + userId（推荐）
   // 2. 标准协议：appId + appSecret
-  const wechatLoginMode = fileWechat?.loginMode ?? 'qclaw';
+  const wechatLoginMode = fileWechat?.loginMode ?? 'workbuddy';
   const wechatToken =
     process.env.WECHAT_TOKEN ??
     fileWechat?.token;
