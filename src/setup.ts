@@ -514,6 +514,8 @@ export async function runInteractiveSetup(): Promise<boolean> {
     if (wbModeResp.mode === "oauth") {
       console.log("\n正在启动 WorkBuddy OAuth 登录...\n");
 
+      // Phase 1: OAuth token acquisition (fatal if fails)
+      let oauthOk = false;
       try {
         const { WorkBuddyOAuth } = await import("./workbuddy/oauth.js");
         const oauth = new WorkBuddyOAuth();
@@ -541,6 +543,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
         // Set oauth.userId so buildSessionId() produces the correct sessionId.
         oauth.userId = userId;
 
+        // Save credentials immediately — even if binding fails below
         (config.platforms as Record<string, unknown>).workbuddy = {
           enabled: true,
           accessToken: tokenResult.accessToken,
@@ -548,35 +551,80 @@ export async function runInteractiveSetup(): Promise<boolean> {
           userId,
         };
 
-        console.log("\n正在获取微信客服绑定链接...");
-        const sessionId = oauth.buildSessionId();
-        const linkResult = await oauth.getWeChatKfLink(sessionId);
-        if (linkResult.success && linkResult.url) {
-          console.log("\n━━━ 微信客服绑定 ━━━");
-          console.log("请复制以下链接，在微信中发给「文件传输助手」并点击打开：");
-          console.log(linkResult.url);
-          console.log("\n等待绑定完成（最长 5 分钟）...\n");
+        oauthOk = true;
+        console.log("\n✅ WorkBuddy 凭证已获取，正在生成微信客服绑定链接...");
 
-          const bindResult = await oauth.pollBindStatus(sessionId);
-          if (bindResult.bound) {
-            console.log(`✅ 微信客服绑定成功！${bindResult.nickname ? ` 用户: ${bindResult.nickname}` : ""}`);
+        // Phase 2: WeChat KF binding (non-fatal)
+        try {
+          const sessionId = oauth.buildSessionId();
+          const linkResult = await oauth.getWeChatKfLink(sessionId);
+          if (linkResult.success && linkResult.url) {
+            console.log("\n━━━ 微信客服绑定 ━━━");
+            console.log("请复制以下链接，在微信中发给「文件传输助手」并点击打开：");
+            console.log(linkResult.url);
+            console.log("\n等待绑定完成（最长 5 分钟）...\n");
+
+            const bindResult = await oauth.pollBindStatus(sessionId);
+            if (bindResult.bound) {
+              console.log(`✅ 微信客服绑定成功！${bindResult.nickname ? ` 用户: ${bindResult.nickname}` : ""}`);
+            } else {
+              console.log("⚠️ 绑定超时，你可以稍后重新运行 open-im init 完成绑定");
+            }
           } else {
-            console.log("⚠️ 绑定超时，你可以稍后重新运行 open-im init 完成绑定");
+            console.log(`⚠️ 获取微信客服链接失败: ${linkResult.message ?? "未知错误"}`);
+            console.log("   凭证已保存，稍后重新运行 open-im init 可重试绑定");
           }
-        } else {
-          console.log("⚠️ 获取微信客服链接失败，你可以稍后重新运行 open-im init 完成绑定");
+        } catch (bindErr) {
+          const cause = (bindErr as NodeJS.ErrnoException)?.cause ?? (bindErr as NodeJS.ErrnoException)?.code;
+          const detail = cause ? ` (${cause})` : "";
+          console.log(`⚠️ 获取微信客服绑定链接网络失败: ${bindErr instanceof Error ? bindErr.message : String(bindErr)}${detail}`);
+          console.log("   凭证已保存，稍后重新运行 open-im init 可重试绑定");
         }
 
         console.log("\n✅ WorkBuddy 登录成功，配置已保存");
       } catch (err) {
-        console.error("\n❌ WorkBuddy 登录失败:", err instanceof Error ? err.message : String(err));
-        if (platform === "workbuddy") return false;
+        const cause = (err as NodeJS.ErrnoException)?.cause ?? (err as NodeJS.ErrnoException)?.code;
+        const detail = cause ? ` (${cause})` : "";
+        console.error(`\n❌ WorkBuddy 登录失败: ${err instanceof Error ? err.message : String(err)}${detail}`);
+        if (!oauthOk && platform === "workbuddy") return false;
       }
     } else if (hasWbCreds) {
       (config.platforms as Record<string, unknown>).workbuddy = {
         ...wb,
         enabled: true,
       };
+      // Also (re-)generate the WeChat KF binding link with existing credentials
+      try {
+        const { WorkBuddyOAuth } = await import("./workbuddy/oauth.js");
+        const oauthKeep = new WorkBuddyOAuth(wb?.baseUrl as string | undefined);
+        oauthKeep.loadCredentials({
+          accessToken: wb?.accessToken as string ?? '',
+          refreshToken: wb?.refreshToken as string ?? '',
+          userId: wb?.userId as string ?? '',
+        });
+        oauthKeep.userId = wb?.userId as string ?? '';
+        const sessionId = oauthKeep.buildSessionId();
+        console.log(`\n正在获取微信客服绑定链接... (sessionId: ${sessionId})`);
+        const linkResult = await oauthKeep.getWeChatKfLink(sessionId);
+        if (linkResult.success && linkResult.url) {
+          console.log("\n━━━ 微信客服绑定 ━━━");
+          console.log("请复制以下链接，在微信中发给「文件传输助手」并点击打开：");
+          console.log(linkResult.url);
+          console.log("\n等待绑定完成（最长 5 分钟）...\n");
+          const bindResult = await oauthKeep.pollBindStatus(sessionId);
+          if (bindResult.bound) {
+            console.log(`✅ 微信客服绑定成功！${bindResult.nickname ? ` 用户: ${bindResult.nickname}` : ""}`);
+          } else {
+            console.log("⚠️ 绑定超时，你可以稍后重新运行 open-im init 完成绑定");
+          }
+        } else {
+          console.log(`⚠️ 获取绑定链接失败: ${linkResult.message ?? "未知"}`);
+        }
+      } catch (keepErr) {
+        const cause = (keepErr as NodeJS.ErrnoException)?.cause ?? (keepErr as NodeJS.ErrnoException)?.code;
+        console.log(`⚠️ 绑定链接请求失败: ${keepErr instanceof Error ? keepErr.message : String(keepErr)}${cause ? ` (${cause})` : ""}`);
+        console.log("   稍后重新运行 open-im init 可重试");
+      }
     } else if (platform === "workbuddy") {
       return false;
     }
