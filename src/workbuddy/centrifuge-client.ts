@@ -228,7 +228,9 @@ export class WorkBuddyCentrifugeClient {
         success: payload.stop_reason === 'end_turn',
         message,
         metadata: {
-          sessionId: this.config.workspaceSessionId || payload.session_id,
+          // Use the incoming session_id (WeChat KF compound chatId) so the server
+          // can extract the external_userid for the WeChat KF send_msg touser.
+          sessionId: payload.session_id,
           requestId: payload.prompt_id,
           state: payload.stop_reason === 'end_turn' ? 'completed' : payload.stop_reason,
         },
