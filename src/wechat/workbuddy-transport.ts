@@ -27,11 +27,16 @@ export interface WorkBuddyTransportConfig {
   workspacePath?: string;
 }
 
+const RECONNECT_DELAYS_MS = [3000, 5000, 10000, 20000, 30000];
+
 export class WorkBuddyTransport implements WeChatTransport {
   private config: WorkBuddyTransportConfig;
   private state: WeChatChannelState = 'disconnected';
   private centrifugeClient: WorkBuddyCentrifugeClient | null = null;
   private oauth: WorkBuddyOAuth | null = null;
+  private stopped = false;
+  private reconnectAttempt = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   private messageHandler: MessageHandler | null = null;
   private stateChangeHandler: StateChangeHandler | null = null;
@@ -41,19 +46,30 @@ export class WorkBuddyTransport implements WeChatTransport {
   }
 
   async start(): Promise<void> {
+    this.stopped = false;
+    await this.connect();
+  }
+
+  private async connect(): Promise<void> {
+    if (this.stopped) return;
+
     this.updateState('connecting');
 
     try {
-      // Initialize OAuth
-      this.oauth = new WorkBuddyOAuth(this.config.baseUrl ?? 'https://copilot.tencent.com');
-      this.oauth.accessToken = this.config.accessToken;
-      this.oauth.refreshToken = this.config.refreshToken;
-      this.oauth.userId = this.config.userId;
+      // Initialize (or reuse) OAuth
+      if (!this.oauth) {
+        this.oauth = new WorkBuddyOAuth(this.config.baseUrl ?? 'https://copilot.tencent.com');
+        this.oauth.accessToken = this.config.accessToken;
+        this.oauth.refreshToken = this.config.refreshToken;
+        this.oauth.userId = this.config.userId;
+      }
 
-      // Register workspace to get Centrifuge tokens
-      log.info('Registering workspace for Centrifuge tokens...');
+      // Use a stable workspaceId so the server maintains a consistent channel
+      // across restarts — otherwise WeChat KF loses the routing association.
       const hostId = this.config.hostId ?? hostname();
-      const workspaceId = randomUUID();
+      const workspaceId = `${hostId}-open-im-wechat`;
+
+      log.info('Registering workspace for Centrifuge tokens...');
       const tokens = await this.oauth.registerWorkspace({
         userId: this.config.userId,
         hostId,
@@ -63,16 +79,23 @@ export class WorkBuddyTransport implements WeChatTransport {
 
       log.info(`Workspace registered: channel=${tokens.channel}`);
 
-      // Build workspaceSessionId for HTTP COPILOT_RESPONSE metadata
+      // workspaceSessionId must match the sessionId used when the WeChat KF was bound
       const workspacePath = this.config.workspacePath ?? join(homedir(), 'WorkBuddy', 'Claw');
       const workspaceSessionId = `${this.config.userId}_${hostId}_${workspacePath}`;
+      const channel = tokens.channel;
+      const oauth = this.oauth;
 
-      // Create Centrifuge client
+      // Tear down previous client before creating a new one
+      if (this.centrifugeClient) {
+        this.centrifugeClient.stop();
+        this.centrifugeClient = null;
+      }
+
       const clientConfig: CentrifugeClientConfig = {
         url: tokens.url,
         connectionToken: tokens.connectionToken,
         subscriptionToken: tokens.subscriptionToken,
-        channel: tokens.channel,
+        channel,
         guid: this.config.guid ?? randomUUID(),
         userId: this.config.userId,
         httpBaseUrl: this.config.baseUrl ?? 'https://copilot.tencent.com',
@@ -83,18 +106,31 @@ export class WorkBuddyTransport implements WeChatTransport {
       const callbacks: CentrifugeCallbacks = {
         onConnected: () => {
           log.info('WorkBuddy Centrifuge connected');
+          this.reconnectAttempt = 0;
           this.updateState('connected');
+
+          // Register the channel with the server so WeChat KF knows this session is online.
+          oauth.registerChannel({
+            type: 'wechatkf',
+            sessionId: workspaceSessionId,
+            channelId: channel,
+            userId: this.config.userId,
+          }).then((res) => {
+            log.info(`Channel registered (WeChat KF online): ${JSON.stringify(res)}`);
+          }).catch((err: unknown) => {
+            log.warn(`registerChannel failed (WeChat KF may show offline): ${String(err)}`);
+          });
         },
         onDisconnected: (reason) => {
           log.info(`WorkBuddy Centrifuge disconnected: ${reason}`);
           this.updateState('disconnected');
+          this.scheduleReconnect();
         },
         onError: (error) => {
           log.error('WorkBuddy Centrifuge error:', error);
           this.updateState('error');
         },
         onMessage: async (chatId, msgId, content) => {
-          // Normalize WeChat KF or AGP message to AGPEnvelope
           const envelope: AGPEnvelope = {
             msg_id: msgId,
             guid: this.config.guid,
@@ -117,14 +153,34 @@ export class WorkBuddyTransport implements WeChatTransport {
       this.centrifugeClient.start();
 
       log.info('WorkBuddy transport initialized');
+      this.reconnectAttempt = 0;
     } catch (err) {
       log.error('Failed to start WorkBuddy transport:', err);
       this.updateState('error');
-      throw err;
+      this.scheduleReconnect();
     }
   }
 
+  private scheduleReconnect(): void {
+    if (this.stopped) return;
+    if (this.reconnectTimer) return;
+
+    const delayMs = RECONNECT_DELAYS_MS[Math.min(this.reconnectAttempt, RECONNECT_DELAYS_MS.length - 1)];
+    this.reconnectAttempt++;
+    log.info(`WorkBuddy transport reconnecting in ${delayMs}ms (attempt ${this.reconnectAttempt})...`);
+
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      void this.connect();
+    }, delayMs);
+  }
+
   stop(): void {
+    this.stopped = true;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     if (this.centrifugeClient) {
       this.centrifugeClient.stop();
       this.centrifugeClient = null;
