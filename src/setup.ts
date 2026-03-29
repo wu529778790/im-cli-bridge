@@ -539,6 +539,11 @@ export async function runInteractiveSetup(): Promise<boolean> {
 
         const userId = ((accountInfo as Record<string, unknown>)?.uid as string)?.toString() ?? "";
 
+        // Set oauth.userId so buildSessionId() produces the correct sessionId.
+        // Without this, the binding sessionId has an empty userId prefix, which
+        // won't match the sessionId the transport uses at runtime.
+        oauth.userId = userId;
+
         (config.platforms as Record<string, unknown>).wechat = {
           enabled: true,
           workbuddyAccessToken: tokenResult.accessToken,

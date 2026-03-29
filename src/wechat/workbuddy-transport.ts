@@ -28,6 +28,7 @@ export interface WorkBuddyTransportConfig {
 }
 
 const RECONNECT_DELAYS_MS = [3000, 5000, 10000, 20000, 30000];
+const CHANNEL_HEARTBEAT_MS = 30_000;
 
 export class WorkBuddyTransport implements WeChatTransport {
   private config: WorkBuddyTransportConfig;
@@ -37,6 +38,7 @@ export class WorkBuddyTransport implements WeChatTransport {
   private stopped = false;
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
   private messageHandler: MessageHandler | null = null;
   private stateChangeHandler: StateChangeHandler | null = null;
@@ -106,23 +108,35 @@ export class WorkBuddyTransport implements WeChatTransport {
       const callbacks: CentrifugeCallbacks = {
         onConnected: () => {
           log.info('WorkBuddy Centrifuge connected');
+          log.info(`WorkBuddy sessionId (must match binding): ${workspaceSessionId}`);
           this.reconnectAttempt = 0;
           this.updateState('connected');
 
-          // Register the channel with the server so WeChat KF knows this session is online.
-          oauth.registerChannel({
-            type: 'wechatkf',
-            sessionId: workspaceSessionId,
-            channelId: channel,
-            userId: this.config.userId,
-          }).then((res) => {
-            log.info(`Channel registered (WeChat KF online): ${JSON.stringify(res)}`);
-          }).catch((err: unknown) => {
-            log.warn(`registerChannel failed (WeChat KF may show offline): ${String(err)}`);
-          });
+          const doRegister = () => {
+            if (this.stopped || this.state !== 'connected') return;
+            oauth.registerChannel({
+              type: 'wechatkf',
+              sessionId: workspaceSessionId,
+              channelId: channel,
+              userId: this.config.userId,
+            }).then((res) => {
+              log.info(`Channel registered (WeChat KF online): ${JSON.stringify(res)}`);
+            }).catch((err: unknown) => {
+              log.warn(`registerChannel heartbeat failed: ${String(err)}`);
+            });
+          };
+
+          // Register immediately and then keep heartbeat alive.
+          doRegister();
+          if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+          this.heartbeatTimer = setInterval(doRegister, CHANNEL_HEARTBEAT_MS);
         },
         onDisconnected: (reason) => {
           log.info(`WorkBuddy Centrifuge disconnected: ${reason}`);
+          if (this.heartbeatTimer) {
+            clearInterval(this.heartbeatTimer);
+            this.heartbeatTimer = null;
+          }
           this.updateState('disconnected');
           this.scheduleReconnect();
         },
@@ -177,6 +191,10 @@ export class WorkBuddyTransport implements WeChatTransport {
 
   stop(): void {
     this.stopped = true;
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
