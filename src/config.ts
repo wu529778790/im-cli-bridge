@@ -88,6 +88,7 @@ export interface Config {
     wechat?: {
       enabled: boolean;
       aiCommand?: AiCommand;
+      loginMode?: 'qclaw' | 'workbuddy';
       wsUrl?: string;
       token?: string;
       jwtToken?: string;
@@ -95,6 +96,11 @@ export interface Config {
       guid?: string;
       userId?: string;
       allowedUserIds: string[];
+      // WorkBuddy 模式凭证
+      workbuddyAccessToken?: string;
+      workbuddyRefreshToken?: string;
+      workbuddyBaseUrl?: string;
+      workbuddyHostId?: string;
     };
     wework?: {
       enabled: boolean;
@@ -150,13 +156,20 @@ interface FilePlatformWechat {
   appId?: string;
   appSecret?: string;
   aiCommand?: AiCommand;
-  token?: string;      // AGP 协议 token
-  jwtToken?: string;   // JWT Token，用于刷新 channel_token
-  loginKey?: string;   // 4026 登录返回的 loginKey
+  /** 连接模式：qclaw（QClaw JPRX 网关）或 workbuddy（Centrifuge） */
+  loginMode?: 'qclaw' | 'workbuddy';
+  token?: string;      // AGP 协议 token (qclaw 模式)
+  jwtToken?: string;   // JWT Token，用于刷新 channel_token (qclaw 模式)
+  loginKey?: string;   // 4026 登录返回的 loginKey (qclaw 模式)
   guid?: string;       // AGP 协议 guid
   userId?: string;     // AGP 协议 userId
   wsUrl?: string;
   allowedUserIds?: string[];
+  // WorkBuddy 模式凭证（loginMode === 'workbuddy' 时使用）
+  workbuddyAccessToken?: string;
+  workbuddyRefreshToken?: string;
+  workbuddyBaseUrl?: string;
+  workbuddyHostId?: string;
 }
 
 export interface FilePlatformWework {
@@ -500,6 +513,7 @@ export function loadConfig(): Config {
   // 微信支持两种协议：
   // 1. AGP 协议：token + guid + userId（推荐）
   // 2. 标准协议：appId + appSecret
+  const wechatLoginMode = fileWechat?.loginMode ?? 'qclaw';
   const wechatToken =
     process.env.WECHAT_TOKEN ??
     fileWechat?.token;
@@ -521,6 +535,20 @@ export function loadConfig(): Config {
   const wechatWsUrl =
     process.env.WECHAT_WS_URL ??
     fileWechat?.wsUrl;
+
+  // 微信 WorkBuddy 模式凭证（loginMode === 'workbuddy' 时使用）
+  const wechatWorkbuddyAccessToken =
+    process.env.WECHAT_WORKBUDDY_ACCESS_TOKEN ??
+    fileWechat?.workbuddyAccessToken;
+  const wechatWorkbuddyRefreshToken =
+    process.env.WECHAT_WORKBUDDY_REFRESH_TOKEN ??
+    fileWechat?.workbuddyRefreshToken;
+  const wechatWorkbuddyBaseUrl =
+    process.env.WECHAT_WORKBUDDY_BASE_URL ??
+    fileWechat?.workbuddyBaseUrl;
+  const wechatWorkbuddyHostId =
+    process.env.WECHAT_WORKBUDDY_HOST_ID ??
+    fileWechat?.workbuddyHostId;
 
   const weworkCorpId =
     process.env.WEWORK_CORP_ID ??
@@ -579,11 +607,17 @@ export function loadConfig(): Config {
     !!(feishuAppId && feishuAppSecret) && (feishuEnabledFlag !== false);
   const qqEnabled =
     !!(qqAppId && qqSecret) && (qqEnabledFlag !== false);
-  // 微信启用条件：AGP 协议凭证 或 标准协议凭证
+  // 微信启用条件：
+  // - qclaw 模式：AGP 协议凭证（token + guid + userId）或 标准协议凭证（appId + appSecret）
+  // - workbuddy 模式：workbuddy OAuth 凭证
   const hasWechatAGPCreds = !!(wechatToken && wechatGuid && wechatUserId);
   const hasWechatStandardCreds = !!(wechatAppId && wechatAppSecret);
+  const hasWechatWorkbuddyCreds = !!(wechatWorkbuddyAccessToken && wechatWorkbuddyRefreshToken);
   const wechatEnabled =
-    (hasWechatAGPCreds || hasWechatStandardCreds) && (wechatEnabledFlag !== false);
+    (wechatLoginMode === 'workbuddy'
+      ? hasWechatWorkbuddyCreds
+      : (hasWechatAGPCreds || hasWechatStandardCreds)
+    ) && (wechatEnabledFlag !== false);
   // 企业微信只需要 corpId (botId) 和 secret
   const weworkEnabled =
     !!(weworkCorpId && weworkSecret) && (weworkEnabledFlag !== false);
@@ -858,6 +892,7 @@ export function loadConfig(): Config {
       ? {
           enabled: true,
           aiCommand: normalizeAiCommand(file.platforms?.wechat?.aiCommand, aiCommand),
+          loginMode: wechatLoginMode,
           wsUrl: wechatWsUrl,
           token: wechatToken,
           jwtToken: wechatJwtToken,
@@ -865,10 +900,15 @@ export function loadConfig(): Config {
           guid: wechatGuid,
           userId: wechatUserId,
           allowedUserIds: wechatAllowedUserIds,
+          workbuddyAccessToken: wechatWorkbuddyAccessToken,
+          workbuddyRefreshToken: wechatWorkbuddyRefreshToken,
+          workbuddyBaseUrl: wechatWorkbuddyBaseUrl,
+          workbuddyHostId: wechatWorkbuddyHostId,
         }
       : {
           enabled: false,
           aiCommand: normalizeAiCommand(file.platforms?.wechat?.aiCommand, aiCommand),
+          loginMode: wechatLoginMode,
           wsUrl: wechatWsUrl,
           token: wechatToken,
           jwtToken: wechatJwtToken,
@@ -876,6 +916,10 @@ export function loadConfig(): Config {
           guid: wechatGuid,
           userId: wechatUserId,
           allowedUserIds: wechatAllowedUserIds,
+          workbuddyAccessToken: wechatWorkbuddyAccessToken,
+          workbuddyRefreshToken: wechatWorkbuddyRefreshToken,
+          workbuddyBaseUrl: wechatWorkbuddyBaseUrl,
+          workbuddyHostId: wechatWorkbuddyHostId,
         },
     wework: weworkEnabled
       ? {
