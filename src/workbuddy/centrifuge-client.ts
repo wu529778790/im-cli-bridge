@@ -217,20 +217,20 @@ export class WorkBuddyCentrifugeClient {
     // WeChat KF messages: send via HTTP COPILOT_RESPONSE
     if (this.config.httpBaseUrl && this.config.httpAccessToken) {
       const message = payload.content?.map((c) => c.text).join('') || payload.error || '';
-      // chatId format: "<wechatUserId>::origin::wechatkfProxy"
-      // Extract user ID for toUser field; keep full chatId for routing.
+      // Incoming chatId format: "<wechatExternalUserId>::origin::wechatkfProxy"
+      // Server requires chatId = just the WeChat external user ID (the part before "::").
       const chatIdFull = payload.session_id;
-      const toUser = chatIdFull.includes('::') ? chatIdFull.split('::')[0] : chatIdFull;
+      const chatId = chatIdFull.includes('::') ? chatIdFull.split('::')[0] : chatIdFull;
       const httpPayload = {
         type: 'COPILOT_RESPONSE',
         msgId: payload.prompt_id,
-        chatId: chatIdFull,
-        toUser,
+        chatId,        // WeChat external user ID only — server uses this as touser
         success: payload.stop_reason === 'end_turn',
         message,
         metadata: {
           sessionId: this.config.workspaceSessionId || payload.session_id,
-          toUser,
+          requestId: payload.prompt_id,
+          state: payload.stop_reason === 'end_turn' ? 'completed' : payload.stop_reason,
         },
       };
 
