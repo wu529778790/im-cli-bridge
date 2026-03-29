@@ -133,6 +133,10 @@ export async function updateMessage(
       /* ignore */
     } else {
       log.error("Failed to update message:", err);
+      // 对 done/error 状态的更新失败必须 throw，否则消息永远卡在 streaming
+      if (status === "done" || status === "error") {
+        throw err;
+      }
     }
   }
   if (status === "done" || status === "error") {

@@ -339,11 +339,28 @@ export function setupTelegramHandlers(
           throttle.reset();
           // 先 flush 排队的 streaming 更新，防止它覆盖后续的 done 消息
           await streamUpdateWrapper.flush?.();
-          try {
-            await sendFinalMessages(chatId, msgId, content, note, toolId);
-          } catch (err) {
-            log.error("Failed to send complete message:", err);
-            await updateMessage(chatId, msgId, content, "done", note, toolId);
+          const maxAttempts = 3;
+          for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+              await sendFinalMessages(chatId, msgId, content, note, toolId);
+              return;
+            } catch (err) {
+              log.error(`Failed to send complete message (attempt ${attempt}/${maxAttempts}):`, err);
+              if (attempt < maxAttempts) {
+                await new Promise((r) => setTimeout(r, 2000 * attempt));
+              } else {
+                // 最终失败：尝试发送纯文本作为最后手段
+                try {
+                  await sendTextReply(
+                    chatId,
+                    `⚠️ 消息更新失败（网络异常），以下是 AI 回复：\n\n${content.slice(0, 4000)}`,
+                  );
+                } catch (fallbackErr) {
+                  log.error("All send attempts failed:", fallbackErr);
+                  throw err;
+                }
+              }
+            }
           }
         },
         sendError: async (error) => {
