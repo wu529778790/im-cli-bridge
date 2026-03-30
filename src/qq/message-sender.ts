@@ -10,21 +10,22 @@ const MAX_QQ_MESSAGE_LENGTH = 1500;
 
 interface PendingReplyState {
   replyToMessageId?: string;
+  createdAt: number;
 }
 
 const pendingReplies = new Map<string, PendingReplyState>();
 
 // Periodic cleanup of orphaned pending replies
 const PENDING_MAX_AGE_MS = 10 * 60 * 1000; // 10 minutes
+const CLEANUP_INTERVAL_MS = 2 * 60 * 1000; // Check every 2 minutes
 setInterval(() => {
   const now = Date.now();
   for (const [id, state] of pendingReplies) {
-    // pendingReplies don't have timestamps, but we can clear old ones based on size
-    if (pendingReplies.size > 100) {
+    if (now - state.createdAt > PENDING_MAX_AGE_MS) {
       pendingReplies.delete(id);
     }
   }
-}, PENDING_MAX_AGE_MS).unref();
+}, CLEANUP_INTERVAL_MS).unref();
 
 function parseChatTarget(chatId: string): { kind: "group" | "private"; id: string } {
   if (chatId.startsWith("group:")) {
@@ -68,7 +69,7 @@ export async function sendImageReply(chatId: string, imagePath: string): Promise
 
 export async function sendThinkingMessage(chatId: string, replyToMessageId?: string, _toolId = "claude"): Promise<string> {
   const messageId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  pendingReplies.set(messageId, { replyToMessageId });
+  pendingReplies.set(messageId, { replyToMessageId, createdAt: Date.now() });
   return messageId;
 }
 

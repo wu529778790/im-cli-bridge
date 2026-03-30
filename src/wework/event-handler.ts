@@ -13,7 +13,6 @@ import {
   sendTextReply,
   sendImageReply,
   startTypingLoop,
-  setCurrentReqId,
 } from './message-sender.js';
 import { CommandHandler } from '../commands/handler.js';
 import { getAdapter } from '../adapters/registry.js';
@@ -254,10 +253,8 @@ export function setupWeWorkHandlers(
     reqId?: string,
   ) {
     log.info(`[AI_REQUEST] userId=${userId}, chatId=${chatId}, promptLength=${prompt.length}`);
-    if (reqId) setCurrentReqId(reqId);
 
-    try {
-      const aiCommand = resolvePlatformAiCommand(config, 'wework');
+    const aiCommand = resolvePlatformAiCommand(config, 'wework');
       const toolAdapter = getAdapter(aiCommand);
       if (!toolAdapter) {
         log.error(`[handleAIRequest] No adapter found for: ${aiCommand}`);
@@ -340,9 +337,6 @@ export function setupWeWorkHandlers(
           },
         },
       );
-    } finally {
-      setCurrentReqId(null);
-    }
   }
 
   async function enqueuePrompt(
@@ -368,7 +362,6 @@ export function setupWeWorkHandlers(
     log.info('[handleEvent] Called with data:', JSON.stringify(data).slice(0, 800));
 
     const reqId = data.headers?.req_id ?? '';
-    setCurrentReqId(reqId);
 
     try {
       const body = data.body;
@@ -439,8 +432,6 @@ export function setupWeWorkHandlers(
       log.warn(`[MSG] Unsupported message type: ${msgType}, fromUser=${fromUser}`);
     } catch (err) {
       log.error('[handleEvent] Error processing event:', err);
-    } finally {
-      setCurrentReqId(null);
     }
   }
 

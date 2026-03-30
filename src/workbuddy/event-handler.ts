@@ -35,19 +35,13 @@ export function setupWorkBuddyHandlers(
   const taskKeyByChatId = new Map<string, string>();
   const stopTaskCleanup = startTaskCleanup(runningTasks);
 
-  let currentMsgId = '';
-
-  const commandHandler = new CommandHandler({
+  // Base dependencies for creating per-event CommandHandler
+  const baseCommandDeps = {
     config,
     sessionManager,
     requestQueue,
-    sender: {
-      sendTextReply: async (chatId: string, text: string) => {
-        await sendTextReply(null, chatId, text, currentMsgId);
-      },
-    },
     getRunningTasksSize: () => runningTasks.size,
-  });
+  };
 
   async function handleAIRequest(
     userId: string,
@@ -107,7 +101,6 @@ export function setupWorkBuddyHandlers(
   }
 
   async function handleEvent(chatId: string, msgId: string, content: string): Promise<void> {
-    currentMsgId = msgId;
     log.info(`[handleEvent] chatId=${chatId}, msgId=${msgId}, content="${content.substring(0, 100)}"`);
 
     // Use chatId as userId for WorkBuddy (WeChat KF doesn't have separate userId)
@@ -125,6 +118,16 @@ export function setupWorkBuddyHandlers(
 
     const workDir = sessionManager.getWorkDir(userId);
     const convId = sessionManager.getConvId(userId);
+
+    // Create a per-event CommandHandler with sender that captures msgId for this event
+    const commandHandler = new CommandHandler({
+      ...baseCommandDeps,
+      sender: {
+        sendTextReply: async (c: string, t: string) => {
+          await sendTextReply(null, c, t, msgId);
+        },
+      },
+    });
 
     // Try command handler first
     try {

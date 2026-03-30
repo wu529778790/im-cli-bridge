@@ -235,7 +235,22 @@ export async function sendErrorCard(cardId: string, error: string): Promise<void
 // Track if patch API is working for this session
 let patchApiWorking = true;
 let patchFailCount = 0;
+let patchDisabledAt: number | null = null; // When patch was disabled
 const MAX_PATCH_FAILURES_BEFORE_DISABLE = 3;
+const PATCH_RECOVERY_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes before retrying
+
+// Attempt to recover patch API after cooldown period
+function attemptPatchRecovery(): void {
+  if (!patchApiWorking && patchDisabledAt !== null) {
+    const now = Date.now();
+    if (now - patchDisabledAt >= PATCH_RECOVERY_COOLDOWN_MS) {
+      log.info('Attempting to recover patch API after cooldown period');
+      patchApiWorking = true;
+      patchFailCount = 0;
+      patchDisabledAt = null;
+    }
+  }
+}
 
 export async function updateMessage(
   chatId: string,
@@ -246,6 +261,9 @@ export async function updateMessage(
   toolId = 'claude'
 ): Promise<void> {
   const client = getClient();
+
+  // Try to recover patch API if cooldown period has passed
+  attemptPatchRecovery();
 
   const title = getToolTitle(toolId, status);
   const cardContent = createFeishuCard(title, content, status, note);
@@ -280,6 +298,7 @@ export async function updateMessage(
       if (patchFailCount >= MAX_PATCH_FAILURES_BEFORE_DISABLE) {
         log.warn('Patch API disabled for this session due to repeated failures');
         patchApiWorking = false;
+        patchDisabledAt = Date.now();
       }
       // 流式更新时不 fallback 到 delete+create，否则会生成新消息但 caller 仍持旧 msgId，导致后续 patch 全失败并不断创建新消息
       // 直接返回，下次节流周期会重试
@@ -291,6 +310,7 @@ export async function updateMessage(
       if (patchFailCount >= MAX_PATCH_FAILURES_BEFORE_DISABLE) {
         log.warn('Patch API disabled for this session due to repeated errors');
         patchApiWorking = false;
+        patchDisabledAt = Date.now();
       }
     }
   }
@@ -307,6 +327,9 @@ export async function sendFinalMessages(
 ): Promise<void> {
   const client = getClient();
   const parts = splitLongContent(fullContent, MAX_FEISHU_MESSAGE_LENGTH);
+
+  // Try to recover patch API if cooldown period has passed
+  attemptPatchRecovery();
 
   // If content fits in one message and patch is working, try patch for smooth transition
   if (parts.length === 1 && patchApiWorking) {
@@ -429,6 +452,7 @@ export async function sendImageReply(chatId: string, imagePath: string): Promise
         Authorization: `Bearer ${token}`,
       },
       body: form,
+      signal: AbortSignal.timeout(60000),
     });
 
     if (!uploadResp.ok) {

@@ -19,20 +19,12 @@ const log = createLogger('WeWorkSender');
 const STREAM_SEND_INTERVAL_MS = 900;
 const STREAM_SAFE_TTL_MS = 5 * 60 * 1000;
 
-/** 当前同步处理中的 req_id，仅用于 commandHandler 等同步调用。 */
-let currentReqId: string | null = null;
-
-export function setCurrentReqId(reqId: string | null): void {
-  currentReqId = reqId;
-}
-
 function getReqId(explicitReqId?: string): string {
-  const id = explicitReqId ?? currentReqId;
-  if (!id) {
+  if (!explicitReqId) {
     log.warn('No req_id - cannot send WeWork reply');
     return '';
   }
-  return id;
+  return explicitReqId;
 }
 
 type MessageStatus = 'thinking' | 'streaming' | 'done' | 'error';
@@ -396,11 +388,10 @@ export async function sendTextReply(
   threadCtxOrReqId?: import('../shared/types.js').ThreadContext | string
 ): Promise<void> {
   const message = formatWeWorkMessage(OPEN_IM_SYSTEM_TITLE, text, 'done');
-  const explicitReqId = typeof threadCtxOrReqId === 'string' ? threadCtxOrReqId : undefined;
-  const effectiveReqId = explicitReqId ?? currentReqId;
+  const effectiveReqId = typeof threadCtxOrReqId === 'string' ? threadCtxOrReqId : undefined;
 
   try {
-    sendText(getReqId(effectiveReqId ?? undefined), message);
+    sendText(getReqId(effectiveReqId), message);
     log.info(`Text reply sent to user ${chatId}`);
   } catch (err) {
     log.error('Failed to send text reply:', err);

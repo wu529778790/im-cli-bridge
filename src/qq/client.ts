@@ -75,6 +75,7 @@ async function fetchAccessToken(config: Config): Promise<string> {
       appId: config.qqAppId,
       clientSecret: config.qqSecret,
     }),
+    signal: AbortSignal.timeout(15000),
   });
   const data = (await response.json()) as {
     access_token?: string;
@@ -104,6 +105,7 @@ async function apiRequest<T>(
     method,
     headers: buildAuthHeaders(token),
     body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(15000),
   });
 
   if (!response.ok) {
