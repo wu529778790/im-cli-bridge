@@ -241,6 +241,16 @@ function clean(value: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+function isMasked(value: string | undefined): boolean {
+  return typeof value === "string" && value.includes("****");
+}
+
+/** 如果前端传回的是掩码值（包含 ****），保留 existing 中的真实密钥，避免覆盖 */
+function resolveSecret(incoming: string | undefined, existing: string | undefined): string | undefined {
+  if (isMasked(incoming)) return existing;
+  return clean(incoming);
+}
+
 const MAX_REQUEST_BODY_BYTES = 1 * 1024 * 1024; // 1 MB
 
 function readJson<T>(request: IncomingMessage): Promise<T> {
@@ -639,7 +649,9 @@ export async function testPlatformConfig(platform: string, config: Record<string
 function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConfig {
   // Save Claude environment variables to ~/.claude/settings.json
   const claudeEnv: Record<string, string> = {};
-  if (payload.ai.claudeAuthToken) claudeEnv.ANTHROPIC_AUTH_TOKEN = payload.ai.claudeAuthToken;
+  const existingClaudeEnv = loadClaudeSettingsEnv();
+  const resolvedAuthToken = resolveSecret(payload.ai.claudeAuthToken, existingClaudeEnv.ANTHROPIC_AUTH_TOKEN);
+  if (resolvedAuthToken) claudeEnv.ANTHROPIC_AUTH_TOKEN = resolvedAuthToken;
   if (payload.ai.claudeBaseUrl) claudeEnv.ANTHROPIC_BASE_URL = payload.ai.claudeBaseUrl;
   if (payload.ai.claudeModel) claudeEnv.ANTHROPIC_MODEL = payload.ai.claudeModel;
   if (Object.keys(claudeEnv).length > 0) {
@@ -679,7 +691,7 @@ function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConf
         ...existing.platforms?.telegram,
         enabled: payload.platforms.telegram.enabled,
         aiCommand: clean(payload.platforms.telegram.aiCommand) as "claude" | "codex" | "codebuddy" | undefined,
-        botToken: clean(payload.platforms.telegram.botToken),
+        botToken: resolveSecret(payload.platforms.telegram.botToken, existing.platforms?.telegram?.botToken),
         proxy: clean(payload.platforms.telegram.proxy),
         allowedUserIds: splitCsv(payload.platforms.telegram.allowedUserIds),
       },
@@ -688,7 +700,7 @@ function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConf
         enabled: payload.platforms.feishu.enabled,
         aiCommand: clean(payload.platforms.feishu.aiCommand) as "claude" | "codex" | "codebuddy" | undefined,
         appId: clean(payload.platforms.feishu.appId),
-        appSecret: clean(payload.platforms.feishu.appSecret),
+        appSecret: resolveSecret(payload.platforms.feishu.appSecret, existing.platforms?.feishu?.appSecret),
         allowedUserIds: splitCsv(payload.platforms.feishu.allowedUserIds),
       },
       qq: {
@@ -696,7 +708,7 @@ function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConf
         enabled: payload.platforms.qq.enabled,
         aiCommand: clean(payload.platforms.qq.aiCommand) as "claude" | "codex" | "codebuddy" | undefined,
         appId: clean(payload.platforms.qq.appId),
-        secret: clean(payload.platforms.qq.secret),
+        secret: resolveSecret(payload.platforms.qq.secret, existing.platforms?.qq?.secret),
         allowedUserIds: splitCsv(payload.platforms.qq.allowedUserIds),
       },
       wework: {
@@ -704,7 +716,7 @@ function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConf
         enabled: payload.platforms.wework.enabled,
         aiCommand: clean(payload.platforms.wework.aiCommand) as "claude" | "codex" | "codebuddy" | undefined,
         corpId: clean(payload.platforms.wework.corpId),
-        secret: clean(payload.platforms.wework.secret),
+        secret: resolveSecret(payload.platforms.wework.secret, existing.platforms?.wework?.secret),
         allowedUserIds: splitCsv(payload.platforms.wework.allowedUserIds),
       },
       dingtalk: {
@@ -712,7 +724,7 @@ function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConf
         enabled: payload.platforms.dingtalk.enabled,
         aiCommand: clean(payload.platforms.dingtalk.aiCommand) as "claude" | "codex" | "codebuddy" | undefined,
         clientId: clean(payload.platforms.dingtalk.clientId),
-        clientSecret: clean(payload.platforms.dingtalk.clientSecret),
+        clientSecret: resolveSecret(payload.platforms.dingtalk.clientSecret, existing.platforms?.dingtalk?.clientSecret),
         cardTemplateId: clean(payload.platforms.dingtalk.cardTemplateId),
         allowedUserIds: splitCsv(payload.platforms.dingtalk.allowedUserIds),
       },
@@ -720,8 +732,8 @@ function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConf
         ...existing.platforms?.workbuddy,
         enabled: payload.platforms.workbuddy.enabled,
         aiCommand: clean(payload.platforms.workbuddy.aiCommand) as "claude" | "codex" | "codebuddy" | undefined,
-        accessToken: clean(payload.platforms.workbuddy.accessToken),
-        refreshToken: clean(payload.platforms.workbuddy.refreshToken),
+        accessToken: resolveSecret(payload.platforms.workbuddy.accessToken, existing.platforms?.workbuddy?.accessToken),
+        refreshToken: resolveSecret(payload.platforms.workbuddy.refreshToken, existing.platforms?.workbuddy?.refreshToken),
         userId: clean(payload.platforms.workbuddy.userId),
         baseUrl: clean(payload.platforms.workbuddy.baseUrl),
         allowedUserIds: splitCsv(payload.platforms.workbuddy.allowedUserIds),

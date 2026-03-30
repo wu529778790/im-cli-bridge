@@ -276,30 +276,45 @@ export class SessionManager {
 
   private load(previousDefaultWorkDir?: string): void {
     try {
-      if (existsSync(SESSIONS_FILE)) {
-        const data = JSON.parse(readFileSync(SESSIONS_FILE, 'utf-8')) as Record<string, UserSession>;
-        for (const [k, v] of Object.entries(data)) {
-          if (v && typeof v.workDir === 'string') {
-            // 如果该会话目录等于旧默认目录，则迁移到新的默认目录（认为用户没有手动 /cd 过）
-            if (previousDefaultWorkDir && v.workDir === previousDefaultWorkDir) {
-              v.workDir = this.defaultWorkDir;
-            }
-            if (!v.activeConvId) v.activeConvId = randomBytes(4).toString('hex');
-            if (!v.sessionIds) v.sessionIds = {};
-            if ('sessionId' in (v as object)) {
-              log.warn(`Legacy shared sessionId found for user ${k}; clearing it to avoid cross-tool resume conflicts`);
-            }
-            delete (v as UserSession & { sessionId?: string }).sessionId;
-            if (v.threads) {
-              for (const thread of Object.values(v.threads)) {
-                if (!thread.sessionIds) thread.sessionIds = {};
-                if ('sessionId' in (thread as object)) {
-                  log.warn(`Legacy thread sessionId found for user ${k}; clearing it during session migration`);
-                }
-                delete (thread as { sessionId?: string }).sessionId;
+      if (!existsSync(SESSIONS_FILE)) return;
+      const raw = JSON.parse(readFileSync(SESSIONS_FILE, 'utf-8'));
+
+      // v2 格式: { sessions: {...}, convSessionMap: {...} }
+      // v1 格式: 直接是 Record<string, UserSession>
+      const isV2 = raw && typeof raw === 'object' && raw.sessions && typeof raw.sessions === 'object' && !raw.workDir;
+      const sessionData = isV2 ? raw.sessions : raw;
+      const convMapData = isV2 ? raw.convSessionMap : undefined;
+
+      for (const [k, v] of Object.entries(sessionData as Record<string, UserSession>)) {
+        if (v && typeof v.workDir === 'string') {
+          // 如果该会话目录等于旧默认目录，则迁移到新的默认目录（认为用户没有手动 /cd 过）
+          if (previousDefaultWorkDir && v.workDir === previousDefaultWorkDir) {
+            v.workDir = this.defaultWorkDir;
+          }
+          if (!v.activeConvId) v.activeConvId = randomBytes(4).toString('hex');
+          if (!v.sessionIds) v.sessionIds = {};
+          if ('sessionId' in (v as object)) {
+            log.warn(`Legacy shared sessionId found for user ${k}; clearing it to avoid cross-tool resume conflicts`);
+          }
+          delete (v as UserSession & { sessionId?: string }).sessionId;
+          if (v.threads) {
+            for (const thread of Object.values(v.threads)) {
+              if (!thread.sessionIds) thread.sessionIds = {};
+              if ('sessionId' in (thread as object)) {
+                log.warn(`Legacy thread sessionId found for user ${k}; clearing it during session migration`);
               }
+              delete (thread as { sessionId?: string }).sessionId;
             }
-            this.sessions.set(k, v);
+          }
+          this.sessions.set(k, v);
+        }
+      }
+
+      // 恢复 convSessionMap
+      if (convMapData && typeof convMapData === 'object') {
+        for (const [k, v] of Object.entries(convMapData as Record<string, string>)) {
+          if (typeof v === 'string') {
+            this.convSessionMap.set(k, v);
           }
         }
       }
@@ -336,9 +351,11 @@ export class SessionManager {
     try {
       const dir = dirname(SESSIONS_FILE);
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-      const obj: Record<string, UserSession> = {};
-      for (const [k, v] of this.sessions) obj[k] = v;
-      writeFileSync(SESSIONS_FILE, JSON.stringify(obj, null, 2), 'utf-8');
+      const sessions: Record<string, UserSession> = {};
+      for (const [k, v] of this.sessions) sessions[k] = v;
+      const convSessionMapObj: Record<string, string> = {};
+      for (const [k, v] of this.convSessionMap) convSessionMapObj[k] = v;
+      writeFileSync(SESSIONS_FILE, JSON.stringify({ sessions, convSessionMap: convSessionMapObj }, null, 2), 'utf-8');
     } catch (err) {
       log.error('Failed to save sessions:', err);
     }

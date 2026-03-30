@@ -351,7 +351,7 @@ export async function main() {
 
   // Global error handlers to prevent unhandled crashes
   process.on("unhandledRejection", (reason) => {
-    log.error("Unhandled Promise rejection:", reason);
+    log.error("Unhandled Promise rejection (this indicates a bug — the affected request may hang without a response):", reason);
   });
   process.on("uncaughtException", (err) => {
     const msg = err?.message ?? String(err);
