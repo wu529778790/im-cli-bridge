@@ -25,7 +25,7 @@ setInterval(() => {
   if (lastSentByMsg.size > 0) {
     lastSentByMsg.clear();
   }
-}, LAST_SENT_MAX_AGE_MS);
+}, LAST_SENT_MAX_AGE_MS).unref();
 
 export type MessageStatus = "thinking" | "streaming" | "done" | "error";
 

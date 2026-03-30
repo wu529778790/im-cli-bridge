@@ -158,7 +158,7 @@ setInterval(() => {
       log.info(`Cleaned up expired stream state: ${id}`);
     }
   }
-}, STREAM_CLEANUP_INTERVAL_MS);
+}, STREAM_CLEANUP_INTERVAL_MS).unref();
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
