@@ -6,7 +6,7 @@
 
 ## 功能特性
 
-- 多平台：支持 Telegram、飞书、企业微信、钉钉、QQ、微信（WorkBuddy 通过 CodeBuddy 接入），可同时启用
+- 多平台：支持 Telegram、飞书、企业微信、钉钉、QQ、微信（WorkBuddy），可同时启用
 - 多 AI 工具：支持 Claude、Codex、CodeBuddy
 - 按平台分配 AI：根级 `aiCommand` 作为默认值，`platforms.<name>.aiCommand` 可为不同 IM 单独指定 AI 工具
 - 流式输出：实时回传 AI 回复与工具执行进度（目前钉钉暂未实现流式传输）

@@ -6,7 +6,7 @@ Multi-platform IM bridge for AI CLI tools. Connect Telegram, Feishu, WeCom, Ding
 
 ## Features
 
-- Multi-platform support: Telegram, Feishu, WeCom, DingTalk, QQ, and WeChat (WorkBuddy via CodeBuddy), with multiple platforms enabled at the same time
+- Multi-platform support: Telegram, Feishu, WeCom, DingTalk, QQ, and WeChat (WorkBuddy), with multiple platforms enabled at the same time
 - Multiple AI tools: Claude, Codex, and CodeBuddy
 - Per-platform AI routing: each IM platform can use a different AI tool, with `aiCommand` as the global default and `platforms.<name>.aiCommand` as the override
 - Streaming replies: relay AI output and tool execution progress in real time (DingTalk streaming is not fully supported yet)
