@@ -89,7 +89,14 @@ async function getOrCreateSession(
       }
 
       if (sessionId) {
-        // 尝试恢复已有会话
+        // 优先复用内存中已有的 SDKSession，避免每次都启动新进程
+        const existing = activeSessions.get(sessionId);
+        if (existing) {
+          log.info(`Reusing existing in-memory session: ${sessionId}`);
+          return { session: existing, sessionId };
+        }
+
+        // 内存中没有，尝试通过 resume 恢复（会启动新 CLI 进程）
         try {
           log.info(`Attempting to resume session: ${sessionId}`);
           session = unstable_v2_resumeSession(sessionId, sessionOptions);
@@ -211,8 +218,10 @@ export class ClaudeSDKAdapter implements ToolAdapter {
               const newSessionId = (msg as { session_id?: string }).session_id;
               if (newSessionId && newSessionId !== actualSessionId) {
                 // 更新 sessionId 映射
-                if (actualSessionId && actualSessionId.startsWith('pending-')) {
-                  activeSessions.delete(actualSessionId);
+                // 清理 pending 临时 ID（actualSessionId 尚未赋值时用 pendingTempId）
+                const idToClean = actualSessionId ?? pendingTempId;
+                if (idToClean?.startsWith('pending-')) {
+                  activeSessions.delete(idToClean);
                 }
                 activeSessions.set(newSessionId, session);
                 actualSessionId = newSessionId;
