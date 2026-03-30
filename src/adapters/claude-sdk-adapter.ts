@@ -44,6 +44,27 @@ const cleanupInterval = setInterval(() => {
 }, CLEANUP_INTERVAL_MS);
 cleanupInterval.unref(); // 不阻止进程退出
 
+// Lazy cleanup: check idle sessions periodically during getOrCreateSession calls
+let lazyCleanupCounter = 0;
+const LAZY_CLEANUP_INTERVAL = 10;
+let sessionSeq = 0;
+function lazyCleanupIdleSessions(): void {
+  lazyCleanupCounter++;
+  if (lazyCleanupCounter % LAZY_CLEANUP_INTERVAL !== 0) return;
+  const now = Date.now();
+  for (const [id, lastUsed] of sessionLastUsed) {
+    if (now - lastUsed > SESSION_IDLE_TTL_MS) {
+      const s = activeSessions.get(id);
+      if (s) {
+        try { s.close(); } catch { /* ignore */ }
+        activeSessions.delete(id);
+      }
+      sessionLastUsed.delete(id);
+      log.info(`Lazy cleanup: idle session ${id} (unused ${Math.round((now - lastUsed) / 60000)}min)`);
+    }
+  }
+}
+
 // Mutex to serialize process.chdir() calls across concurrent users
 let chdirMutex: Promise<void> = Promise.resolve();
 function withChdirMutex<T>(fn: () => T): Promise<T> {
@@ -76,6 +97,10 @@ function isResult(msg: SDKMessage): boolean {
   return (msg as { type?: string }).type === 'result';
 }
 
+function isSessionCorruptionError(msg: string): boolean {
+  return /session\s*(not found|expired|corrupt)|no\s*conversation\s*found/i.test(msg);
+}
+
 /**
  * 获取或创建 SDKSession
  * @param sessionId 已有的 sessionId，如果为 undefined 则创建新会话
@@ -90,6 +115,8 @@ async function getOrCreateSession(
   model: string | undefined,
   permissionMode: 'default' | 'bypassPermissions' | 'acceptEdits' | 'plan'
 ): Promise<{ session: SDKSession; sessionId: string }> {
+  lazyCleanupIdleSessions();
+
   const resolvedModel = model?.trim() || 'claude-opus-4-5';
   const sessionOptions = {
     model: resolvedModel,
@@ -138,7 +165,7 @@ async function getOrCreateSession(
       session = unstable_v2_createSession(sessionOptions);
       // 新会话的 sessionId 需要从第一个消息中获取
       // 暂时返回 undefined，稍后在 init 消息中获取
-      const tempId = `pending-${Date.now()}`;
+      const tempId = `pending-${++sessionSeq}`;
       activeSessions.set(tempId, session);
       sessionLastUsed.set(tempId, Date.now());
       log.info(`Created new session (tempId: ${tempId})`);
@@ -182,6 +209,20 @@ export class ClaudeSDKAdapter implements ToolAdapter {
     sessionLastUsed.clear();
   }
 
+  /**
+   * Remove a specific session from the in-memory cache and close it.
+   * Useful when the caller knows a session is corrupted.
+   */
+  static removeSession(sessionId: string): void {
+    const session = activeSessions.get(sessionId);
+    if (session) {
+      try { session.close(); } catch { /* ignore */ }
+      activeSessions.delete(sessionId);
+      sessionLastUsed.delete(sessionId);
+      log.info(`Explicitly removed session: ${sessionId}`);
+    }
+  }
+
   run(
     prompt: string,
     sessionId: string | undefined,
@@ -196,6 +237,8 @@ export class ClaudeSDKAdapter implements ToolAdapter {
     let actualSessionId: string | undefined;
     let pendingTempId: string | undefined; // 记录临时 ID，用于 abort 时清理
     let runSettled = false;
+    let currentStream: AsyncIterator<SDKMessage> | undefined; // 用于 abort 时立即中断 stream
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 
     const permissionMode = options?.skipPermissions
       ? ('bypassPermissions' as const)
@@ -229,6 +272,7 @@ export class ClaudeSDKAdapter implements ToolAdapter {
 
         // 获取响应流
         const stream = session.stream();
+        currentStream = stream;
         activeStreams.add(stream);
 
         let accumulated = '';
@@ -300,11 +344,17 @@ export class ClaudeSDKAdapter implements ToolAdapter {
 
               // 检查会话错误
               if (!success) {
+                if (timeoutHandle) clearTimeout(timeoutHandle);
                 runSettled = true;
 
                 const noConvErr = errs.find((e) => e.includes('No conversation found') || e.includes('session not found'));
                 if (noConvErr) {
-                  log.warn(`Session ${actualSessionId} not found, may need to create new one`);
+                  log.warn(`Session ${actualSessionId} not found, removing from active sessions`);
+                  if (actualSessionId) {
+                    activeSessions.delete(actualSessionId);
+                    sessionLastUsed.delete(actualSessionId);
+                    try { session.close(); } catch { /* ignore */ }
+                  }
                   callbacks.onSessionInvalid?.();
                 }
                 const errMsg = errs[0] || '未知错误';
@@ -332,6 +382,7 @@ export class ClaudeSDKAdapter implements ToolAdapter {
               }
 
               runSettled = true;
+              if (timeoutHandle) clearTimeout(timeoutHandle);
               callbacks.onComplete(result);
               return;
             }
@@ -341,6 +392,7 @@ export class ClaudeSDKAdapter implements ToolAdapter {
           if (!streamClosed) {
             if (accumulated) {
               log.info('Stream ended without result message, using accumulated text');
+              if (timeoutHandle) clearTimeout(timeoutHandle);
               runSettled = true;
               callbacks.onComplete({
                 success: true,
@@ -354,6 +406,7 @@ export class ClaudeSDKAdapter implements ToolAdapter {
             } else {
               // 流结束但无 result 也无 accumulated：必须触发回调，否则 Promise 永远挂起
               log.warn('Stream ended with no result and no accumulated text, calling onError to prevent stuck state');
+              if (timeoutHandle) clearTimeout(timeoutHandle);
               runSettled = true;
               callbacks.onError('AI 响应异常结束（无输出），请重试');
             }
@@ -375,6 +428,7 @@ export class ClaudeSDKAdapter implements ToolAdapter {
         }
 
         runSettled = true;
+        if (timeoutHandle) clearTimeout(timeoutHandle);
         const errorObj = err as Error;
         const msg = errorObj.message || String(err);
 
@@ -390,6 +444,18 @@ export class ClaudeSDKAdapter implements ToolAdapter {
           log.info(`Cleaned up pending session after error: ${errIdToClean}`);
         }
 
+        // If error suggests a corrupted session, remove it from cache to prevent reuse
+        if (actualSessionId && isSessionCorruptionError(msg)) {
+          const corrupted = activeSessions.get(actualSessionId);
+          activeSessions.delete(actualSessionId);
+          sessionLastUsed.delete(actualSessionId);
+          if (corrupted) {
+            try { corrupted.close(); } catch { /* ignore */ }
+          }
+          log.warn(`Removed corrupted session ${actualSessionId} after error: ${msg}`);
+          callbacks.onSessionInvalid?.();
+        }
+
         callbacks.onError(msg);
       }
     };
@@ -398,16 +464,39 @@ export class ClaudeSDKAdapter implements ToolAdapter {
     runSession().catch((err) => {
       if (!runSettled) {
         runSettled = true;
+        if (timeoutHandle) clearTimeout(timeoutHandle);
         const msg = err instanceof Error ? err.message : String(err);
         log.error(`Unhandled runSession error: ${msg}`);
         callbacks.onError(msg);
       }
     });
 
+    // 强制执行超时
+    if (options?.timeoutMs && options.timeoutMs > 0) {
+      timeoutHandle = setTimeout(() => {
+        if (!runSettled) {
+          log.warn(`Session timed out after ${options.timeoutMs}ms, aborting`);
+          abortController.abort();
+          // 立即中断 stream，不等下一条消息
+          if (currentStream) {
+            try { currentStream.return?.(); } catch { /* ignore */ }
+          }
+          runSettled = true;
+          callbacks.onError(`AI 响应超时（${Math.round(options.timeoutMs! / 1000)}s），请重试`);
+        }
+      }, options.timeoutMs);
+      timeoutHandle.unref();
+    }
+
     return {
       abort: () => {
         log.info('Aborting session run');
         abortController.abort();
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+        // 立即中断 stream，不等下一条消息
+        if (currentStream) {
+          try { currentStream.return?.(); } catch { /* ignore */ }
+        }
       },
     };
   }
