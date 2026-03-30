@@ -6,7 +6,7 @@ Multi-platform IM bridge for AI CLI tools. Connect Telegram, Feishu, WeCom, Ding
 
 ## Features
 
-- Multi-platform support: Telegram, Feishu, WeCom, DingTalk, QQ, WeChat (experimental), and WorkBuddy (WeChat KF via CodeBuddy), with multiple platforms enabled at the same time
+- Multi-platform support: Telegram, Feishu, WeCom, DingTalk, QQ, and WeChat (WorkBuddy via CodeBuddy), with multiple platforms enabled at the same time
 - Multiple AI tools: Claude, Codex, and CodeBuddy
 - Per-platform AI routing: each IM platform can use a different AI tool, with `aiCommand` as the global default and `platforms.<name>.aiCommand` as the override
 - Streaming replies: relay AI output and tool execution progress in real time (DingTalk streaming is not fully supported yet)
@@ -310,7 +310,7 @@ The following is valid JSON and can be saved directly as `~/.open-im/config.json
 - QQ: create a bot in the [QQ Open Platform](https://bot.q.qq.com/) and get the `App ID` and `App Secret`
 - DingTalk: create an internal enterprise app in DingTalk Open Platform, enable bot Stream Mode, and get the `Client ID` and `Client Secret`
 - WeCom: get the bot ID and secret from the [WeCom admin console](https://work.weixin.qq.com/)
-- WeChat: experimental, supports both standard mode and AGP/Qclaw-related settings
+- WeChat: supports both standard mode and AGP/Qclaw-related settings
 - WorkBuddy: connects via CodeBuddy (copilot.tencent.com) Centrifuge WebSocket; run `open-im init` and select "WorkBuddy 微信客服 (WeChat KF)" to complete OAuth login and WeChat KF binding
 
 Notes on DingTalk: the current implementation uses a hybrid model of "Stream Mode for receiving messages + OpenAPI for sending messages".

@@ -6,7 +6,7 @@
 
 ## 功能特性
 
-- 多平台：支持 Telegram、飞书、企业微信、钉钉、QQ、微信（测试中）、WorkBuddy（通过 CodeBuddy 接入微信客服），可同时启用
+- 多平台：支持 Telegram、飞书、企业微信、钉钉、QQ、微信（WorkBuddy 通过 CodeBuddy 接入），可同时启用
 - 多 AI 工具：支持 Claude、Codex、CodeBuddy
 - 按平台分配 AI：根级 `aiCommand` 作为默认值，`platforms.<name>.aiCommand` 可为不同 IM 单独指定 AI 工具
 - 流式输出：实时回传 AI 回复与工具执行进度（目前钉钉暂未实现流式传输）
@@ -316,7 +316,7 @@ codebuddy login
 - QQ：从 [QQ 开放平台](https://bot.q.qq.com/) 创建机器人，获取 `App ID` 和 `App Secret`
 - 钉钉：从钉钉开放平台创建企业内部应用，启用机器人 Stream Mode，获取 `Client ID` 和 `Client Secret`
 - 企业微信：从 [企业微信管理后台](https://work.weixin.qq.com/) 获取 Bot ID 和 Secret
-- 微信：测试中，支持标准模式和 AGP/Qclaw 相关配置
+- 微信：支持标准模式和 AGP/Qclaw 相关配置
 - WorkBuddy：通过 CodeBuddy（copilot.tencent.com）Centrifuge WebSocket 接入微信客服；运行 `open-im init` 并选择 "WorkBuddy 微信客服 (WeChat KF)" 完成 OAuth 登录和微信客服绑定
 
 说明：钉钉当前采用“Stream Mode 收消息 + OpenAPI 发送消息”的混合模式。
