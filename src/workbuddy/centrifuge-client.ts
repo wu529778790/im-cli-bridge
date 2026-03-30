@@ -347,17 +347,27 @@ export class WorkBuddyCentrifugeClient {
     };
 
     try {
-      this.client.publish(this.config.channel, envelope).catch((err) => {
-        log.error(`${this.logPrefix} Message send failed:`, err);
-        this.callbacks.onError?.(err instanceof Error ? err : new Error(String(err)));
+      // Guard against the race where WebSocket transitions to CONNECTING between
+      // the state check above and the actual publish call.
+      this.client.publish(this.config.channel, envelope).catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('WebSocket is not open') || msg.includes('readyState')) {
+          log.warn(`${this.logPrefix} WebSocket not ready for send (will reconnect): ${msg}`);
+        } else {
+          log.error(`${this.logPrefix} Message send failed:`, err);
+          this.callbacks.onError?.(err instanceof Error ? err : new Error(String(err)));
+        }
       });
 
-      const json = JSON.stringify(envelope);
-      const preview = json.length > 500 ? json.substring(0, 500) + `...(truncated)` : json;
       log.debug(`${this.logPrefix} Sent message: method=${method}, msg_id=${envelope.msg_id}`);
-    } catch (error) {
-      log.error(`${this.logPrefix} Message send failed:`, error);
-      this.callbacks.onError?.(error instanceof Error ? error : new Error(`Message send failed: ${String(error)}`));
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (msg.includes('WebSocket is not open') || msg.includes('readyState')) {
+        log.warn(`${this.logPrefix} WebSocket not ready for send (will reconnect): ${msg}`);
+      } else {
+        log.error(`${this.logPrefix} Message send failed:`, error);
+        this.callbacks.onError?.(error instanceof Error ? error : new Error(`Message send failed: ${msg}`));
+      }
     }
   }
 

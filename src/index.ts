@@ -344,6 +344,13 @@ export async function main() {
     log.error("Unhandled Promise rejection:", reason);
   });
   process.on("uncaughtException", (err) => {
+    const msg = err?.message ?? String(err);
+    // WebSocket "not open" errors are transient — the connection will auto-reconnect.
+    // Exiting would take down all platforms, so just log and continue.
+    if (msg.includes("WebSocket is not open") || msg.includes("readyState")) {
+      log.warn("Transient WebSocket error (ignored, will reconnect):", err);
+      return;
+    }
     log.error("Uncaught exception (process will exit):", err);
     closeLogger();
     process.exit(1);
