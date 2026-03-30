@@ -88,14 +88,17 @@ export class SessionManager {
   }
 
   setSessionIdForThread(userId: string, threadId: string, toolId: ToolId, sessionId: string): void {
-    const s = this.sessions.get(userId);
-    if (s && !s.threads) s.threads = {};
-    const t = s?.threads?.[threadId];
-    if (t) {
-      if (!t.sessionIds) t.sessionIds = {};
-      t.sessionIds[toolId] = sessionId;
-      this.save();
+    let s = this.sessions.get(userId);
+    if (!s) {
+      s = { workDir: this.defaultWorkDir, activeConvId: randomBytes(4).toString('hex') };
+      this.sessions.set(userId, s);
     }
+    if (!s.threads) s.threads = {};
+    if (!s.threads[threadId]) s.threads[threadId] = {};
+    const t = s.threads[threadId];
+    if (!t.sessionIds) t.sessionIds = {};
+    t.sessionIds[toolId] = sessionId;
+    this.save();
   }
 
   getWorkDir(userId: string): string {
@@ -125,8 +128,9 @@ export class SessionManager {
     const currentDir = this.getWorkDir(userId);
     const realPath = await this.resolveAndValidate(currentDir, workDir);
     const s = this.sessions.get(userId);
+    let oldConvId: string | undefined;
     if (s) {
-      const oldConvId = s.activeConvId;
+      oldConvId = s.activeConvId;
       this.persistActiveConvSessions(userId, s);
       s.workDir = realPath;
       s.sessionIds = {};
@@ -141,7 +145,7 @@ export class SessionManager {
       });
     }
     this.flushSync();
-    log.info(`WorkDir changed for user ${userId}: ${realPath}, oldConvId=${s?.activeConvId}`);
+    log.info(`WorkDir changed for user ${userId}: ${realPath}, oldConvId=${oldConvId}`);
     return realPath;
   }
 
@@ -318,8 +322,8 @@ export class SessionManager {
           }
         }
       }
-    } catch {
-      /* ignore */
+    } catch (err) {
+      log.warn('Failed to load sessions file, starting with empty state:', err instanceof Error ? err.message : err);
     }
   }
 
