@@ -62,7 +62,7 @@ open-im start
 - **AI 工具配置** – **公共**：默认 AI 工具（Claude / Codex / CodeBuddy）、工作目录、Hook 端口、日志级别。**分工具**：Claude（CLI 路径、超时、代理、配置路径、ANTHROPIC\_\* 等）、Codex（CLI 路径、超时、代理）、CodeBuddy（CLI 路径、超时）
 - **服务控制** – 校验配置、保存、启动桥接、停止桥接
 
-微信和 WorkBuddy 暂不在网页中配置，如需使用请在 `~/.open-im/config.json` 中手动配置或通过 `open-im init` 引导。
+WorkBuddy（微信）暂不在网页中配置，如需使用请在 `~/.open-im/config.json` 中手动配置或通过 `open-im init` 引导。
 
 - `open-im start` 会同时启动桥接服务并提供该配置页（本机场景）。
 - `open-im dev` 仅在未完成配置时自动打开页面。
@@ -240,13 +240,6 @@ codebuddy login
       "clientSecret": "YOUR_DINGTALK_CLIENT_SECRET",
       "cardTemplateId": "YOUR_DINGTALK_AI_CARD_TEMPLATE_ID"
     },
-    "wechat": {
-      "enabled": false,
-      "aiCommand": "claude",
-      "allowedUserIds": [],
-      "appId": "YOUR_WECHAT_APP_ID",
-      "appSecret": "YOUR_WECHAT_APP_SECRET"
-    },
     "workbuddy": {
       "enabled": false,
       "aiCommand": "claude",
@@ -294,13 +287,6 @@ codebuddy login
 | `WEWORK_SECRET`              | 企业微信 Secret                                |
 | `WEWORK_WS_URL`              | 企业微信 WebSocket 地址                        |
 | `WEWORK_ALLOWED_USER_IDS`    | 企业微信白名单                                 |
-| `WECHAT_APP_ID`              | 微信标准模式 App ID                            |
-| `WECHAT_APP_SECRET`          | 微信标准模式 App Secret                        |
-| `WECHAT_TOKEN`               | 微信 AGP 模式 Token                            |
-| `WECHAT_GUID`                | 微信 AGP 模式 GUID                             |
-| `WECHAT_USER_ID`             | 微信 AGP 模式 User ID                          |
-| `WECHAT_WS_URL`              | 微信 WebSocket 地址                            |
-| `WECHAT_ALLOWED_USER_IDS`    | 微信白名单                                     |
 | `WORKBUDDY_ACCESS_TOKEN`     | WorkBuddy OAuth 访问令牌（由 `open-im init` 自动生成） |
 | `WORKBUDDY_REFRESH_TOKEN`    | WorkBuddy OAuth 刷新令牌（由 `open-im init` 自动生成） |
 | `WORKBUDDY_USER_ID`          | WorkBuddy 用户 ID                              |
@@ -316,8 +302,7 @@ codebuddy login
 - QQ：从 [QQ 开放平台](https://bot.q.qq.com/) 创建机器人，获取 `App ID` 和 `App Secret`
 - 钉钉：从钉钉开放平台创建企业内部应用，启用机器人 Stream Mode，获取 `Client ID` 和 `Client Secret`
 - 企业微信：从 [企业微信管理后台](https://work.weixin.qq.com/) 获取 Bot ID 和 Secret
-- 微信：支持标准模式和 AGP/Qclaw 相关配置
-- WorkBuddy：通过 CodeBuddy（copilot.tencent.com）Centrifuge WebSocket 接入微信客服；运行 `open-im init` 并选择 "WorkBuddy 微信客服 (WeChat KF)" 完成 OAuth 登录和微信客服绑定
+- 微信（WorkBuddy）：通过 CodeBuddy（copilot.tencent.com）Centrifuge WebSocket 接入微信客服；运行 `open-im init` 并选择 "WorkBuddy 微信客服 (WeChat KF)" 完成 OAuth 登录和微信客服绑定
 
 说明：钉钉当前采用“Stream Mode 收消息 + OpenAPI 发送消息”的混合模式。
 
