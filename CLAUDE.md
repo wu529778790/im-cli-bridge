@@ -24,7 +24,7 @@ open-im dev             # Run in foreground (debug mode)
 
 ## Project Architecture
 
-This is a multi-platform IM bridge that connects Telegram, Feishu (Lark), and WeChat to AI CLI tools like Claude Code, enabling mobile/remote access to AI coding assistance.
+This is a multi-platform IM bridge that connects Telegram, Feishu, WeCom, DingTalk, QQ, and WorkBuddy to AI CLI tools like Claude Code, Codex, and CodeBuddy, enabling mobile/remote access to AI coding assistance.
 
 ### Core Architecture
 
@@ -46,26 +46,30 @@ This is a multi-platform IM bridge that connects Telegram, Feishu (Lark), and We
     - `client.ts` - WeWork WebSocket client, subscribe/auth, proactive send
     - `event-handler.ts` - Message/command routing from WeWork
     - `message-sender.ts` - Sending responses back to WeWork
-  - `src/wechat/` - WeChat via AGP/Qclaw (testing, may be unstable)
-    - `client.ts` - WeChat WebSocket client initialization
-    - `event-handler.ts` - Message/command routing from WeChat
-    - `message-sender.ts` - Sending responses back to WeChat
+  - `src/dingtalk/` - DingTalk (钉钉) via dingtalk-stream
+    - `client.ts` - DingTalk stream client initialization
+    - `event-handler.ts` - Message/command routing from DingTalk
+    - `message-sender.ts` - Sending responses back to DingTalk
+  - `src/qq/` - QQ via qq-official-bot
+    - `client.ts` - QQ bot client initialization
+    - `event-handler.ts` - Message/command routing from QQ
+    - `message-sender.ts` - Sending responses back to QQ
+  - `src/workbuddy/` - WorkBuddy (微信客服 via CodeBuddy) via Centrifuge WebSocket
+    - `client.ts` - WorkBuddy Centrifuge client initialization
+    - `event-handler.ts` - Message/command routing from WorkBuddy
+    - `message-sender.ts` - Sending responses back to WorkBuddy
 
 - **AI Adapter Layer** (`src/adapters/`):
   - `tool-adapter.interface.ts` - Common interface for all AI tools
-  - `claude-adapter.ts` - Claude Code CLI integration (spawn per message)
   - `claude-sdk-adapter.ts` - Claude Agent SDK (in-process, no spawn, faster)
+  - `codex-adapter.ts` - Codex CLI integration
+  - `codebuddy-adapter.ts` - CodeBuddy CLI integration
   - `registry.ts` - Adapter registry, initialized based on config
 
 - **Session Management** (`src/session/`):
   - `session-manager.ts` - Per-user session state (workDir, sessionId, conversation IDs)
   - Persists to `~/.open-im/data/sessions.json`
   - Handles conversation isolation and `/new` command
-
-- **Claude Integration** (`src/claude/`):
-  - `cli-runner.ts` - Spawns and manages Claude Code subprocess
-  - `stream-parser.ts` - Parses Claude's output format for tool calls and content
-  - `types.ts` - TypeScript types for Claude's protocol
 
 - **Shared Utilities** (`src/shared/`):
   - `ai-task.ts` - AI task execution and cleanup
@@ -78,12 +82,12 @@ This is a multi-platform IM bridge that connects Telegram, Feishu (Lark), and We
 Config file: `~/.open-im/config.json`
 
 Config loading order (environment variables take precedence):
-1. Environment variables (TELEGRAM_BOT_TOKEN, FEISHU_APP_ID, WECHAT_APP_ID, etc.)
+1. Environment variables (TELEGRAM_BOT_TOKEN, FEISHU_APP_ID, etc.)
 2. File config (`~/.open-im/config.json`)
 3. Default values
 
 Key config options:
-- `enabledPlatforms` - Array of enabled platforms ('telegram' | 'feishu' | 'wechat')
+- `enabledPlatforms` - Dynamically determined based on available credentials for platforms ('dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wework' | 'workbuddy')
 - `allowedUserIds` - Whitelist of user IDs (empty = all users)
 - `aiCommand` - Which AI tool to use (claude/codex/codebuddy)
 - `tools.claude.workDir` - Default working directory
@@ -98,7 +102,6 @@ Key config options:
 - **ES Module + Node16** - TypeScript target ES2022, module Node16
 - **Node >= 20** - Minimum Node version requirement
 - **First-run setup** - `src/setup.ts` provides interactive configuration wizard; if stdin is not a TTY, prints manual setup instructions
-- **Multi-platform** - Telegram, Feishu, and WeChat can be enabled simultaneously; `enabledPlatforms` is dynamically determined based on available tokens
-- **Permission Server** - `src/hook/permission-server.ts` can auto-approve tool permissions when permission auto-approval is enabled
+- **Multi-platform** - Telegram, Feishu, WeCom, DingTalk, QQ, and WorkBuddy can be enabled simultaneously; `enabledPlatforms` is dynamically determined based on available tokens
 - **Request Queue** - `src/queue/request-queue.ts` handles concurrent message processing per user
 - **Access Control** - `src/access/access-control.ts` validates user IDs against whitelist

@@ -378,7 +378,7 @@ export function saveClaudeSettingsEnv(env: Record<string, string>): void {
 }
 
 /** 检查是否已配置 Claude API 凭证 */
-export function hasClaudeCredentials(): boolean {
+function hasClaudeCredentials(): boolean {
   return !!(
     process.env.ANTHROPIC_API_KEY ||
     process.env.ANTHROPIC_AUTH_TOKEN ||
