@@ -234,12 +234,21 @@ export class WorkBuddyCentrifugeClient {
       // The WorkBuddy server uses the registered channelId as the WeChat KF send_msg
       // `touser`.  Re-register the channel with the current WeChat user's externalUserId
       // so that the server sends the reply to the correct customer.
-      if (this.config.registerChannelFn && sessionId.includes('::')) {
-        const externalUserId = sessionId.split('::')[0];
-        try {
-          await this.config.registerChannelFn(externalUserId);
-        } catch (err) {
-          log.warn(`${this.logPrefix} registerChannelFn failed (reply may go to wrong user):`, err);
+      const externalUserId = sessionId.includes('::') ? sessionId.split('::')[0] : null;
+      if (this.config.registerChannelFn && externalUserId) {
+        // Retry registerChannelFn up to 3 times on network failure
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            await this.config.registerChannelFn(externalUserId);
+            break;
+          } catch (err) {
+            if (attempt < 3) {
+              log.warn(`${this.logPrefix} registerChannelFn attempt ${attempt} failed, retrying in 2s:`, err);
+              await new Promise((r) => setTimeout(r, 2000));
+            } else {
+              log.warn(`${this.logPrefix} registerChannelFn failed after 3 attempts (reply may go to wrong user):`, err);
+            }
+          }
         }
       }
 
@@ -258,28 +267,43 @@ export class WorkBuddyCentrifugeClient {
 
       const url = `${this.config.httpBaseUrl}/v2/backgroundagent/wecom/local-proxy/receive`;
       log.debug(`${this.logPrefix} HTTP COPILOT_RESPONSE → ${url} chatId=${sessionId} msgLen=${message.length}`);
-      try {
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${this.config.httpAccessToken}`,
-          },
-          body: JSON.stringify(httpPayload),
-          signal: AbortSignal.timeout(30_000),
-        });
-        const body = await res.text().catch(() => '');
-        if (!res.ok) {
-          log.error(`${this.logPrefix} HTTP COPILOT_RESPONSE failed: ${res.status} ${body.substring(0, 300)}`);
-        } else {
-          log.info(`${this.logPrefix} HTTP COPILOT_RESPONSE ok: ${res.status} ${body.substring(0, 200)}`);
+
+      // Retry COPILOT_RESPONSE up to 3 times on network failure
+      let sent = false;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${this.config.httpAccessToken}`,
+            },
+            body: JSON.stringify(httpPayload),
+            signal: AbortSignal.timeout(30_000),
+          });
+          const body = await res.text().catch(() => '');
+          if (!res.ok) {
+            log.error(`${this.logPrefix} HTTP COPILOT_RESPONSE failed: ${res.status} ${body.substring(0, 300)}`);
+          } else {
+            log.info(`${this.logPrefix} HTTP COPILOT_RESPONSE ok: ${res.status} ${body.substring(0, 200)}`);
+          }
+          sent = true;
+          break;
+        } catch (err) {
+          if (attempt < 3) {
+            log.warn(`${this.logPrefix} HTTP COPILOT_RESPONSE attempt ${attempt} failed, retrying in 2s:`, err);
+            await new Promise((r) => setTimeout(r, 2000));
+          } else {
+            log.error(`${this.logPrefix} HTTP COPILOT_RESPONSE error after 3 attempts:`, err);
+          }
         }
-      } catch (err) {
-        log.error(`${this.logPrefix} HTTP COPILOT_RESPONSE error:`, err);
-      } finally {
-        // Release the heartbeat lock so the periodic registration can resume
-        this.config.releaseChannelLockFn?.();
       }
+      if (!sent) {
+        log.error(`${this.logPrefix} Failed to send COPILOT_RESPONSE after retries`);
+      }
+
+      // Release the heartbeat lock so the periodic registration can resume
+      this.config.releaseChannelLockFn?.();
       return;
     }
 
