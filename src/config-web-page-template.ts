@@ -1070,9 +1070,11 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                   </label>
                 </div>
                 <div class="platform-body">
+                  <p class="form-hint" id="workbuddy-description">CodeBuddy OAuth for WeChat customer service</p>
                   <div class="form-group">
                     <label class="form-label" id="workbuddy-aiCommand-label">AI Tool</label>
                     <select id="workbuddy-aiCommand" class="form-select">
+                      <option value="">(default)</option>
                       <option value="claude">claude</option>
                       <option value="codex">codex</option>
                       <option value="codebuddy">codebuddy</option>
