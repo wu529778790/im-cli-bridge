@@ -10,6 +10,8 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
       const aiTools = ["claude", "codex", "codebuddy"];
       const STORAGE_KEY_LANG = "open-im-web-lang";
       const STORAGE_KEY_DARK_MODE = "open-im-web-dark-mode";
+      const STORAGE_KEY_ONBOARDING = "open-im-dashboard-onboarding-v1";
+      const STORAGE_KEY_SAVED_SESSION = "open-im-setup-saved-session";
       const POLLING_INTERVAL = 10000;
       const toolLabels = { claude: "Claude", codex: "Codex", codebuddy: "CodeBuddy" };
 
@@ -67,6 +69,7 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
       const texts = __PAGE_TEXTS__;
       let currentMeta = null;
       let cachedServiceData = null;
+      let lastHealthPayload = null;
       let currentLang = (localStorage.getItem(STORAGE_KEY_LANG) || "").startsWith("zh") ? "zh" : ((navigator.language || "").startsWith("zh") ? "zh" : "en");
 
       // Translation helper
@@ -166,6 +169,22 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           { id: "resetJsonButtonText", key: "resetJson" },
           { id: "saveClaudeSettingsBtnText", key: "saveBtn" },
           { id: "saveOpenImConfigBtnText", key: "saveBtn" },
+          { id: "wizardTitle", key: "wizardTitle" },
+          { id: "wizardStep1Title", key: "wizardStep1Title" },
+          { id: "wizardStep1Desc", key: "wizardStep1Desc" },
+          { id: "wizardStep2Title", key: "wizardStep2Title" },
+          { id: "wizardStep2Desc", key: "wizardStep2Desc" },
+          { id: "wizardStep3Title", key: "wizardStep3Title" },
+          { id: "wizardStep3Desc", key: "wizardStep3Desc" },
+          { id: "wizardStep4Title", key: "wizardStep4Title" },
+          { id: "wizardStep4Desc", key: "wizardStep4Desc" },
+          { id: "wizardJumpPlatforms", key: "wizardJumpPlatforms" },
+          { id: "wizardJumpAi", key: "wizardJumpAi" },
+          { id: "wizardJumpService", key: "wizardJumpService" },
+          { id: "wizardJumpService2", key: "wizardJumpService" },
+          { id: "onboardingTitle", key: "onboardingTitle" },
+          { id: "onboardingDismiss", key: "onboardingDismiss" },
+          { id: "onboardingReadme", key: "onboardingReadme" },
         ],
         platformLabels: {
           enabled: { suffix: "-label", key: "enabled" },
@@ -274,6 +293,24 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           if (helpBlock) helpBlock.innerHTML = t(key);
         });
 
+        // Short per-field tips (HTML)
+        [
+          ["telegram-botToken-tip", "tipTelegramToken"],
+          ["feishu-appId-tip", "tipFeishuAppId"],
+          ["feishu-appSecret-tip", "tipFeishuSecret"],
+          ["qq-appId-tip", "tipQqAppId"],
+          ["qq-secret-tip", "tipQqSecret"],
+          ["wework-corpId-tip", "tipWeworkCorp"],
+          ["dingtalk-clientId-tip", "tipDingtalkClient"],
+          ["workbuddy-accessToken-tip", "tipWorkbuddyToken"],
+        ].forEach(([tipId, tipKey]) => {
+          const tipEl = el(tipId);
+          if (tipEl) tipEl.innerHTML = t(tipKey);
+        });
+
+        const onboardBody = el("onboardingBody");
+        if (onboardBody) onboardBody.innerHTML = t("onboardingBody");
+
         // AI labels
         LANGUAGE_UPDATES.aiLabels.forEach(({ id, key }) => {
           const label = el(id + "-label");
@@ -300,6 +337,14 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         // Dark mode toggle aria-label
         const darkModeToggle = el("darkModeToggle");
         if (darkModeToggle) darkModeToggle.setAttribute("aria-label", t("darkModeToggle"));
+
+        const readmeLink = el("onboardingReadmeLink");
+        if (readmeLink && readmeLink instanceof HTMLAnchorElement) {
+          readmeLink.href = isZh
+            ? "https://github.com/wu529778790/open-im/blob/main/README.zh-CN.md"
+            : "https://github.com/wu529778790/open-im/blob/main/README.md";
+        }
+        updateSetupWizard();
       }
 
       // AI tool switcher
@@ -331,6 +376,66 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         const liveSummary = el("liveSummary");
         if (liveSummary) liveSummary.textContent = summary;
         updateAiToolVisibility();
+        updateSetupWizard();
+      }
+
+      function hasReadyPlatform() {
+        return platformDefinitions.some((platform) => {
+          if (!getChecked(platform.key + "-enabled")) return false;
+          return platform.requiredFields.every((field) => getValue(platform.key + "-" + field).trim().length > 0);
+        });
+      }
+
+      function aiStepComplete() {
+        const cmd = getValue("ai-aiCommand");
+        if (cmd === "codex") return getValue("ai-codexCliPath").trim().length > 0;
+        if (cmd === "codebuddy") return getValue("ai-codebuddyCliPath").trim().length > 0;
+        return true;
+      }
+
+      function updateSetupWizard() {
+        const s1 = hasReadyPlatform();
+        const s2 = aiStepComplete();
+        const s3 = sessionStorage.getItem(STORAGE_KEY_SAVED_SESSION) === "1";
+        const s4 = Boolean(lastHealthPayload && lastHealthPayload.serviceStatus && lastHealthPayload.serviceStatus.running);
+        const done = [s1, s2, s3, s4];
+        for (let i = 0; i < 4; i += 1) {
+          const step = el("wizard-step-" + (i + 1));
+          if (step) step.classList.toggle("wizard-step--done", done[i]);
+          setText("wizardStep" + (i + 1) + "Status", done[i] ? t("wizardStatusDone") : t("wizardStatusTodo"));
+        }
+      }
+
+      function collectClientValidationErrors() {
+        const errors = [];
+        const anyEnabled = platformDefinitions.some((p) => getChecked(p.key + "-enabled"));
+        if (!anyEnabled) {
+          errors.push(t("validationNoPlatformEnabled"));
+        }
+        platformDefinitions.forEach((platform) => {
+          if (!getChecked(platform.key + "-enabled")) return;
+          const missing = platform.requiredFields.filter((field) => !getValue(platform.key + "-" + field).trim());
+          if (missing.length > 0) {
+            errors.push(t("validationPlatformIncomplete", { platform: platform.label, fields: missing.join(", ") }));
+          }
+        });
+        const cmd = getValue("ai-aiCommand");
+        if (cmd === "codex" && !getValue("ai-codexCliPath").trim()) {
+          errors.push(t("validationAiCodexNoCli"));
+        }
+        if (cmd === "codebuddy" && !getValue("ai-codebuddyCliPath").trim()) {
+          errors.push(t("validationAiCodebuddyNoCli"));
+        }
+        return errors;
+      }
+
+      function validateClientSideOrAbort() {
+        const errors = collectClientValidationErrors();
+        if (errors.length > 0) {
+          setMessage(errors.join(" "), "error");
+          return false;
+        }
+        return true;
       }
 
       // Update dashboard with health status
@@ -385,6 +490,9 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           el("statConfiguredValue").textContent = configuredCount + "/" + platformKeys.length;
           el("statEnabledValue").textContent = String(enabledCount);
           el("statServiceValue").textContent = serviceStatus.running ? t("serviceRunningShort") : t("serviceIdleShort");
+
+          lastHealthPayload = data;
+          updateSetupWizard();
 
           return data;
         } catch (error) {
@@ -684,6 +792,26 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         el("navAiBtn").onclick = () => scrollToSection("aiSection", "navAiBtn");
         el("navServiceBtn").onclick = () => scrollToSection("serviceSection", "navServiceBtn");
 
+        document.querySelectorAll(".wizard-jump").forEach((jumpBtn) => {
+          jumpBtn.addEventListener("click", () => {
+            const sec = jumpBtn.getAttribute("data-section");
+            const nav = jumpBtn.getAttribute("data-nav");
+            if (sec && nav) scrollToSection(sec, nav);
+          });
+        });
+
+        const onboardBackdrop = el("onboardingBackdrop");
+        const onboardDismiss = el("onboardingDismiss");
+        if (onboardBackdrop && onboardDismiss) {
+          if (!localStorage.getItem(STORAGE_KEY_ONBOARDING)) {
+            onboardBackdrop.classList.remove("hidden");
+          }
+          onboardDismiss.onclick = () => {
+            localStorage.setItem(STORAGE_KEY_ONBOARDING, "1");
+            onboardBackdrop.classList.add("hidden");
+          };
+        }
+
         // Language toggle
         el("langButton").onclick = () => {
           currentLang = currentLang === "zh" ? "en" : "zh";
@@ -700,12 +828,12 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         // Service buttons
         el("validateButton").onclick = validate;
         el("saveButton").onclick = async () => {
-          // 先保存 JSON，再保存主配置
+          if (!validateClientSideOrAbort()) return;
           await saveClaudeSettings();
           await save();
         };
         el("startButton").onclick = async () => {
-          // 启动前也顺带保存 JSON
+          if (!validateClientSideOrAbort()) return;
           await saveClaudeSettings();
           await startService();
         };
@@ -725,6 +853,7 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
       async function validate() {
         setBusy(true);
         try {
+          if (!validateClientSideOrAbort()) return;
           await request("/api/config/validate", { method: "POST", body: JSON.stringify(payload()) });
           setMessage(t("validationOk"), "success");
         } catch (error) {
@@ -737,11 +866,14 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
       async function save() {
         setBusy(true);
         try {
+          if (!validateClientSideOrAbort()) return;
           // First save JSON editor content if changed
           await saveOpenImConfig();
           // Then save form data
           await request("/api/config/save?final=1", { method: "POST", body: JSON.stringify(payload()) });
+          sessionStorage.setItem(STORAGE_KEY_SAVED_SESSION, "1");
           setMessage(t("saveOk"), "success");
+          updateSetupWizard();
         } catch (error) {
           setMessage(error.message || String(error), "error");
         } finally {
@@ -778,9 +910,11 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
       async function startService() {
         setBusy(true);
         try {
+          if (!validateClientSideOrAbort()) return;
           await request("/api/config/save", { method: "POST", body: JSON.stringify(payload()) });
           await request("/api/service/start", { method: "POST" });
           await refreshStatus();
+          await updateDashboard();
           setMessage(t("startOk"), "success");
         } catch (error) {
           setMessage(error.message || String(error), "error");
