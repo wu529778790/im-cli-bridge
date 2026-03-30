@@ -4,7 +4,7 @@ try {
   /* dotenv optional */
 }
 
-import { readFileSync, writeFileSync, accessSync, constants, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, accessSync, constants, existsSync, mkdirSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, dirname, isAbsolute, basename } from 'node:path';
 import { homedir } from 'node:os';
@@ -230,6 +230,10 @@ const OLD_ROOT_KEYS = [
   'claudeTimeoutMs', 'claudeModel',
 ] as const;
 
+// Config cache with mtime tracking
+let cachedConfig: { config: FileConfig; mtime: number } | null = null;
+let cachedClaudeEnv: { env: Record<string, string>; mtime: number } | null = null;
+
 function hasOldConfigFormat(raw: Record<string, unknown>): boolean {
   const hasOld = OLD_ROOT_KEYS.some((k) => raw[k] !== undefined && raw[k] !== null);
   const hasNew = raw.tools && typeof raw.tools === 'object' && (raw.tools as Record<string, unknown>).claude;
@@ -290,6 +294,17 @@ function migrateToNewConfigFormat(raw: Record<string, unknown>): Record<string, 
 
 export function loadFileConfig(): FileConfig {
   try {
+    // Check if file exists and get mtime for cache validation
+    if (!existsSync(CONFIG_PATH)) return {};
+    const stats = statSync(CONFIG_PATH);
+    const currentMtime = stats.mtimeMs;
+
+    // Return cached config if file hasn't changed
+    if (cachedConfig && cachedConfig.mtime === currentMtime) {
+      return cachedConfig.config;
+    }
+
+    // File changed or no cache, read and parse
     const raw = JSON.parse(readFileSync(CONFIG_PATH, 'utf-8')) as Record<string, unknown>;
     if (!raw || typeof raw !== 'object') return {};
 
@@ -298,8 +313,13 @@ export function loadFileConfig(): FileConfig {
       const dir = dirname(CONFIG_PATH);
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
       writeFileSync(CONFIG_PATH, JSON.stringify(migrated, null, 2), 'utf-8');
+      // Update cache with migrated config
+      cachedConfig = { config: migrated as FileConfig, mtime: currentMtime };
       return migrated as FileConfig;
     }
+
+    // Update cache
+    cachedConfig = { config: raw as FileConfig, mtime: currentMtime };
     return raw as FileConfig;
   } catch {
     return {};
@@ -310,6 +330,8 @@ export function saveFileConfig(raw: FileConfig): void {
   const dir = dirname(CONFIG_PATH);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   writeFileSync(CONFIG_PATH, JSON.stringify(raw, null, 2), 'utf-8');
+  // Invalidate cache after save (next read will get fresh mtime)
+  cachedConfig = null;
 }
 
 /** 获取用户主目录（兼容不同运行环境，如 launchd、systemd 等） */
@@ -326,16 +348,27 @@ export function loadClaudeSettingsEnv(): Record<string, string> {
   ];
   for (const p of paths) {
     try {
-      const raw = JSON.parse(readFileSync(p, 'utf-8'));
-      const env = raw?.env;
-      if (env && typeof env === 'object') {
-        const result: Record<string, string> = {};
-        for (const [k, v] of Object.entries(env)) {
-          if (v != null && typeof k === 'string') {
-            result[k] = String(v);
-          }
+      // Check cache first
+      if (existsSync(p)) {
+        const stats = statSync(p);
+        const currentMtime = stats.mtimeMs;
+        if (cachedClaudeEnv && cachedClaudeEnv.mtime === currentMtime && cachedClaudeEnv.env) {
+          return cachedClaudeEnv.env;
         }
-        return result;
+
+        const raw = JSON.parse(readFileSync(p, 'utf-8'));
+        const env = raw?.env;
+        if (env && typeof env === 'object') {
+          const result: Record<string, string> = {};
+          for (const [k, v] of Object.entries(env)) {
+            if (v != null && typeof k === 'string') {
+              result[k] = String(v);
+            }
+          }
+          // Update cache
+          cachedClaudeEnv = { env: result, mtime: currentMtime };
+          return result;
+        }
       }
     } catch {
       /* 文件不存在或格式错误，尝试下一路径 */
@@ -371,6 +404,8 @@ export function saveClaudeSettingsEnv(env: Record<string, string>): void {
 
     // 写入文件
     writeFileSync(claudeSettingsPath, JSON.stringify(existing, null, 2), 'utf-8');
+    // Invalidate cache after save
+    cachedClaudeEnv = null;
   } catch (error) {
     log.error('Failed to save Claude settings:', error);
     throw new Error(`Failed to save Claude settings: ${error instanceof Error ? error.message : String(error)}`);
