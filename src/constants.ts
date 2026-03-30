@@ -33,8 +33,6 @@ export const TERMINAL_ONLY_COMMANDS = new Set([
 export const CARDKIT_THROTTLE_MS = 80;
 /** Telegram 编辑消息节流：200ms（open-im 默认值） */
 export const TELEGRAM_THROTTLE_MS = 200;
-/** WeChat 流式更新节流：1000ms（AGP 协议建议值） */
-export const WECHAT_THROTTLE_MS = 1000;
 /** WorkBuddy 流式更新节流：1000ms（Centrifuge 协议建议值） */
 export const WORKBUDDY_THROTTLE_MS = 1000;
 export const WEWORK_THROTTLE_MS = 500;

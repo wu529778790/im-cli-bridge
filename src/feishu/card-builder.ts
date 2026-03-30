@@ -43,7 +43,7 @@ export function truncateForStreaming(text: string): string {
 }
 
 /** CardKit 2.0 格式，含 element_id 供 cardElement.content 流式更新 */
-export function buildCardV2Object(
+function buildCardV2Object(
   options: CardOptions,
   cardId?: string
 ): Record<string, unknown> {

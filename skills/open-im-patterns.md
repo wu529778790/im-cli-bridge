@@ -1,7 +1,7 @@
 ---
 name: open-im-patterns
 description: open-im 多平台 IM 桥接服务编码模式
-version: 1.0.0
+version: 2.0.0
 source: local-git-analysis
 analyzed_commits: 200
 ---
@@ -36,38 +36,47 @@ src/
 ├── feishu/             # 飞书平台模块
 │   ├── client.ts       # 飞书客户端和 WebSocket 事件处理
 │   ├── event-handler.ts # 消息事件处理、权限控制
+│   ├── card-builder.ts  # CardKit 2.0 卡片构建（流式更新）
 │   └── message-sender.ts # 消息发送（文本、图片、卡片等）
 ├── wework/             # 企业微信平台模块 (AI Bot WebSocket)
 │   ├── client.ts       # WebSocket 连接、订阅认证、主动推送
 │   ├── event-handler.ts # 消息事件处理
 │   ├── message-sender.ts # 消息发送
 │   └── types.ts        # 企业微信 API 类型
-├── wechat/             # 微信平台模块 (AGP/Qclaw 协议，测试中)
-│   ├── client.ts       # WebSocket 长连接管理
-│   ├── event-handler.ts # AGP 消息事件处理
-│   ├── message-sender.ts # AGP 消息发送
-│   └── types.ts        # AGP 协议类型定义
+├── dingtalk/           # 钉钉平台模块 (dingtalk-stream)
+│   ├── client.ts       # 钉钉 stream 客户端初始化
+│   ├── event-handler.ts # 消息事件处理
+│   └── message-sender.ts # 消息发送
+├── qq/                 # QQ 平台模块 (qq-official-bot)
+│   ├── client.ts       # QQ bot 客户端初始化
+│   ├── event-handler.ts # 消息事件处理
+│   └── message-sender.ts # 消息发送
+├── workbuddy/          # WorkBuddy 平台模块 (Centrifuge WebSocket)
+│   ├── client.ts       # Centrifuge 客户端初始化
+│   ├── event-handler.ts # 消息事件处理
+│   ├── message-sender.ts # 消息发送
+│   ├── centrifuge-client.ts # Centrifuge 连接管理
+│   ├── oauth.ts        # OAuth 认证
+│   └── types.ts        # 类型定义
 ├── adapters/           # AI 工具适配器层
 │   ├── tool-adapter.interface.ts # 适配器接口定义
-│   ├── claude-adapter.ts # Claude Code CLI 集成
+│   ├── claude-sdk-adapter.ts # Claude Agent SDK 集成
+│   ├── codex-adapter.ts # Codex CLI 集成
+│   ├── codebuddy-adapter.ts # CodeBuddy CLI 集成
 │   └── registry.ts     # 适配器注册表
-├── claude/             # Claude CLI 集成
-│   ├── cli-runner.ts   # Claude 子进程管理
-│   ├── process-pool.ts # 进程池管理
-│   ├── stream-parser.ts # Claude 输出流解析
-│   └── types.ts        # Claude 协议类型
 ├── commands/           # 命令处理
 │   └── handler.ts      # /help, /new 等命令
 ├── config.ts           # 配置加载和验证
+├── config-web.ts       # Web 配置页面后端
+├── config-web-page*.ts # Web 配置页面模板和脚本
 ├── setup.ts            # 交互式配置向导
 ├── index.ts            # 主服务入口
 ├── cli.ts              # CLI 命令行入口
 ├── access/             # 访问控制
+├── channels/           # 通道管理
 ├── session/            # 会话管理
 ├── queue/              # 请求队列
-├── shared/             # 共享工具
-├── hook/               # 权限服务器
-└── permission-mode/    # 权限模式管理
+└── shared/             # 共享工具
 ```
 
 ## 工作流
@@ -215,4 +224,3 @@ log.error('错误');
 - 所有用户输入在系统边界进行验证
 - 实现 SQL 注入、XSS、CSRF 防护
 - 检查所有工具调用的权限
-
