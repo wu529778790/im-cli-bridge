@@ -35,6 +35,7 @@ describe("config web page assembly", () => {
       "qq",
       "wework",
       "dingtalk",
+      "workbuddy",
     ]);
 
     for (const platform of helpTargets) {

@@ -169,7 +169,7 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         ],
         platformLabels: {
           enabled: { suffix: "-label", key: "enabled" },
-          description: { suffix: "-description", keys: { telegram: "telegramSummary", feishu: "feishuSummary", qq: "qqSummary", wework: "weworkSummary", dingtalk: "dingtalkSummary" } },
+          description: { suffix: "-description", keys: { telegram: "telegramSummary", feishu: "feishuSummary", qq: "qqSummary", wework: "weworkSummary", dingtalk: "dingtalkSummary", workbuddy: "workbuddySummary" } },
           fieldLabel: {
             "telegram-botToken": { key: "botToken" },
             "telegram-proxy": { key: "proxy" },
@@ -193,6 +193,12 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
             "dingtalk-cardTemplateId": { key: "cardTemplateId" },
             "dingtalk-aiCommand": { key: "platformAiTool" },
             "dingtalk-allowedUserIds": { key: "allowedUserIds" },
+            "workbuddy-accessToken": { key: "workbuddyAccessToken" },
+            "workbuddy-refreshToken": { key: "workbuddyRefreshToken" },
+            "workbuddy-userId": { key: "workbuddyUserId" },
+            "workbuddy-baseUrl": { key: "workbuddyBaseUrl" },
+            "workbuddy-aiCommand": { key: "platformAiTool" },
+            "workbuddy-allowedUserIds": { key: "allowedUserIds" },
           }
         },
         platformHelp: [
@@ -201,6 +207,7 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           { platform: "qq", key: "qqHelp" },
           { platform: "wework", key: "weworkHelp" },
           { platform: "dingtalk", key: "dingtalkHelp" },
+          { platform: "workbuddy", key: "workbuddyHelp" },
         ],
         aiLabels: [
           { id: "aiCommonTitle", key: "aiCommonTitle" },
