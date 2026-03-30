@@ -250,12 +250,6 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
         color: var(--text-primary);
       }
 
-      .main-subtitle {
-        font-size: 13px;
-        color: var(--text-secondary);
-        margin-top: 2px;
-      }
-
       .header-actions {
         display: flex;
         gap: 12px;
@@ -383,88 +377,6 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
         line-height: 1;
       }
 
-      /* Setup wizard (overview) */
-      .setup-wizard-card {
-        background: var(--bg-card);
-        border: 1px solid var(--border-subtle);
-        border-radius: var(--radius-lg);
-        padding: 20px 24px;
-        margin-bottom: 24px;
-        box-shadow: var(--shadow-sm);
-      }
-      .setup-wizard-card h2 {
-        margin: 0 0 16px;
-        font-size: 16px;
-        font-weight: 600;
-        color: var(--text-primary);
-      }
-      .wizard-steps {
-        display: grid;
-        gap: 12px;
-      }
-      @media (min-width: 900px) {
-        .wizard-steps {
-          grid-template-columns: repeat(2, 1fr);
-        }
-      }
-      .wizard-step {
-        display: flex;
-        gap: 14px;
-        align-items: flex-start;
-        padding: 14px 16px;
-        border-radius: var(--radius-md);
-        border: 1px solid var(--border-subtle);
-        background: var(--bg-secondary);
-        transition: border-color var(--transition-fast), background var(--transition-fast);
-      }
-      .wizard-step--done {
-        border-color: var(--success-border);
-        background: var(--success-bg);
-      }
-      .wizard-step-badge {
-        flex-shrink: 0;
-        width: 28px;
-        height: 28px;
-        border-radius: 999px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 13px;
-        font-weight: 700;
-        background: var(--bg-tertiary);
-        color: var(--text-secondary);
-      }
-      .wizard-step--done .wizard-step-badge {
-        background: var(--success-text);
-        color: #fff;
-      }
-      .wizard-step-body {
-        flex: 1;
-        min-width: 0;
-      }
-      .wizard-step-title {
-        font-weight: 600;
-        font-size: 14px;
-        color: var(--text-primary);
-        margin-bottom: 4px;
-      }
-      .wizard-step-desc {
-        font-size: 13px;
-        color: var(--text-secondary);
-        line-height: 1.5;
-        margin-bottom: 8px;
-      }
-      .wizard-step-status {
-        font-size: 11px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        margin-bottom: 6px;
-        color: var(--text-tertiary);
-      }
-      .wizard-step--done .wizard-step-status {
-        color: var(--success-text);
-      }
       .field-inline-tip {
         font-size: 12px;
         color: var(--text-tertiary);
@@ -479,51 +391,6 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
         background: var(--bg-tertiary);
         padding: 1px 5px;
         border-radius: var(--radius-xs);
-      }
-
-      /* First-visit onboarding */
-      .onboarding-backdrop {
-        position: fixed;
-        inset: 0;
-        background: rgba(15, 23, 42, 0.45);
-        z-index: 100;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 24px;
-      }
-      .onboarding-backdrop.hidden {
-        display: none;
-      }
-      .onboarding-card {
-        background: var(--bg-card);
-        color: var(--text-primary);
-        border-radius: var(--radius-xl);
-        max-width: 520px;
-        width: 100%;
-        padding: 28px 28px 24px;
-        box-shadow: var(--shadow-lg);
-        border: 1px solid var(--border-subtle);
-      }
-      .onboarding-card h2 {
-        margin: 0 0 12px;
-        font-size: 20px;
-        font-weight: 700;
-      }
-      .onboarding-card .onboarding-body {
-        font-size: 14px;
-        color: var(--text-secondary);
-        line-height: 1.55;
-      }
-      .onboarding-card .onboarding-body p {
-        margin: 0 0 8px;
-      }
-      .onboarding-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin-top: 20px;
-        align-items: center;
       }
 
       .config-files-stack {
@@ -983,7 +850,6 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
           <div class="main-header-top">
             <div>
               <h1 class="main-title" id="mainTitle">Dashboard</h1>
-              <p class="main-subtitle" id="mainSubtitle">Platform status and setup progress</p>
             </div>
             <div class="header-actions">
               <a href="https://github.com/wu529778790/open-im" target="_blank" class="btn btn-ghost btn-sm">
@@ -1038,48 +904,6 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
               <div class="stat-card">
                 <div class="stat-label" id="statServiceLabel">Service</div>
                 <div class="stat-value" id="statServiceValue">Idle</div>
-              </div>
-            </div>
-
-            <div class="setup-wizard-card">
-              <h2 id="wizardTitle">First-time setup</h2>
-              <div class="wizard-steps" id="wizardSteps">
-                <div class="wizard-step" id="wizard-step-1">
-                  <div class="wizard-step-badge">1</div>
-                  <div class="wizard-step-body">
-                    <div class="wizard-step-status" id="wizardStep1Status">To do</div>
-                    <div class="wizard-step-title" id="wizardStep1Title">Connect an IM channel</div>
-                    <div class="wizard-step-desc" id="wizardStep1Desc"></div>
-                    <button type="button" class="btn btn-secondary btn-sm wizard-jump" data-section="configSection" data-nav="navPlatformsBtn" id="wizardJumpPlatforms">Open Platforms</button>
-                  </div>
-                </div>
-                <div class="wizard-step" id="wizard-step-2">
-                  <div class="wizard-step-badge">2</div>
-                  <div class="wizard-step-body">
-                    <div class="wizard-step-status" id="wizardStep2Status">To do</div>
-                    <div class="wizard-step-title" id="wizardStep2Title">Set the default AI tool</div>
-                    <div class="wizard-step-desc" id="wizardStep2Desc"></div>
-                    <button type="button" class="btn btn-secondary btn-sm wizard-jump" data-section="aiSection" data-nav="navAiBtn" id="wizardJumpAi">Open AI</button>
-                  </div>
-                </div>
-                <div class="wizard-step" id="wizard-step-3">
-                  <div class="wizard-step-badge">3</div>
-                  <div class="wizard-step-body">
-                    <div class="wizard-step-status" id="wizardStep3Status">To do</div>
-                    <div class="wizard-step-title" id="wizardStep3Title">Validate and save</div>
-                    <div class="wizard-step-desc" id="wizardStep3Desc"></div>
-                    <button type="button" class="btn btn-secondary btn-sm wizard-jump" data-section="serviceSection" data-nav="navServiceBtn" id="wizardJumpService">Open Service</button>
-                  </div>
-                </div>
-                <div class="wizard-step" id="wizard-step-4">
-                  <div class="wizard-step-badge">4</div>
-                  <div class="wizard-step-body">
-                    <div class="wizard-step-status" id="wizardStep4Status">To do</div>
-                    <div class="wizard-step-title" id="wizardStep4Title">Start the bridge</div>
-                    <div class="wizard-step-desc" id="wizardStep4Desc"></div>
-                    <button type="button" class="btn btn-secondary btn-sm wizard-jump" data-section="serviceSection" data-nav="navServiceBtn" id="wizardJumpService2">Open Service</button>
-                  </div>
-                </div>
               </div>
             </div>
           </section>
@@ -1526,17 +1350,6 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
               </div>
             </div>
           </section>
-
-          <div id="onboardingBackdrop" class="onboarding-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="onboardingTitle">
-            <div class="onboarding-card">
-              <h2 id="onboardingTitle">Welcome</h2>
-              <div id="onboardingBody" class="onboarding-body"></div>
-              <div class="onboarding-actions">
-                <button type="button" class="btn btn-primary" id="onboardingDismiss">Got it</button>
-                <a href="https://github.com/wu529778790/open-im/blob/main/README.zh-CN.md" target="_blank" rel="noopener" class="btn btn-ghost" id="onboardingReadmeLink"><span id="onboardingReadme">README</span></a>
-              </div>
-            </div>
-          </div>
 
         </div>
       </main>
