@@ -149,6 +149,7 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           { id: "mainSubtitle", key: "dashboardSubtitleFull" },
           { id: "navOverviewText", key: "dashboardTitle" },
           { id: "navPlatformsText", key: "platformsTitle" },
+          { id: "navConfigFilesText", key: "navConfigFiles" },
           { id: "navAiText", key: "aiTitle" },
           { id: "navServiceText", key: "serviceTitle" },
           { id: "footerGithubText", value: "GitHub" },
@@ -163,8 +164,13 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           { id: "statConfiguredLabel", key: "statConfiguredLabel" },
           { id: "statEnabledLabel", key: "statEnabledLabel" },
           { id: "statServiceLabel", key: "statServiceLabel" },
-          { id: "openImConfigSummary", key: "configJson" },
-          { id: "claudeSettingsSummary", key: "claudeSettingsLabel" },
+          { id: "configFilesTitle", key: "configFilesTitle" },
+          { id: "configFilesHint", key: "configFilesHint" },
+          { id: "openImConfigCardTitle", key: "configJson" },
+          { id: "openImConfigCardHint", key: "openImConfigCardHint" },
+          { id: "claudeSettingsCardTitle", key: "claudeSettingsLabel" },
+          { id: "claudeSettingsCardHint", key: "claudeSettingsCardHint" },
+          { id: "claudeJsonShortcutHint", key: "claudeJsonShortcutHint" },
           { id: "formatJsonButtonText", key: "formatJson" },
           { id: "resetJsonButtonText", key: "resetJson" },
           { id: "saveClaudeSettingsBtnText", key: "saveBtn" },
@@ -502,7 +508,7 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
 
       // Navigation
       function setActiveNav(targetId) {
-        ["navOverviewBtn","navPlatformsBtn","navAiBtn","navServiceBtn"].forEach((id) => {
+        ["navOverviewBtn","navPlatformsBtn","navConfigFilesBtn","navAiBtn","navServiceBtn"].forEach((id) => {
           const btn = el(id);
           if (btn) btn.classList.toggle("active", id === targetId);
         });
@@ -726,21 +732,6 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           }
         });
 
-        // Open-im config.json: load when expanded
-        const openImConfigContainer = document.getElementById("openImConfigContainer");
-        if (openImConfigContainer && openImConfigContainer instanceof HTMLDetailsElement) {
-          openImConfigContainer.addEventListener("toggle", () => {
-            if (openImConfigContainer.open) void loadOpenImConfig();
-          });
-        }
-        // Claude settings.json: load when expanded
-        const claudeSettingsContainer = document.getElementById("claudeSettingsContainer");
-        if (claudeSettingsContainer && claudeSettingsContainer instanceof HTMLDetailsElement) {
-          claudeSettingsContainer.addEventListener("toggle", () => {
-            if (claudeSettingsContainer.open) void loadClaudeSettings();
-          });
-        }
-
         el("saveClaudeSettingsBtn").onclick = async () => {
           try {
             await saveClaudeSettings();
@@ -789,6 +780,7 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         // Navigation
         el("navOverviewBtn").onclick = () => scrollToSection("dashboardSection", "navOverviewBtn");
         el("navPlatformsBtn").onclick = () => scrollToSection("configSection", "navPlatformsBtn");
+        el("navConfigFilesBtn").onclick = () => scrollToSection("configFilesSection", "navConfigFilesBtn");
         el("navAiBtn").onclick = () => scrollToSection("aiSection", "navAiBtn");
         el("navServiceBtn").onclick = () => scrollToSection("serviceSection", "navServiceBtn");
 

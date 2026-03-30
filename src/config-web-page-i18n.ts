@@ -40,6 +40,16 @@ export const PAGE_TEXTS = {
           serviceIdleMeta: "Bridge has not been started yet",
           listSeparator: ", ",
           platformsTitle: "Platforms",
+          navConfigFiles: "Config files",
+          configFilesTitle: "Config files (JSON)",
+          configFilesHint:
+            "Edit the files on disk directly. Each card has its own Save. Platform / AI forms and Service → Save config still apply.",
+          openImConfigCardHint:
+            "Full open-im configuration. Use Format, then Save. Invalid JSON is rejected.",
+          claudeSettingsCardHint:
+            "Claude SDK environment (ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL, ANTHROPIC_MODEL, etc.). Set API access here without shell exports.",
+          claudeJsonShortcutHint:
+            "Edit ~/.claude/settings.json in the sidebar «Config files» section below.",
           platformsHint: "Follow the setup checklist on Overview first. Disabled platforms still keep saved values.",
           enabled: "Enabled",
           readyState: "Ready",
@@ -81,7 +91,7 @@ export const PAGE_TEXTS = {
           optional: "Optional",
           commaSeparatedIds: "Comma-separated IDs",
           aiTitle: "AI Tooling",
-          aiHint: "Pick the default tool first. Claude SDK uses API keys in ~/.claude/settings.json (editable below). Codex / CodeBuddy need a CLI path.",
+          aiHint: "Pick the default tool first. Claude SDK keys: sidebar Config files → ~/.claude/settings.json. Codex / CodeBuddy need a CLI path here.",
           claudeNote: "Claude credentials are still read from environment variables or ~/.claude/settings.json. This page manages local bridge config, not Claude account auth.",
           aiCommonTitle: "Shared defaults",
           aiCommonHint: "Choose the default AI tool first. Tool-specific fields are shown below.",
@@ -138,7 +148,7 @@ export const PAGE_TEXTS = {
           wizardStep1Title: "Connect an IM channel",
           wizardStep1Desc: "Enable at least one platform below and fill every required field. Use Check config when available.",
           wizardStep2Title: "Set the default AI tool",
-          wizardStep2Desc: "Claude SDK: API keys live in ~/.claude/settings.json (expand on this page). Codex / CodeBuddy: set the CLI path in the AI section.",
+          wizardStep2Desc: "Claude SDK: edit ~/.claude/settings.json under sidebar Config files. Codex / CodeBuddy: set the CLI path in the AI section.",
           wizardStep3Title: "Validate and save",
           wizardStep3Desc: "Click Validate, then Save config. Fix any errors shown in the banner above.",
           wizardStep4Title: "Start the bridge",
@@ -156,7 +166,7 @@ export const PAGE_TEXTS = {
           onboardingDismiss: "Got it",
           onboardingReadme: "README (setup)",
           onboardingBody:
-            "<p><strong>open-im</strong> bridges Telegram, Feishu, QQ, WeWork, DingTalk, and WorkBuddy to Claude / Codex / CodeBuddy on your machine.</p><ol style=\"margin:12px 0 12px 18px;line-height:1.65\"><li>Pick <strong>one</strong> chat app in <strong>Platforms</strong> and paste credentials (see hints under each field).</li><li>Set the <strong>default AI</strong> and, for Claude SDK, API keys in <strong>~/.claude/settings.json</strong> on this page.</li><li>Use <strong>Validate</strong> then <strong>Save config</strong>, then <strong>Start bridge</strong> under Service.</li><li>CLI alternative: run <code style=\"background:var(--bg-tertiary);padding:2px 6px;border-radius:4px\">open-im init</code> in a terminal.</li></ol>",
+            "<p><strong>open-im</strong> bridges Telegram, Feishu, QQ, WeWork, DingTalk, and WorkBuddy to Claude / Codex / CodeBuddy on your machine.</p><ol style=\"margin:12px 0 12px 18px;line-height:1.65\"><li>Pick <strong>one</strong> chat app in <strong>Platforms</strong> and paste credentials (see hints under each field).</li><li>Set the <strong>default AI</strong> under AI Tooling; for Claude SDK, put API keys in sidebar <strong>Config files</strong> → <strong>~/.claude/settings.json</strong>.</li><li>Edit <strong>~/.open-im/config.json</strong> in the same <strong>Config files</strong> section when you need raw JSON.</li><li>Use <strong>Validate</strong> then <strong>Save config</strong>, then <strong>Start bridge</strong> under Service.</li><li>CLI alternative: run <code style=\"background:var(--bg-tertiary);padding:2px 6px;border-radius:4px\">open-im init</code> in a terminal.</li></ol>",
           tipTelegramToken:
             'From Telegram, open <a href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather</a> → /newbot → copy the token.',
           tipFeishuAppId: "Feishu Open Platform → your app → Credentials → App ID.",
@@ -206,6 +216,16 @@ export const PAGE_TEXTS = {
           serviceIdleMeta: "\u6865\u63a5\u670d\u52a1\u5c1a\u672a\u542f\u52a8",
           listSeparator: "\u3001",
           platformsTitle: "\u5e73\u53f0\u914d\u7f6e",
+          navConfigFiles: "\u914d\u7f6e\u6587\u4ef6",
+          configFilesTitle: "\u914d\u7f6e\u6587\u4ef6\uff08JSON\uff09",
+          configFilesHint:
+            "\u76f4\u63a5\u7f16\u8f91\u78c1\u76d8\u4e0a\u7684\u6587\u4ef6\uff0c\u6bcf\u5f20\u5361\u7247\u6709\u72ec\u7acb\u4fdd\u5b58\u6309\u94ae\u3002\u5e73\u53f0 / AI \u8868\u5355\u4e0e\u670d\u52a1\u533a\u7684\u300c\u4fdd\u5b58\u914d\u7f6e\u300d\u4ecd\u7136\u6709\u6548\u3002",
+          openImConfigCardHint:
+            "open-im \u5b8c\u6574\u914d\u7f6e\u3002\u5148\u683c\u5f0f\u5316\u518d\u4fdd\u5b58\uff1bJSON \u4e0d\u5408\u6cd5\u65f6\u65e0\u6cd5\u5199\u5165\u3002",
+          claudeSettingsCardHint:
+            "Claude SDK \u73af\u5883\u53d8\u91cf\uff08ANTHROPIC_API_KEY\u3001ANTHROPIC_BASE_URL\u3001ANTHROPIC_MODEL \u7b49\uff09\u3002\u5728\u6b64\u914d\u7f6e API\uff0c\u65e0\u9700\u5728\u7ec8\u7aef export\u3002",
+          claudeJsonShortcutHint:
+            "\u63d0\u793a\uff1a\u8bf7\u5728\u5de6\u4fa7\u680f\u300c\u914d\u7f6e\u6587\u4ef6\u300d\u5206\u533a\u7f16\u8f91 ~/.claude/settings.json\u3002",
           platformsHint: "\u5efa\u8bae\u5148\u5728\u6982\u89c8\u9875\u6309\u5f15\u5bfc\u6b65\u9aa4\u64cd\u4f5c\u3002\u7981\u7528\u7684\u5e73\u53f0\u4ecd\u4fdd\u7559\u5df2\u4fdd\u5b58\u7684\u503c\u3002",
           enabled: "\u542f\u7528",
           readyState: "\u5df2\u5c31\u7eea",
@@ -246,7 +266,7 @@ export const PAGE_TEXTS = {
           optional: "\u53ef\u9009",
           commaSeparatedIds: "\u591a\u4e2a ID \u7528\u9017\u53f7\u5206\u9694",
           aiTitle: "AI \u5de5\u5177\u914d\u7f6e",
-          aiHint: "\u5148\u9009\u9ed8\u8ba4 AI\u3002Claude SDK \u7684 API Key \u5199\u5728 ~/.claude/settings.json\uff08\u4e0b\u65b9\u53ef\u7f16\u8f91\uff09\u3002Codex / CodeBuddy \u9700\u586b CLI \u8def\u5f84\u3002",
+          aiHint: "\u5148\u9009\u9ed8\u8ba4 AI\u3002Claude SDK\uff1a\u5de6\u4fa7\u680f\u300c\u914d\u7f6e\u6587\u4ef6\u300d\u2192 ~/.claude/settings.json\u3002Codex / CodeBuddy \u5728\u6b64\u586b CLI \u8def\u5f84\u3002",
           claudeNote: "Claude \u51ed\u8bc1\u4ecd\u7136\u4ece\u73af\u5883\u53d8\u91cf\u6216 ~/.claude/settings.json \u8bfb\u53d6\u3002\u8fd9\u4e2a\u9875\u9762\u53ea\u7ba1\u7406\u672c\u5730\u6865\u63a5\u914d\u7f6e\uff0c\u4e0d\u8d1f\u8d23 Claude \u8d26\u53f7\u767b\u5f55\u3002",
           aiCommonTitle: "\u516c\u5171\u9ed8\u8ba4\u914d\u7f6e",
           aiCommonHint: "\u5148\u9009\u62e9\u9ed8\u8ba4 AI \u5de5\u5177\uff0c\u4e0b\u65b9\u518d\u663e\u793a\u5bf9\u5e94\u7684\u5de5\u5177\u4e13\u5c5e\u914d\u7f6e\u3002",
@@ -300,7 +320,7 @@ export const PAGE_TEXTS = {
           wizardStep1Title: "\u63a5\u5165\u4e00\u4e2a IM \u6e20\u9053",
           wizardStep1Desc: "\u5728\u4e0b\u65b9\u542f\u7528\u81f3\u5c11\u4e00\u4e2a\u5e73\u53f0\uff0c\u5e76\u586b\u5199\u6240\u6709\u5fc5\u586b\u9879\u3002\u6709\u6761\u4ef6\u65f6\u7528\u300c\u6821\u9a8c\u914d\u7f6e\u300d\u6d4b\u8bd5\u51ed\u8bc1\u3002",
           wizardStep2Title: "\u8bbe\u7f6e\u9ed8\u8ba4 AI \u5de5\u5177",
-          wizardStep2Desc: "Claude SDK\uff1aAPI Key \u5199\u5728 ~/.claude/settings.json\uff08\u672c\u9875\u53ef\u5c55\u5f00\u7f16\u8f91\uff09\u3002Codex / CodeBuddy\uff1a\u5728 AI \u533a\u586b CLI \u8def\u5f84\u3002",
+          wizardStep2Desc: "Claude SDK\uff1a\u5728\u5de6\u4fa7\u680f\u300c\u914d\u7f6e\u6587\u4ef6\u300d\u7f16\u8f91 ~/.claude/settings.json\u3002Codex / CodeBuddy\uff1a\u5728 AI \u533a\u586b CLI \u8def\u5f84\u3002",
           wizardStep3Title: "\u6821\u9a8c\u5e76\u4fdd\u5b58",
           wizardStep3Desc: "\u5148\u70b9\u300c\u6821\u9a8c\u300d\uff0c\u518d\u70b9\u300c\u4fdd\u5b58\u914d\u7f6e\u300d\u3002\u6309\u9876\u90e8\u63d0\u793a\u4fee\u590d\u9519\u8bef\u3002",
           wizardStep4Title: "\u542f\u52a8\u6865\u63a5",
@@ -318,7 +338,7 @@ export const PAGE_TEXTS = {
           onboardingDismiss: "\u77e5\u9053\u4e86",
           onboardingReadme: "README\uff08\u90e8\u7f72\u8bf4\u660e\uff09",
           onboardingBody:
-            "<p><strong>open-im</strong> \u5728\u672c\u673a\u628a Telegram\u3001\u98de\u4e66\u3001QQ\u3001\u4f01\u5fae\u3001\u9489\u9489\u3001WorkBuddy \u7b49\u6e20\u9053\u8fde\u5230 Claude / Codex / CodeBuddy\u3002</p><ol style=\"margin:12px 0 12px 18px;line-height:1.65\"><li>\u5728<strong>\u5e73\u53f0\u914d\u7f6e</strong>\u9009\u4e00\u4e2a\u804a\u5929\u5e94\u7528\uff0c\u6309\u5b57\u6bb5\u4e0b\u65b9\u63d0\u793a\u586b\u51ed\u8bc1\u3002</li><li>\u8bbe<strong>\u9ed8\u8ba4 AI</strong>\uff1b\u7528 Claude SDK \u65f6\u628a API Key \u5199\u8fdb<strong>~/.claude/settings.json</strong>\uff08\u672c\u9875\u53ef\u7f16\u8f91\uff09\u3002</li><li>\u5148<strong>\u6821\u9a8c</strong>\u518d<strong>\u4fdd\u5b58\u914d\u7f6e</strong>\uff0c\u7136\u540e\u5230<strong>\u670d\u52a1</strong>\u542f\u52a8\u6865\u63a5\u3002</li><li>\u4e5f\u53ef\u5728\u7ec8\u7aef\u8fd0\u884c <code style=\"background:var(--bg-tertiary);padding:2px 6px;border-radius:4px\">open-im init</code> \u4ea4\u4e92\u914d\u7f6e\u3002</li></ol>",
+            "<p><strong>open-im</strong> \u5728\u672c\u673a\u628a Telegram\u3001\u98de\u4e66\u3001QQ\u3001\u4f01\u5fae\u3001\u9489\u9489\u3001WorkBuddy \u7b49\u6e20\u9053\u8fde\u5230 Claude / Codex / CodeBuddy\u3002</p><ol style=\"margin:12px 0 12px 18px;line-height:1.65\"><li>\u5728<strong>\u5e73\u53f0\u914d\u7f6e</strong>\u9009\u4e00\u4e2a\u804a\u5929\u5e94\u7528\uff0c\u6309\u5b57\u6bb5\u4e0b\u65b9\u63d0\u793a\u586b\u51ed\u8bc1\u3002</li><li>\u5728<strong>AI \u5de5\u5177\u914d\u7f6e</strong>\u8bbe\u9ed8\u8ba4 AI\uff1b\u7528 Claude SDK \u65f6\u5728\u5de6\u4fa7<strong>\u914d\u7f6e\u6587\u4ef6</strong>\u5206\u533a\u7f16\u8f91<strong>~/.claude/settings.json</strong>\u3002</li><li>\u540c\u4e00<strong>\u914d\u7f6e\u6587\u4ef6</strong>\u5206\u533a\u53ef\u7f16\u8f91<strong>~/.open-im/config.json</strong>\u3002</li><li>\u5148<strong>\u6821\u9a8c</strong>\u518d<strong>\u4fdd\u5b58\u914d\u7f6e</strong>\uff0c\u7136\u540e\u5230<strong>\u670d\u52a1</strong>\u542f\u52a8\u6865\u63a5\u3002</li><li>\u4e5f\u53ef\u5728\u7ec8\u7aef\u8fd0\u884c <code style=\"background:var(--bg-tertiary);padding:2px 6px;border-radius:4px\">open-im init</code> \u4ea4\u4e92\u914d\u7f6e\u3002</li></ol>",
           tipTelegramToken:
             '\u5728 Telegram \u641c <a href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather</a>\uff0c\u53d1 /newbot \u521b\u5efa\u673a\u5668\u4eba\u540e\u590d\u5236 Token\u3002',
           tipFeishuAppId: "\u98de\u4e66\u5f00\u653e\u5e73\u53f0 \u2192 \u5e94\u7528 \u2192 \u51ed\u8bc1\u4e0e\u57fa\u7840\u4fe1\u606f \u2192 App ID\u3002",

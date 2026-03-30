@@ -499,6 +499,20 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
         align-items: center;
       }
 
+      .config-files-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+      .config-file-card .card-title.mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .config-file-card textarea {
+        width: 100%;
+      }
+
       /* Platform Cards */
       .platform-grid {
         display: grid;
@@ -910,6 +924,15 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
               <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
             </svg>
             <span id="navPlatformsText">Platforms</span>
+          </button>
+          <button class="nav-item" id="navConfigFilesBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+            <span id="navConfigFilesText">Config files</span>
           </button>
           <button class="nav-item" id="navAiBtn">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1369,35 +1392,7 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                       <input id="ai-claudeConfigPath" class="form-input mono" type="text" readonly style="background: var(--bg-secondary);" />
                       <div class="form-hint" id="ai-claudeConfigPath-hint">Environment variables are saved to ~/.claude/settings.json</div>
                     </div>
-                    <div class="form-group">
-                      <details id="openImConfigContainer">
-                        <summary class="form-label" style="cursor: pointer;" id="openImConfigSummary">~/.open-im/config.json</summary>
-                        <div style="margin-top: 12px;">
-                          <div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:8px;">
-                            <button type="button" id="formatJsonButton" class="btn btn-sm btn-ghost"><span id="formatJsonButtonText">Format</span></button>
-                            <button type="button" id="resetJsonButton" class="btn btn-sm btn-ghost"><span id="resetJsonButtonText">Reset</span></button>
-                          </div>
-                          <textarea id="configJson" class="form-input mono" rows="16" style="font-family:monospace; font-size:13px; line-height:1.5; min-height:320px; resize:vertical; white-space:pre;" spellcheck="false"></textarea>
-                          <div id="jsonValidationMessage" class="message hidden" style="margin-top:6px;" aria-live="polite"></div>
-                          <div style="margin-top: 8px;">
-                            <button type="button" id="saveOpenImConfigBtn" class="btn btn-secondary btn-sm"><span id="saveOpenImConfigBtnText">Save</span></button>
-                          </div>
-                        </div>
-                      </details>
-                      <details id="claudeSettingsContainer" style="margin-top: 12px;">
-                        <summary class="form-label" style="cursor: pointer;" id="claudeSettingsSummary">~/.claude/settings.json</summary>
-                        <div style="margin-top: 12px;">
-                          <textarea
-                            id="claudeSettingsEditor"
-                            class="form-input mono"
-                            style="min-height: 180px; white-space: pre; font-family: var(--font-mono);"
-                          ></textarea>
-                          <div style="margin-top: 8px;">
-                            <button type="button" id="saveClaudeSettingsBtn" class="btn btn-secondary btn-sm"><span id="saveClaudeSettingsBtnText">Save</span></button>
-                          </div>
-                        </div>
-                      </details>
-                    </div>
+                    <p class="form-hint" id="claudeJsonShortcutHint"></p>
                   </div>
 
                   <div id="ai-tool-codex" class="ai-tool-panel" data-tool-panel="codex">
@@ -1424,6 +1419,51 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                       <label class="form-label" id="ai-codebuddyTimeoutMs-label">Timeout (ms)</label>
                       <input id="ai-codebuddyTimeoutMs" class="form-input" type="number" min="1" />
                     </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Standalone JSON editors (~/.open-im/config.json & ~/.claude/settings.json) -->
+          <section class="section" id="configFilesSection">
+            <div class="section-header">
+              <h2 class="section-title" id="configFilesTitle">Config files</h2>
+              <p class="section-description" id="configFilesHint"></p>
+            </div>
+            <div class="config-files-stack">
+              <div class="card config-file-card">
+                <div class="card-header">
+                  <h3 class="card-title mono" id="openImConfigCardTitle">~/.open-im/config.json</h3>
+                </div>
+                <div class="card-body">
+                  <p class="form-hint" id="openImConfigCardHint"></p>
+                  <div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:8px;">
+                    <button type="button" id="formatJsonButton" class="btn btn-sm btn-ghost"><span id="formatJsonButtonText">Format</span></button>
+                    <button type="button" id="resetJsonButton" class="btn btn-sm btn-ghost"><span id="resetJsonButtonText">Reset</span></button>
+                  </div>
+                  <textarea id="configJson" class="form-input mono" rows="18" style="font-family:monospace; font-size:13px; line-height:1.5; min-height:360px; resize:vertical; white-space:pre;" spellcheck="false"></textarea>
+                  <div id="jsonValidationMessage" class="message hidden" style="margin-top:6px;" aria-live="polite"></div>
+                  <div style="margin-top: 10px;">
+                    <button type="button" id="saveOpenImConfigBtn" class="btn btn-secondary btn-sm"><span id="saveOpenImConfigBtnText">Save</span></button>
+                  </div>
+                </div>
+              </div>
+              <div class="card config-file-card">
+                <div class="card-header">
+                  <h3 class="card-title mono" id="claudeSettingsCardTitle">~/.claude/settings.json</h3>
+                </div>
+                <div class="card-body">
+                  <p class="form-hint" id="claudeSettingsCardHint"></p>
+                  <textarea
+                    id="claudeSettingsEditor"
+                    class="form-input mono"
+                    rows="12"
+                    style="min-height: 220px; white-space: pre; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; line-height: 1.5; resize: vertical;"
+                    spellcheck="false"
+                  ></textarea>
+                  <div style="margin-top: 10px;">
+                    <button type="button" id="saveClaudeSettingsBtn" class="btn btn-secondary btn-sm"><span id="saveClaudeSettingsBtnText">Save</span></button>
                   </div>
                 </div>
               </div>
