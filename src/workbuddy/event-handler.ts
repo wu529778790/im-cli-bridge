@@ -35,13 +35,15 @@ export function setupWorkBuddyHandlers(
   const taskKeyByChatId = new Map<string, string>();
   const stopTaskCleanup = startTaskCleanup(runningTasks);
 
+  let currentMsgId = '';
+
   const commandHandler = new CommandHandler({
     config,
     sessionManager,
     requestQueue,
     sender: {
       sendTextReply: async (chatId: string, text: string) => {
-        // We'll handle this in the AI request
+        await sendTextReply(null, chatId, text, currentMsgId);
       },
     },
     getRunningTasksSize: () => runningTasks.size,
@@ -105,6 +107,7 @@ export function setupWorkBuddyHandlers(
   }
 
   async function handleEvent(chatId: string, msgId: string, content: string): Promise<void> {
+    currentMsgId = msgId;
     log.info(`[handleEvent] chatId=${chatId}, msgId=${msgId}, content="${content.substring(0, 100)}"`);
 
     // Use chatId as userId for WorkBuddy (WeChat KF doesn't have separate userId)
