@@ -23,6 +23,27 @@ const activeSessions = new Map<string, SDKSession>();
 // 存储正在进行的流式迭代器，用于中断
 const activeStreams = new Set<AsyncIterator<SDKMessage>>();
 
+// 空闲会话清理：跟踪最后使用时间，定期清除超时会话
+const sessionLastUsed = new Map<string, number>();
+const SESSION_IDLE_TTL_MS = 30 * 60 * 1000; // 30 分钟未使用则清理
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;  // 每 5 分钟检查一次
+
+const cleanupInterval = setInterval(() => {
+  const now = Date.now();
+  for (const [id, lastUsed] of sessionLastUsed) {
+    if (now - lastUsed > SESSION_IDLE_TTL_MS) {
+      const session = activeSessions.get(id);
+      if (session) {
+        try { session.close(); } catch { /* ignore */ }
+        activeSessions.delete(id);
+      }
+      sessionLastUsed.delete(id);
+      log.info(`Cleaned up idle session (unused ${Math.round((now - lastUsed) / 60000)}min): ${id}`);
+    }
+  }
+}, CLEANUP_INTERVAL_MS);
+cleanupInterval.unref(); // 不阻止进程退出
+
 // Mutex to serialize process.chdir() calls across concurrent users
 let chdirMutex: Promise<void> = Promise.resolve();
 function withChdirMutex<T>(fn: () => T): Promise<T> {
@@ -78,7 +99,9 @@ async function getOrCreateSession(
   const baseUrl = process.env.ANTHROPIC_BASE_URL ?? '(default)';
   log.info(`[V2] getOrCreateSession model param=${String(model ?? '')} resolved=${resolvedModel} baseUrl=${baseUrl} workDir=${workDir}`);
 
-  // Use mutex to serialize process.chdir() calls across concurrent users
+  // NOTE: process.chdir() 是进程级全局副作用，在并发服务器中不理想。
+  // 但 SDK 的 createSession/resumeSession 不接受 cwd 参数，且这些调用是同步的，
+  // 所以 mutex + try/finally 已是最优方案。如果 SDK 未来支持 cwd 选项，应移除 chdir。
   return withChdirMutex(() => {
     let session: SDKSession;
 
@@ -93,6 +116,7 @@ async function getOrCreateSession(
         const existing = activeSessions.get(sessionId);
         if (existing) {
           log.info(`Reusing existing in-memory session: ${sessionId}`);
+          sessionLastUsed.set(sessionId, Date.now());
           return { session: existing, sessionId };
         }
 
@@ -101,6 +125,7 @@ async function getOrCreateSession(
           log.info(`Attempting to resume session: ${sessionId}`);
           session = unstable_v2_resumeSession(sessionId, sessionOptions);
           activeSessions.set(sessionId, session);
+          sessionLastUsed.set(sessionId, Date.now());
           log.info(`Successfully resumed session: ${sessionId}`);
           return { session, sessionId };
         } catch (err) {
@@ -115,6 +140,7 @@ async function getOrCreateSession(
       // 暂时返回 undefined，稍后在 init 消息中获取
       const tempId = `pending-${Date.now()}`;
       activeSessions.set(tempId, session);
+      sessionLastUsed.set(tempId, Date.now());
       log.info(`Created new session (tempId: ${tempId})`);
       return { session, sessionId: tempId };
     } finally {
@@ -132,6 +158,8 @@ export class ClaudeSDKAdapter implements ToolAdapter {
    * 清理所有活跃的 SDK 会话和流
    */
   static destroy(): void {
+    clearInterval(cleanupInterval);
+
     for (const stream of activeStreams) {
       try {
         if (stream && typeof stream.return === 'function') {
@@ -151,6 +179,7 @@ export class ClaudeSDKAdapter implements ToolAdapter {
       }
     }
     activeSessions.clear();
+    sessionLastUsed.clear();
   }
 
   run(
@@ -224,6 +253,8 @@ export class ClaudeSDKAdapter implements ToolAdapter {
                   activeSessions.delete(idToClean);
                 }
                 activeSessions.set(newSessionId, session);
+                sessionLastUsed.set(newSessionId, Date.now());
+                if (idToClean) sessionLastUsed.delete(idToClean);
                 actualSessionId = newSessionId;
                 log.info(`[V2] Got actual sessionId: ${newSessionId}`);
                 callbacks.onSessionId?.(newSessionId);
@@ -363,8 +394,15 @@ export class ClaudeSDKAdapter implements ToolAdapter {
       }
     };
 
-    // 启动会话（不等待）
-    runSession();
+    // 启动会话（不等待），catch 兜底防止 unhandledRejection 导致用户请求挂起
+    runSession().catch((err) => {
+      if (!runSettled) {
+        runSettled = true;
+        const msg = err instanceof Error ? err.message : String(err);
+        log.error(`Unhandled runSession error: ${msg}`);
+        callbacks.onError(msg);
+      }
+    });
 
     return {
       abort: () => {
