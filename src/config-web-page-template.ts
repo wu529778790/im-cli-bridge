@@ -209,12 +209,39 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
       }
 
       .main-header {
+        position: sticky;
+        top: 0;
+        z-index: 30;
         background: var(--bg-primary);
         border-bottom: 1px solid var(--border-subtle);
-        padding: 16px 32px;
+        padding: 16px 32px 14px;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+      }
+      :root.dark .main-header {
+        box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06);
+      }
+      .main-header-top {
         display: flex;
         justify-content: space-between;
         align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      .main-header-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        padding-top: 12px;
+        margin: 0 -2px;
+        border-top: 1px solid var(--border-subtle);
+      }
+      .main-header-toolbar .btn {
+        flex: 0 1 auto;
       }
 
       .main-title {
@@ -953,27 +980,35 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
       <!-- Main Content -->
       <main class="main">
         <header class="main-header">
-          <div>
-            <h1 class="main-title" id="mainTitle">Dashboard</h1>
-            <p class="main-subtitle" id="mainSubtitle">Platform status and setup progress</p>
+          <div class="main-header-top">
+            <div>
+              <h1 class="main-title" id="mainTitle">Dashboard</h1>
+              <p class="main-subtitle" id="mainSubtitle">Platform status and setup progress</p>
+            </div>
+            <div class="header-actions">
+              <a href="https://github.com/wu529778790/open-im" target="_blank" class="btn btn-ghost btn-sm">
+                <svg style="width:16px;height:16px" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+                </svg>
+                <span id="footerGithubText">GitHub</span>
+              </a>
+              <button class="dark-mode-toggle" id="darkModeToggle" type="button" aria-label="Toggle dark mode">
+                <svg class="sun-icon" style="width:16px;height:16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="5"/>
+                  <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                </svg>
+                <svg class="moon-icon" style="width:16px;height:16px;display:none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+              </button>
+              <button class="lang-button" id="langButton">中文</button>
+            </div>
           </div>
-          <div class="header-actions">
-            <a href="https://github.com/wu529778790/open-im" target="_blank" class="btn btn-ghost btn-sm">
-              <svg style="width:16px;height:16px" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
-              </svg>
-              <span id="footerGithubText">GitHub</span>
-            </a>
-            <button class="dark-mode-toggle" id="darkModeToggle" type="button" aria-label="Toggle dark mode">
-              <svg class="sun-icon" style="width:16px;height:16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="5"/>
-                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
-              </svg>
-              <svg class="moon-icon" style="width:16px;height:16px;display:none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-              </svg>
-            </button>
-            <button class="lang-button" id="langButton">中文</button>
+          <div class="main-header-toolbar" id="headerToolbar" role="toolbar" aria-label="Bridge controls">
+            <button type="button" id="headerValidateButton" class="btn btn-warning btn-sm">Validate</button>
+            <button type="button" id="headerSaveButton" class="btn btn-secondary btn-sm">Save config</button>
+            <button type="button" id="headerStartButton" class="btn btn-primary btn-sm">Start bridge</button>
+            <button type="button" id="headerStopButton" class="btn btn-danger btn-sm">Stop bridge</button>
           </div>
         </header>
 

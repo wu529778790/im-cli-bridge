@@ -107,7 +107,17 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
 
       // Button state
       const setBusy = (busy) => {
-        ["validateButton","saveButton","startButton","stopButton","langButton"].forEach((id) => {
+        [
+          "validateButton",
+          "saveButton",
+          "startButton",
+          "stopButton",
+          "headerValidateButton",
+          "headerSaveButton",
+          "headerStartButton",
+          "headerStopButton",
+          "langButton",
+        ].forEach((id) => {
           const node = el(id);
           if (node) node.disabled = busy;
         });
@@ -254,6 +264,10 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           { id: "saveButton", key: "save" },
           { id: "startButton", key: "start" },
           { id: "stopButton", key: "stop" },
+          { id: "headerValidateButton", key: "validate" },
+          { id: "headerSaveButton", key: "save" },
+          { id: "headerStartButton", key: "start" },
+          { id: "headerStopButton", key: "stop" },
         ],
         testButtons: [
           { prefix: "test-", key: "test" },
@@ -343,6 +357,9 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         // Dark mode toggle aria-label
         const darkModeToggle = el("darkModeToggle");
         if (darkModeToggle) darkModeToggle.setAttribute("aria-label", t("darkModeToggle"));
+
+        const headerToolbar = el("headerToolbar");
+        if (headerToolbar) headerToolbar.setAttribute("aria-label", t("headerToolbarAria"));
 
         const readmeLink = el("onboardingReadmeLink");
         if (readmeLink && readmeLink instanceof HTMLAnchorElement) {
@@ -817,19 +834,25 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         el("darkModeToggle").onclick = toggleDarkMode;
         updateDarkMode(); // Initialize dark mode on load
 
-        // Service buttons
-        el("validateButton").onclick = validate;
-        el("saveButton").onclick = async () => {
+        // Service buttons (page footer + sticky header toolbar)
+        const onSaveClick = async () => {
           if (!validateClientSideOrAbort()) return;
           await saveClaudeSettings();
           await save();
         };
-        el("startButton").onclick = async () => {
+        const onStartClick = async () => {
           if (!validateClientSideOrAbort()) return;
           await saveClaudeSettings();
           await startService();
         };
+        el("validateButton").onclick = validate;
+        el("headerValidateButton").onclick = validate;
+        el("saveButton").onclick = onSaveClick;
+        el("headerSaveButton").onclick = onSaveClick;
+        el("startButton").onclick = onStartClick;
+        el("headerStartButton").onclick = onStartClick;
         el("stopButton").onclick = stopService;
+        el("headerStopButton").onclick = stopService;
 
         // Platform test buttons
         platformKeys.forEach((platform) => {
