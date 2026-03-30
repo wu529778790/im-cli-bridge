@@ -24,7 +24,7 @@ setInterval(() => {
       pendingReplies.delete(id);
     }
   }
-}, PENDING_MAX_AGE_MS);
+}, PENDING_MAX_AGE_MS).unref();
 
 function parseChatTarget(chatId: string): { kind: "group" | "private"; id: string } {
   if (chatId.startsWith("group:")) {

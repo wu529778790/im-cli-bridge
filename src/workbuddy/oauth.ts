@@ -11,6 +11,41 @@ const log = createLogger('WorkBuddyOAuth');
 const DEFAULT_BASE_URL = 'https://copilot.tencent.com';
 const PLATFORM = 'ide';
 
+/** Common API response wrapper */
+interface ApiResponse<T> {
+  data?: T;
+  code?: number;
+  message?: string;
+}
+
+interface AuthStateData {
+  authUrl: string;
+  state: string;
+}
+
+interface TokenData {
+  accessToken: string;
+  refreshToken?: string;
+  userId?: string;
+}
+
+interface KfLinkData {
+  success: boolean;
+  url?: string;
+  expiresIn?: number;
+  message?: string;
+}
+
+interface KfBindStatusData {
+  success: boolean;
+  bound: boolean;
+  externalUserId?: string;
+  boundAt?: string;
+  nickname?: string;
+  avatar?: string;
+  message?: string;
+}
+
 export class WorkBuddyOAuth {
   private baseUrl: string;
   private hostId: string;
@@ -53,7 +88,7 @@ export class WorkBuddyOAuth {
     if (!res.ok) {
       throw new Error(`fetchAuthState failed: ${res.status} ${res.statusText}`);
     }
-    const data = (await res.json()) as any;
+    const data = (await res.json()) as ApiResponse<AuthStateData>;
     const result = data?.data;
     if (!result?.authUrl || !result?.state) {
       throw new Error('fetchAuthState: missing authUrl or state in response');
@@ -89,7 +124,7 @@ export class WorkBuddyOAuth {
           if (body.includes('11217')) continue;
           throw new Error(`pollToken: ${res.status} ${body}`);
         }
-        const data = (await res.json()) as any;
+        const data = (await res.json()) as ApiResponse<TokenData>;
         const token = data?.data;
         if (token?.accessToken) {
           this.accessToken = token.accessToken;
@@ -100,11 +135,13 @@ export class WorkBuddyOAuth {
             userId: token.userId,
           };
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         // code 11217 = still waiting, continue polling
-        if (e?.message?.includes('11217')) continue;
+        const msg = e instanceof Error ? e.message : '';
+        const code = (e as NodeJS.ErrnoException)?.code;
+        if (msg.includes('11217')) continue;
         // network errors: retry
-        if (e?.code === 'UND_ERR_CONNECT_TIMEOUT' || e?.code === 'ECONNREFUSED') continue;
+        if (code === 'UND_ERR_CONNECT_TIMEOUT' || code === 'ECONNREFUSED') continue;
         throw e;
       }
     }
@@ -136,10 +173,11 @@ export class WorkBuddyOAuth {
           if (body.includes('12151')) continue;
           throw new Error(`getAccount: ${res.status} ${body}`);
         }
-        const data = (await res.json()) as any;
+        const data = (await res.json()) as ApiResponse<Record<string, unknown>>;
         if (data?.data) return data.data;
-      } catch (e: any) {
-        if (e?.message?.includes('12151')) continue;
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : '';
+        if (msg.includes('12151')) continue;
         throw e;
       }
     }
@@ -167,7 +205,7 @@ export class WorkBuddyOAuth {
       }
       throw new Error(`refreshToken failed: ${status} ${res.statusText}`);
     }
-    const data = (await res.json()) as any;
+    const data = (await res.json()) as ApiResponse<TokenData>;
     const token = data?.data;
     if (token?.accessToken) {
       this.accessToken = token.accessToken;
@@ -206,7 +244,8 @@ export class WorkBuddyOAuth {
       const body = await res.text().catch(() => '');
       return { success: false, message: `获取链接失败: ${res.status} ${body}` };
     }
-    return (await res.json()) as any;
+    const body = (await res.json()) as ApiResponse<KfLinkData>;
+    return body.data ?? { success: false, message: 'Empty response' };
   }
 
   /**
@@ -230,7 +269,8 @@ export class WorkBuddyOAuth {
     if (!res.ok) {
       return { success: false, bound: false, message: `查询状态失败: ${res.status}` };
     }
-    return (await res.json()) as any;
+    const body = (await res.json()) as ApiResponse<KfBindStatusData>;
+    return body.data ?? { success: false, bound: false, message: 'Empty response' };
   }
 
   /**
@@ -277,7 +317,7 @@ export class WorkBuddyOAuth {
       signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) throw new Error(`registerWorkspace failed: ${res.status} ${res.statusText}`);
-    const data = (await res.json()) as any;
+    const data = (await res.json()) as ApiResponse<CentrifugeTokens>;
     if (!data?.data) throw new Error('registerWorkspace: missing data field');
     return data.data;
   }
@@ -302,7 +342,8 @@ export class WorkBuddyOAuth {
       const body = await res.text().catch(() => '');
       throw new Error(`registerChannel failed: ${res.status} ${body}`);
     }
-    return (await res.json()) as any;
+    const body = (await res.json()) as ApiResponse<Record<string, unknown>>;
+    return body.data ?? {};
   }
 
   /**

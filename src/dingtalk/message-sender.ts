@@ -73,7 +73,7 @@ setInterval(() => {
       break; // Clean one at a time to avoid blocking
     }
   }
-}, STREAM_MAX_AGE_MS);
+}, STREAM_MAX_AGE_MS).unref();
 
 function generateMessageId(): string {
   return `${Date.now()}-${randomBytes(6).toString('hex')}`;

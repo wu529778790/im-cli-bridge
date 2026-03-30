@@ -15,7 +15,7 @@ setInterval(() => {
       chatToPlatform.delete(key);
     }
   }
-}, 60 * 60 * 1000); // Check every hour
+}, 60 * 60 * 1000).unref(); // Check every hour
 
 export function setChatUser(chatId: string, userId: string, platform?: string): void {
   chatToUser.set(chatId, userId);
