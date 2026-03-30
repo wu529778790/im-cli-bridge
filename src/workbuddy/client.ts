@@ -110,17 +110,28 @@ async function connect(): Promise<void> {
     centrifugeClient = null;
   }
 
+  // Mutex flag: prevents the heartbeat from overriding channelId while a reply is in flight.
+  let replyLock = false;
+
   // Re-registers the WeChat KF channel with the given externalUserId as channelId.
   // The WorkBuddy server uses channelId as the WeChat send_msg `touser`, so this
   // must be called with the customer's external_userid before sending each reply.
+  // Sets replyLock=true to block the heartbeat from overriding while we send.
   const registerChannelFn = async (externalUserId: string): Promise<void> => {
+    replyLock = true;
     const clawSessionId = oauth.buildSessionId(clawPath);
+    log.debug(`registerChannelFn: registering channelId=${externalUserId} (heartbeat paused)`);
     await oauth.registerChannel({
       type: 'wechatkf',
       sessionId: clawSessionId,
       channelId: externalUserId,
       userId: pc.userId ?? '',
     });
+  };
+
+  const releaseChannelLockFn = (): void => {
+    replyLock = false;
+    log.debug('registerChannelFn: reply sent, heartbeat resumed');
   };
 
   centrifugeClient = new WorkBuddyCentrifugeClient(
@@ -135,6 +146,7 @@ async function connect(): Promise<void> {
       httpAccessToken: pc.accessToken ?? '',
       workspaceSessionId,
       registerChannelFn,
+      releaseChannelLockFn,
     },
     {
       onConnected: () => {
@@ -158,6 +170,10 @@ async function connect(): Promise<void> {
 
           const doRegister = () => {
             if (stopped || channelState !== 'connected') return;
+            if (replyLock) {
+              log.debug('Heartbeat skipped (reply in progress)');
+              return;
+            }
             oauth.registerChannel({
               type: 'wechatkf',
               sessionId: clawSessionId,
@@ -176,6 +192,10 @@ async function connect(): Promise<void> {
           // Fallback: register with host sessionId
           const doRegister = () => {
             if (stopped || channelState !== 'connected') return;
+            if (replyLock) {
+              log.debug('Heartbeat skipped (reply in progress, fallback path)');
+              return;
+            }
             oauth.registerChannel({
               type: 'wechatkf',
               sessionId: workspaceSessionId,
