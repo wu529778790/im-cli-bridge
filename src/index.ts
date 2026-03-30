@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { writeFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { getConfiguredAiCommands, loadConfig, needsSetup, resolvePlatformAiCommand } from "./config.js";
 import { runInteractiveSetup, runClaudeApiSetup } from "./setup.js";
@@ -44,13 +45,14 @@ const { version: APP_VERSION } = require("../package.json") as {
 const log = createLogger("Main");
 
 async function sendLifecycleNotification(platform: string, message: string) {
-  // DingTalk 和 WorkBuddy 不支持主动发消息（OpenAPI 需 robotCode 等，易报 robot 不存在），跳过启动/关闭通知
-  if (platform === "dingtalk" || platform === "workbuddy") return;
+  // DingTalk 不支持主动发消息（OpenAPI 需 robotCode 等，易报 robot 不存在），跳过启动/关闭通知
+  if (platform === "dingtalk") return;
 
   const telegramChatId = getActiveChatId("telegram");
   const feishuChatId = getActiveChatId("feishu");
   const qqChatId = getActiveChatId("qq");
   const weworkChatId = getActiveChatId("wework");
+  const workbuddyChatId = getActiveChatId("workbuddy");
 
   const sendPromises: Promise<void>[] = [];
 
@@ -82,6 +84,14 @@ async function sendLifecycleNotification(platform: string, message: string) {
     sendPromises.push(
       sendWeWorkTextReply(weworkChatId, message).catch((err) => {
         log.debug("Failed to send WeWork notification:", err);
+      }),
+    );
+  }
+
+  if (platform === "workbuddy" && workbuddyChatId) {
+    sendPromises.push(
+      sendWorkBuddyTextReply(null, workbuddyChatId, message, randomUUID()).catch((err) => {
+        log.debug("Failed to send WorkBuddy notification:", err);
       }),
     );
   }
