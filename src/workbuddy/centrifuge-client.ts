@@ -33,9 +33,14 @@ export interface CentrifugeClientConfig {
    * Called before sending a WeChat KF reply to update the channel's channelId
    * to the current WeChat user's externalUserId.  The WorkBuddy server uses the
    * registered channelId as the WeChat send_msg `touser`, so this must match the
-   * customer we are replying to.
+   * customer we are replying to.  Also locks the heartbeat to prevent race conditions.
    */
   registerChannelFn?: (externalUserId: string) => Promise<void>;
+  /**
+   * Called after the COPILOT_RESPONSE is sent (success or failure) to release
+   * the reply lock, allowing the heartbeat to resume.
+   */
+  releaseChannelLockFn?: () => void;
 }
 
 /** Client callbacks */
@@ -271,6 +276,9 @@ export class WorkBuddyCentrifugeClient {
         }
       } catch (err) {
         log.error(`${this.logPrefix} HTTP COPILOT_RESPONSE error:`, err);
+      } finally {
+        // Release the heartbeat lock so the periodic registration can resume
+        this.config.releaseChannelLockFn?.();
       }
       return;
     }
