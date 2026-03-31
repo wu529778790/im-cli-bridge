@@ -152,12 +152,6 @@ export function runAITask(
     // 使用 aiCommand 而不是 toolAdapter.toolId，确保 sessionId 的存储和查询使用相同的 key
     const aiCommand = resolvePlatformAiCommand(config, ctx.platform as Platform);
     const toolId = toolAdapter.toolId as 'claude' | 'codex' | 'codebuddy';
-    const timeoutMs =
-      aiCommand === 'codex'
-        ? config.codexTimeoutMs
-        : aiCommand === 'codebuddy'
-          ? config.codebuddyTimeoutMs
-          : config.claudeTimeoutMs;
 
     const startRun = () => {
       log.info(`[AITask] Starting: userId=${ctx.userId}, initialSessionId=${currentSessionId ?? 'new'}, prompt="${prompt.slice(0, 50)}..."`);
@@ -293,7 +287,6 @@ export function runAITask(
         },
         },
         {
-          timeoutMs,
           model: sessionManager.getModel(ctx.userId, ctx.threadId) ?? config.claudeModel,
           chatId: ctx.chatId,
           // 默认跳过权限确认，保持全自动执行

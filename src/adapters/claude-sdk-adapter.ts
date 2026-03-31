@@ -25,12 +25,15 @@ const activeStreams = new Set<AsyncIterator<SDKMessage>>();
 
 // 空闲会话清理：跟踪最后使用时间，定期清除超时会话
 const sessionLastUsed = new Map<string, number>();
+// 跟踪正在执行任务的 session ID，防止空闲清理误杀运行中的长任务
+const runningSessions = new Set<string>();
 const SESSION_IDLE_TTL_MS = 30 * 60 * 1000; // 30 分钟未使用则清理
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;  // 每 5 分钟检查一次
 
 const cleanupInterval = setInterval(() => {
   const now = Date.now();
   for (const [id, lastUsed] of sessionLastUsed) {
+    if (runningSessions.has(id)) continue; // 跳过正在运行任务的 session
     if (now - lastUsed > SESSION_IDLE_TTL_MS) {
       const session = activeSessions.get(id);
       if (session) {
@@ -53,6 +56,7 @@ function lazyCleanupIdleSessions(): void {
   if (lazyCleanupCounter % LAZY_CLEANUP_INTERVAL !== 0) return;
   const now = Date.now();
   for (const [id, lastUsed] of sessionLastUsed) {
+    if (runningSessions.has(id)) continue; // 跳过正在运行任务的 session
     if (now - lastUsed > SESSION_IDLE_TTL_MS) {
       const s = activeSessions.get(id);
       if (s) {
@@ -238,7 +242,6 @@ export class ClaudeSDKAdapter implements ToolAdapter {
     let pendingTempId: string | undefined; // 记录临时 ID，用于 abort 时清理
     let runSettled = false;
     let currentStream: AsyncIterator<SDKMessage> | undefined; // 用于 abort 时立即中断 stream
-    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 
     const permissionMode = options?.skipPermissions
       ? ('bypassPermissions' as const)
@@ -249,6 +252,7 @@ export class ClaudeSDKAdapter implements ToolAdapter {
           : ('default' as const);
 
     const runSession = async () => {
+      let trackedRunningId: string | undefined; // 用于 finally 中清理 runningSessions
       try {
         // 检查环境变量
         const hasApiKey = !!process.env.ANTHROPIC_API_KEY;
@@ -266,6 +270,8 @@ export class ClaudeSDKAdapter implements ToolAdapter {
         if (returnedId.startsWith('pending-')) {
           pendingTempId = returnedId;
         }
+        runningSessions.add(returnedId);
+        trackedRunningId = returnedId;
 
         // 发送用户消息
         await session.send(prompt);
@@ -299,6 +305,10 @@ export class ClaudeSDKAdapter implements ToolAdapter {
                 activeSessions.set(newSessionId, session);
                 sessionLastUsed.set(newSessionId, Date.now());
                 if (idToClean) sessionLastUsed.delete(idToClean);
+                // 更新 runningSessions：移除旧 ID，添加新 ID
+                if (idToClean) runningSessions.delete(idToClean);
+                runningSessions.add(newSessionId);
+                trackedRunningId = newSessionId;
                 actualSessionId = newSessionId;
                 log.info(`[V2] Got actual sessionId: ${newSessionId}`);
                 callbacks.onSessionId?.(newSessionId);
@@ -344,7 +354,6 @@ export class ClaudeSDKAdapter implements ToolAdapter {
 
               // 检查会话错误
               if (!success) {
-                if (timeoutHandle) clearTimeout(timeoutHandle);
                 runSettled = true;
 
                 const noConvErr = errs.find((e) => e.includes('No conversation found') || e.includes('session not found'));
@@ -382,7 +391,6 @@ export class ClaudeSDKAdapter implements ToolAdapter {
               }
 
               runSettled = true;
-              if (timeoutHandle) clearTimeout(timeoutHandle);
               callbacks.onComplete(result);
               return;
             }
@@ -392,7 +400,6 @@ export class ClaudeSDKAdapter implements ToolAdapter {
           if (!streamClosed) {
             if (accumulated) {
               log.info('Stream ended without result message, using accumulated text');
-              if (timeoutHandle) clearTimeout(timeoutHandle);
               runSettled = true;
               callbacks.onComplete({
                 success: true,
@@ -406,7 +413,6 @@ export class ClaudeSDKAdapter implements ToolAdapter {
             } else {
               // 流结束但无 result 也无 accumulated：必须触发回调，否则 Promise 永远挂起
               log.warn('Stream ended with no result and no accumulated text, calling onError to prevent stuck state');
-              if (timeoutHandle) clearTimeout(timeoutHandle);
               runSettled = true;
               callbacks.onError('AI 响应异常结束（无输出），请重试');
             }
@@ -428,7 +434,6 @@ export class ClaudeSDKAdapter implements ToolAdapter {
         }
 
         runSettled = true;
-        if (timeoutHandle) clearTimeout(timeoutHandle);
         const errorObj = err as Error;
         const msg = errorObj.message || String(err);
 
@@ -457,6 +462,15 @@ export class ClaudeSDKAdapter implements ToolAdapter {
         }
 
         callbacks.onError(msg);
+      } finally {
+        // 无论成功、失败还是 abort，都从运行中集合移除
+        if (trackedRunningId) {
+          runningSessions.delete(trackedRunningId);
+        }
+        // 也清理 actualSessionId（可能在 init 后更新了）
+        if (actualSessionId && actualSessionId !== trackedRunningId) {
+          runningSessions.delete(actualSessionId);
+        }
       }
     };
 
@@ -464,35 +478,16 @@ export class ClaudeSDKAdapter implements ToolAdapter {
     runSession().catch((err) => {
       if (!runSettled) {
         runSettled = true;
-        if (timeoutHandle) clearTimeout(timeoutHandle);
         const msg = err instanceof Error ? err.message : String(err);
         log.error(`Unhandled runSession error: ${msg}`);
         callbacks.onError(msg);
       }
     });
 
-    // 强制执行超时
-    if (options?.timeoutMs && options.timeoutMs > 0) {
-      timeoutHandle = setTimeout(() => {
-        if (!runSettled) {
-          log.warn(`Session timed out after ${options.timeoutMs}ms, aborting`);
-          abortController.abort();
-          // 立即中断 stream，不等下一条消息
-          if (currentStream) {
-            try { currentStream.return?.(); } catch { /* ignore */ }
-          }
-          runSettled = true;
-          callbacks.onError(`AI 响应超时（${Math.round(options.timeoutMs! / 1000)}s），请重试`);
-        }
-      }, options.timeoutMs);
-      timeoutHandle.unref();
-    }
-
     return {
       abort: () => {
         log.info('Aborting session run');
         abortController.abort();
-        if (timeoutHandle) clearTimeout(timeoutHandle);
         // 立即中断 stream，不等下一条消息
         if (currentStream) {
           try { currentStream.return?.(); } catch { /* ignore */ }

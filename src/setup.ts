@@ -32,9 +32,9 @@ interface ExistingConfig {
   env?: Record<string, string>;
   aiCommand?: string;
   tools?: {
-    claude?: { cliPath?: string; workDir?: string; timeoutMs?: number; model?: string };
+    claude?: { cliPath?: string; workDir?: string; model?: string };
     codex?: { cliPath?: string; workDir?: string; proxy?: string };
-    codebuddy?: { cliPath?: string; timeoutMs?: number };
+    codebuddy?: { cliPath?: string };
   };
 }
 
@@ -96,11 +96,10 @@ function printManualInstructions(configPath: string): void {
   "tools": {
     "claude": {
       "cliPath": "claude",
-      "workDir": "${process.cwd().replace(/\\/g, "/")}",
-      "timeoutMs": 600000
+      "workDir": "${process.cwd().replace(/\\/g, "/")}"
     },
     "codex": { "cliPath": "codex", "workDir": "${process.cwd().replace(/\\/g, "/")}", "proxy": "http://127.0.0.1:7890" },
-    "codebuddy": { "cliPath": "codebuddy", "timeoutMs": 600000 }
+    "codebuddy": { "cliPath": "codebuddy" }
   },
   "platforms": {
     "telegram": {
@@ -979,7 +978,6 @@ export async function runInteractiveSetup(): Promise<boolean> {
         ...baseTools.claude,
         cliPath: baseTools.claude?.cliPath ?? "claude",
         workDir,
-        timeoutMs: baseTools.claude?.timeoutMs ?? 600000,
       },
       codex: {
         ...baseTools.codex,
@@ -993,7 +991,6 @@ export async function runInteractiveSetup(): Promise<boolean> {
       codebuddy: {
         ...baseTools.codebuddy,
         cliPath: baseTools.codebuddy?.cliPath ?? "codebuddy",
-        timeoutMs: baseTools.codebuddy?.timeoutMs ?? 600000,
       },
     },
   };

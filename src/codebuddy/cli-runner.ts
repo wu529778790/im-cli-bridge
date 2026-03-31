@@ -4,8 +4,6 @@ import { isAbsolute, join } from 'node:path';
 import { createLogger } from '../logger.js';
 
 const log = createLogger('CodeBuddyCli');
-const MAX_TIMEOUT_MS = 2_147_483_647;
-const DEFAULT_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 
 export interface CodeBuddyRunCallbacks {
   onText: (accumulated: string) => void;
@@ -29,25 +27,11 @@ export interface CodeBuddyRunCallbacks {
 export interface CodeBuddyRunOptions {
   skipPermissions?: boolean;
   permissionMode?: 'default' | 'acceptEdits' | 'plan';
-  timeoutMs?: number;
   model?: string;
 }
 
 export interface CodeBuddyRunHandle {
   abort: () => void;
-}
-
-function getIdleTimeoutMs(totalTimeoutMs: number): number {
-  const raw = process.env.CODEBUDDY_IDLE_TIMEOUT_MS;
-  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
-  const configuredIdleTimeoutMs =
-    Number.isFinite(parsed) && parsed > 0
-      ? Math.min(parsed, MAX_TIMEOUT_MS)
-      : DEFAULT_IDLE_TIMEOUT_MS;
-
-  return totalTimeoutMs > 0
-    ? Math.min(configuredIdleTimeoutMs, totalTimeoutMs)
-    : configuredIdleTimeoutMs;
 }
 
 export function buildCodeBuddyArgs(
@@ -279,49 +263,7 @@ export function runCodeBuddy(
   const toolStats: Record<string, number> = {};
   const startTime = Date.now();
 
-  const timeoutMs =
-    options?.timeoutMs && options.timeoutMs > 0
-      ? Math.min(options.timeoutMs, MAX_TIMEOUT_MS)
-      : 0;
-  const idleTimeoutMs = getIdleTimeoutMs(timeoutMs);
-
-  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-  let idleTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
   const stdoutState = { buffer: '' };
-
-  const clearTimers = () => {
-    if (timeoutHandle) {
-      clearTimeout(timeoutHandle);
-      timeoutHandle = null;
-    }
-    if (idleTimeoutHandle) {
-      clearTimeout(idleTimeoutHandle);
-      idleTimeoutHandle = null;
-    }
-  };
-
-  const resetIdleTimeout = () => {
-    if (idleTimeoutMs <= 0 || completed) return;
-    if (idleTimeoutHandle) clearTimeout(idleTimeoutHandle);
-    idleTimeoutHandle = setTimeout(() => {
-      if (completed) return;
-      completed = true;
-      clearTimers();
-      if (!child.killed) child.kill('SIGTERM');
-      callbacks.onError(`CodeBuddy 执行长时间无输出，已自动终止（${idleTimeoutMs}ms）`);
-    }, idleTimeoutMs);
-  };
-
-  if (timeoutMs > 0) {
-    timeoutHandle = setTimeout(() => {
-      if (completed) return;
-      completed = true;
-      clearTimers();
-      if (!child.killed) child.kill('SIGTERM');
-      callbacks.onError(`CodeBuddy 执行超时（${timeoutMs}ms），已终止`);
-    }, timeoutMs);
-  }
-  resetIdleTimeout();
 
   const MAX_STDERR = 8 * 1024;
   let stderrText = '';
@@ -382,7 +324,6 @@ export function runCodeBuddy(
     if (type === 'result') {
       if (completed) return;
       completed = true;
-      clearTimers();
       const isError = payload.is_error === true;
       const resultText =
         typeof payload.result === 'string'
@@ -411,7 +352,6 @@ export function runCodeBuddy(
   };
 
   child.stdout?.on('data', (chunk: Buffer) => {
-    resetIdleTimeout();
     stdoutState.buffer += chunk.toString();
     const payloads = extractBufferedPayloads(stdoutState);
     for (const payload of payloads) {
@@ -424,7 +364,6 @@ export function runCodeBuddy(
   });
 
   child.stderr?.on('data', (chunk: Buffer) => {
-    resetIdleTimeout();
     stderrText += chunk.toString();
     if (stderrText.length > MAX_STDERR) {
       stderrText = stderrText.slice(-MAX_STDERR);
@@ -432,7 +371,6 @@ export function runCodeBuddy(
   });
 
   child.on('close', (code) => {
-    clearTimers();
     if (completed) return;
 
     if (stdoutState.buffer.trim()) {
@@ -466,7 +404,6 @@ export function runCodeBuddy(
   });
 
   child.on('error', (err) => {
-    clearTimers();
     if (completed) return;
     completed = true;
     callbacks.onError(`Failed to start CodeBuddy CLI: ${err.message}`);
@@ -475,7 +412,6 @@ export function runCodeBuddy(
   return {
     abort: () => {
       completed = true;
-      clearTimers();
       if (!child.killed) child.kill('SIGTERM');
     },
   };

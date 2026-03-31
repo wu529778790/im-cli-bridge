@@ -10,7 +10,6 @@ import { sendTextReply, sendErrorReply } from './message-sender.js';
 import { CommandHandler } from '../commands/handler.js';
 import { getAdapter } from '../adapters/registry.js';
 import { runAITask, type TaskRunState } from '../shared/ai-task.js';
-import { startTaskCleanup } from '../shared/task-cleanup.js';
 import { WORKBUDDY_THROTTLE_MS } from '../constants.js';
 import { setActiveChatId } from '../shared/active-chats.js';
 import { setChatUser } from '../shared/chat-user-map.js';
@@ -33,7 +32,6 @@ export function setupWorkBuddyHandlers(
   const requestQueue = new RequestQueue();
   const runningTasks = new Map<string, TaskRunState>();
   const taskKeyByChatId = new Map<string, string>();
-  const stopTaskCleanup = startTaskCleanup(runningTasks);
 
   // Base dependencies for creating per-event CommandHandler
   const baseCommandDeps = {
@@ -160,7 +158,7 @@ export function setupWorkBuddyHandlers(
   }
 
   return {
-    stop: () => stopTaskCleanup(),
+    stop: () => {},
     getRunningTaskCount: () => runningTasks.size,
     handleEvent,
   };

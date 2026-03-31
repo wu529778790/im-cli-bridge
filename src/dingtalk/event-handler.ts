@@ -18,7 +18,6 @@ import { ackMessage, downloadRobotMessageFile, registerSessionWebhook } from './
 import { CommandHandler } from '../commands/handler.js';
 import { getAdapter } from '../adapters/registry.js';
 import { runAITask, type TaskRunState } from '../shared/ai-task.js';
-import { startTaskCleanup } from '../shared/task-cleanup.js';
 import { setActiveChatId, setDingTalkActiveTarget } from '../shared/active-chats.js';
 import { setChatUser } from '../shared/chat-user-map.js';
 import { createLogger } from '../logger.js';
@@ -203,7 +202,6 @@ export function setupDingTalkHandlers(
   const accessControl = new AccessControl(config.dingtalkAllowedUserIds);
   const requestQueue = new RequestQueue();
   const runningTasks = new Map<string, TaskRunState>();
-  const stopTaskCleanup = startTaskCleanup(runningTasks);
 
   const commandHandler = new CommandHandler({
     config,
@@ -382,7 +380,7 @@ export function setupDingTalkHandlers(
   }
 
   return {
-    stop: () => stopTaskCleanup(),
+    stop: () => {},
     getRunningTaskCount: () => runningTasks.size,
     handleEvent,
   };
