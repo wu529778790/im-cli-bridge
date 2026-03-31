@@ -1238,10 +1238,6 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                 <div class="ai-card-body">
                   <div id="ai-tool-claude" class="ai-tool-panel active" data-tool-panel="claude">
                     <div class="form-group">
-                      <label class="form-label" id="ai-claudeTimeoutMs-label">Timeout (ms)</label>
-                      <input id="ai-claudeTimeoutMs" class="form-input" type="number" min="1" />
-                    </div>
-                    <div class="form-group">
                       <label class="form-label" id="ai-claudeProxy-label">Proxy (optional)</label>
                       <input id="ai-claudeProxy" class="form-input mono" type="text" />
                       <div class="form-hint" id="ai-claudeProxy-hint">HTTP proxy for API requests (e.g., http://127.0.0.1:7890)</div>
@@ -1260,10 +1256,6 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                       <input id="ai-codexCliPath" class="form-input mono" type="text" />
                     </div>
                     <div class="form-group">
-                      <label class="form-label" id="ai-codexTimeoutMs-label">Timeout (ms)</label>
-                      <input id="ai-codexTimeoutMs" class="form-input" type="number" min="1" />
-                    </div>
-                    <div class="form-group">
                       <label class="form-label" id="ai-codexProxy-label">Proxy (optional)</label>
                       <input id="ai-codexProxy" class="form-input mono" type="text" />
                     </div>
@@ -1273,10 +1265,6 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                     <div class="form-group">
                       <label class="form-label" id="ai-codebuddyCliPath-label">CLI Path</label>
                       <input id="ai-codebuddyCliPath" class="form-input mono" type="text" />
-                    </div>
-                    <div class="form-group">
-                      <label class="form-label" id="ai-codebuddyTimeoutMs-label">Timeout (ms)</label>
-                      <input id="ai-codebuddyTimeoutMs" class="form-input" type="number" min="1" />
                     </div>
                   </div>
                 </div>

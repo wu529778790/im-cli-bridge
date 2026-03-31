@@ -151,14 +151,11 @@ interface WebConfigPayload {
   ai: {
     aiCommand: "claude" | "codex" | "codebuddy";
     claudeWorkDir: string;
-    claudeTimeoutMs: number;
     claudeConfigPath: string;
     claudeAuthToken: string;
     claudeBaseUrl: string;
     claudeModel: string;
     claudeProxy: string;
-    codexTimeoutMs: number;
-    codebuddyTimeoutMs: number;
     codexCliPath: string;
     codebuddyCliPath: string;
     codexProxy: string;
@@ -343,7 +340,6 @@ function buildInitialPayload(file: FileConfig): WebConfigPayload {
     ai: {
       aiCommand: (file.aiCommand as "claude" | "codex" | "codebuddy") ?? "claude",
       claudeWorkDir: file.tools?.claude?.workDir ?? process.cwd(),
-      claudeTimeoutMs: file.tools?.claude?.timeoutMs ?? 600000,
       claudeConfigPath: process.platform === 'win32'
         ? getClaudeConfigHome() + "\\.claude\\settings.json"
         : getClaudeConfigHome() + "/.claude/settings.json",
@@ -351,8 +347,6 @@ function buildInitialPayload(file: FileConfig): WebConfigPayload {
       claudeBaseUrl: claudeEnv.ANTHROPIC_BASE_URL ?? "",
       claudeModel: claudeEnv.ANTHROPIC_MODEL ?? "",
       claudeProxy: file.tools?.claude?.proxy ?? "",
-      codexTimeoutMs: file.tools?.codex?.timeoutMs ?? 600000,
-      codebuddyTimeoutMs: file.tools?.codebuddy?.timeoutMs ?? 600000,
       codexCliPath: file.tools?.codex?.cliPath ?? "codex",
       codebuddyCliPath: file.tools?.codebuddy?.cliPath ?? "codebuddy",
       codexProxy: file.tools?.codex?.proxy ?? "",
@@ -379,9 +373,6 @@ function validatePayload(payload: WebConfigPayload): string[] {
   if (payload.platforms.workbuddy.enabled && !clean(payload.platforms.workbuddy.refreshToken)) errors.push("WorkBuddy refresh token is required.");
   if (payload.platforms.workbuddy.enabled && !clean(payload.platforms.workbuddy.userId)) errors.push("WorkBuddy user ID is required.");
   if (!clean(payload.ai.claudeWorkDir)) errors.push("Default work directory is required.");
-  if (!Number.isFinite(payload.ai.claudeTimeoutMs) || payload.ai.claudeTimeoutMs <= 0) errors.push("Claude timeout must be positive.");
-  if (!Number.isFinite(payload.ai.codexTimeoutMs) || payload.ai.codexTimeoutMs <= 0) errors.push("Codex timeout must be positive.");
-  if (!Number.isFinite(payload.ai.codebuddyTimeoutMs) || payload.ai.codebuddyTimeoutMs <= 0) errors.push("CodeBuddy timeout must be positive.");
   return errors;
 }
 
@@ -482,9 +473,6 @@ function createProbeConfig(values: Partial<Config>): Config {
     aiCommand: "claude",
     codexCliPath: "codex",
     claudeWorkDir: process.cwd(),
-    claudeTimeoutMs: 600000,
-    codexTimeoutMs: 600000,
-    codebuddyTimeoutMs: 600000,
     logDir: "",
     logLevel: "INFO",
     codebuddyCliPath: "codebuddy",
@@ -668,7 +656,6 @@ function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConf
       claude: {
         ...existing.tools?.claude,
         workDir: clean(payload.ai.claudeWorkDir) ?? process.cwd(),
-        timeoutMs: payload.ai.claudeTimeoutMs,
         proxy: clean(payload.ai.claudeProxy),
         // model is now saved to ~/.claude/settings.json as env var
       },
@@ -676,13 +663,11 @@ function toFileConfig(payload: WebConfigPayload, existing: FileConfig): FileConf
         ...existing.tools?.codex,
         cliPath: clean(payload.ai.codexCliPath) ?? "codex",
         workDir: clean(payload.ai.claudeWorkDir) ?? process.cwd(),
-        timeoutMs: payload.ai.codexTimeoutMs,
         proxy: clean(payload.ai.codexProxy),
       },
       codebuddy: {
         ...existing.tools?.codebuddy,
         cliPath: clean(payload.ai.codebuddyCliPath) ?? "codebuddy",
-        timeoutMs: payload.ai.codebuddyTimeoutMs,
       },
     },
     platforms: {

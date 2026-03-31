@@ -75,7 +75,6 @@ This is a multi-platform IM bridge that connects Telegram, Feishu, WeCom, DingTa
   - `ai-task.ts` - AI task execution and cleanup
   - `active-chats.ts` - Active chat tracking
   - `message-dedup.ts` - Message deduplication
-  - `task-cleanup.ts` - Task cleanup utilities
 
 ### Configuration
 

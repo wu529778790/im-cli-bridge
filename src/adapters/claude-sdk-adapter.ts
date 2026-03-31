@@ -238,7 +238,6 @@ export class ClaudeSDKAdapter implements ToolAdapter {
     let pendingTempId: string | undefined; // 记录临时 ID，用于 abort 时清理
     let runSettled = false;
     let currentStream: AsyncIterator<SDKMessage> | undefined; // 用于 abort 时立即中断 stream
-    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 
     const permissionMode = options?.skipPermissions
       ? ('bypassPermissions' as const)
@@ -344,7 +343,6 @@ export class ClaudeSDKAdapter implements ToolAdapter {
 
               // 检查会话错误
               if (!success) {
-                if (timeoutHandle) clearTimeout(timeoutHandle);
                 runSettled = true;
 
                 const noConvErr = errs.find((e) => e.includes('No conversation found') || e.includes('session not found'));
@@ -382,7 +380,6 @@ export class ClaudeSDKAdapter implements ToolAdapter {
               }
 
               runSettled = true;
-              if (timeoutHandle) clearTimeout(timeoutHandle);
               callbacks.onComplete(result);
               return;
             }
@@ -392,7 +389,6 @@ export class ClaudeSDKAdapter implements ToolAdapter {
           if (!streamClosed) {
             if (accumulated) {
               log.info('Stream ended without result message, using accumulated text');
-              if (timeoutHandle) clearTimeout(timeoutHandle);
               runSettled = true;
               callbacks.onComplete({
                 success: true,
@@ -406,7 +402,6 @@ export class ClaudeSDKAdapter implements ToolAdapter {
             } else {
               // 流结束但无 result 也无 accumulated：必须触发回调，否则 Promise 永远挂起
               log.warn('Stream ended with no result and no accumulated text, calling onError to prevent stuck state');
-              if (timeoutHandle) clearTimeout(timeoutHandle);
               runSettled = true;
               callbacks.onError('AI 响应异常结束（无输出），请重试');
             }
@@ -428,7 +423,6 @@ export class ClaudeSDKAdapter implements ToolAdapter {
         }
 
         runSettled = true;
-        if (timeoutHandle) clearTimeout(timeoutHandle);
         const errorObj = err as Error;
         const msg = errorObj.message || String(err);
 
@@ -464,35 +458,16 @@ export class ClaudeSDKAdapter implements ToolAdapter {
     runSession().catch((err) => {
       if (!runSettled) {
         runSettled = true;
-        if (timeoutHandle) clearTimeout(timeoutHandle);
         const msg = err instanceof Error ? err.message : String(err);
         log.error(`Unhandled runSession error: ${msg}`);
         callbacks.onError(msg);
       }
     });
 
-    // 强制执行超时
-    if (options?.timeoutMs && options.timeoutMs > 0) {
-      timeoutHandle = setTimeout(() => {
-        if (!runSettled) {
-          log.warn(`Session timed out after ${options.timeoutMs}ms, aborting`);
-          abortController.abort();
-          // 立即中断 stream，不等下一条消息
-          if (currentStream) {
-            try { currentStream.return?.(); } catch { /* ignore */ }
-          }
-          runSettled = true;
-          callbacks.onError(`AI 响应超时（${Math.round(options.timeoutMs! / 1000)}s），请重试`);
-        }
-      }, options.timeoutMs);
-      timeoutHandle.unref();
-    }
-
     return {
       abort: () => {
         log.info('Aborting session run');
         abortController.abort();
-        if (timeoutHandle) clearTimeout(timeoutHandle);
         // 立即中断 stream，不等下一条消息
         if (currentStream) {
           try { currentStream.return?.(); } catch { /* ignore */ }

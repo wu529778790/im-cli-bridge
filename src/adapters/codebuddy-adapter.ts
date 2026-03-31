@@ -60,7 +60,6 @@ export class CodeBuddyAdapter implements ToolAdapter {
       {
         skipPermissions: options?.skipPermissions,
         permissionMode: options?.permissionMode,
-        timeoutMs: options?.timeoutMs,
         model: options?.model,
       },
     );

@@ -51,9 +51,6 @@ export interface Config {
   claudeProxy?: string;
   /** Codex 访问 chatgpt.com 的代理（如 http://127.0.0.1:7890） */
   codexProxy?: string;
-  claudeTimeoutMs: number;
-  codexTimeoutMs: number;
-  codebuddyTimeoutMs: number;
   claudeWorkDir: string;
   claudeModel?: string;
   logDir: string;
@@ -170,7 +167,6 @@ interface FilePlatformWorkBuddy {
 export interface FileToolClaude {
   cliPath?: string;
   workDir?: string;
-  timeoutMs?: number;
   skipPermissions?: boolean;
   /** HTTP/HTTPS 代理，用于访问 Claude API（如 http://127.0.0.1:7890） */
   proxy?: string;
@@ -181,14 +177,12 @@ export interface FileToolClaude {
 export interface FileToolCodex {
   cliPath?: string;
   workDir?: string;
-  timeoutMs?: number;
   /** HTTP/HTTPS 代理，用于访问 chatgpt.com（如 http://127.0.0.1:7890） */
   proxy?: string;
 }
 
 export interface FileToolCodeBuddy {
   cliPath?: string;
-  timeoutMs?: number;
 }
 
 export interface FileConfig {
@@ -227,7 +221,8 @@ const CODEX_AUTH_PATHS = [
 
 const OLD_ROOT_KEYS = [
   'claudeWorkDir',
-  'claudeTimeoutMs', 'claudeModel',
+  'claudeTimeoutMs',
+  'claudeModel',
 ] as const;
 
 // Config cache with mtime tracking
@@ -268,7 +263,6 @@ function migrateToNewConfigFormat(raw: Record<string, unknown>): Record<string, 
     claude: {
       ...tc,
       workDir: tc.workDir ?? raw.claudeWorkDir ?? process.cwd(),
-      timeoutMs: tc.timeoutMs ?? raw.claudeTimeoutMs ?? 600000,
       proxy: tc.proxy,
       // model 现在通过 env 配置，不再在这里处理
     },
@@ -276,13 +270,11 @@ function migrateToNewConfigFormat(raw: Record<string, unknown>): Record<string, 
       ...tcod,
       cliPath: tcod.cliPath ?? 'codex',
       workDir: tcod.workDir ?? raw.claudeWorkDir ?? process.cwd(),
-      timeoutMs: tcod.timeoutMs ?? raw.claudeTimeoutMs ?? 600000,
       proxy: tcod.proxy,
     },
     codebuddy: {
       ...tcb,
       cliPath: tcb.cliPath ?? 'codebuddy',
-      timeoutMs: tcb.timeoutMs ?? raw.claudeTimeoutMs ?? 600000,
     },
   };
 
@@ -677,19 +669,6 @@ export function loadConfig(): Config {
   }
   const claudeWorkDir = process.env.CLAUDE_WORK_DIR ?? tc.workDir ?? process.cwd();
 
-  const claudeTimeoutMs =
-    process.env.CLAUDE_TIMEOUT_MS !== undefined
-      ? parseInt(process.env.CLAUDE_TIMEOUT_MS, 10) || 600000
-      : tc.timeoutMs ?? 600000;
-  const codexTimeoutMs =
-    process.env.CODEX_TIMEOUT_MS !== undefined
-      ? parseInt(process.env.CODEX_TIMEOUT_MS, 10) || 600000
-      : tcod.timeoutMs ?? 600000;
-  const codebuddyTimeoutMs =
-    process.env.CODEBUDDY_TIMEOUT_MS !== undefined
-      ? parseInt(process.env.CODEBUDDY_TIMEOUT_MS, 10) || 600000
-      : tcb.timeoutMs ?? 600000;
-
   // 6. 校验 Claude API 凭证（SDK 模式需要）
   // 支持：官方 API Key、Auth Token、或自定义 API（第三方模型等，BASE_URL + token）
   if (aiCommand === 'claude') {
@@ -917,9 +896,6 @@ export function loadConfig(): Config {
     claudeProxy,
     codexProxy,
     claudeWorkDir,
-    claudeTimeoutMs,
-    codexTimeoutMs,
-    codebuddyTimeoutMs,
     claudeModel: process.env.ANTHROPIC_MODEL,
     logDir,
     logLevel,

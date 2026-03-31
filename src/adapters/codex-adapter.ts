@@ -26,7 +26,6 @@ export class CodexAdapter implements ToolAdapter {
     const opts = {
       skipPermissions: options?.skipPermissions,
       permissionMode: options?.permissionMode,
-      timeoutMs: options?.timeoutMs,
       model: options?.model,
       chatId: options?.chatId,
       hookPort: options?.hookPort,

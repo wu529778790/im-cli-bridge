@@ -10,8 +10,6 @@ import { createLogger } from '../logger.js';
 
 const log = createLogger('CodexCli');
 const windowsCodexLaunchCache = new Map<string, { command: string; args: string[] } | null>();
-const MAX_TIMEOUT_MS = 2_147_483_647;
-const DEFAULT_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 const SUPPORTED_IMAGE_EXTENSIONS = new Set([
   '.png',
   '.jpg',
@@ -23,19 +21,6 @@ const SUPPORTED_IMAGE_EXTENSIONS = new Set([
   '.tiff',
   '.avif',
 ]);
-
-function getIdleTimeoutMs(totalTimeoutMs: number): number {
-  const raw = process.env.CODEX_IDLE_TIMEOUT_MS;
-  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
-  const configuredIdleTimeoutMs =
-    Number.isFinite(parsed) && parsed > 0
-      ? Math.min(parsed, MAX_TIMEOUT_MS)
-      : DEFAULT_IDLE_TIMEOUT_MS;
-
-  return totalTimeoutMs > 0
-    ? Math.min(configuredIdleTimeoutMs, totalTimeoutMs)
-    : configuredIdleTimeoutMs;
-}
 
 export interface CodexRunCallbacks {
   onText: (accumulated: string) => void;
@@ -59,7 +44,6 @@ export interface CodexRunCallbacks {
 export interface CodexRunOptions {
   skipPermissions?: boolean;
   permissionMode?: 'default' | 'acceptEdits' | 'plan';
-  timeoutMs?: number;
   model?: string;
   chatId?: string;
   hookPort?: number;
@@ -294,60 +278,7 @@ export function runCodex(
   const toolStats: Record<string, number> = {};
   const startTime = Date.now();
 
-  const timeoutMs =
-    options?.timeoutMs && options.timeoutMs > 0
-      ? Math.min(options.timeoutMs, MAX_TIMEOUT_MS)
-      : 0;
-  const idleTimeoutMs = getIdleTimeoutMs(timeoutMs);
-
-  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-  let idleTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
-
   const rl = createInterface({ input: child.stdout! });
-
-  const clearTimers = () => {
-    if (timeoutHandle) {
-      clearTimeout(timeoutHandle);
-      timeoutHandle = null;
-    }
-    if (idleTimeoutHandle) {
-      clearTimeout(idleTimeoutHandle);
-      idleTimeoutHandle = null;
-    }
-  };
-
-  const failAndTerminate = (message: string, logMessage: string) => {
-    if (completed) return;
-    completed = true;
-    clearTimers();
-    log.warn(logMessage);
-    rl.close();
-    if (!child.killed) child.kill('SIGTERM');
-    callbacks.onError(message);
-  };
-
-  const resetIdleTimeout = () => {
-    if (idleTimeoutMs <= 0 || completed) return;
-    if (idleTimeoutHandle) clearTimeout(idleTimeoutHandle);
-    idleTimeoutHandle = setTimeout(() => {
-      failAndTerminate(
-        `Codex 执行长时间无输出，已自动终止（${idleTimeoutMs}ms）`,
-        `Codex CLI idle timeout after ${idleTimeoutMs}ms, killing pid=${child.pid}`,
-      );
-    }, idleTimeoutMs);
-  };
-
-  if (timeoutMs > 0) {
-    timeoutHandle = setTimeout(() => {
-      if (!completed && !child.killed) {
-        failAndTerminate(
-          `执行超时（${timeoutMs}ms），已终止进程`,
-          `Codex CLI timeout after ${timeoutMs}ms, killing pid=${child.pid}`,
-        );
-      }
-    }, timeoutMs);
-  }
-  resetIdleTimeout();
 
   const MAX_STDERR_HEAD = 4 * 1024;
   const MAX_STDERR_TAIL = 6 * 1024;
@@ -357,7 +288,6 @@ export function runCodex(
   let stderrHeadFull = false;
 
   child.stderr?.on('data', (chunk: Buffer) => {
-    resetIdleTimeout();
     const text = chunk.toString();
     stderrTotal += text.length;
     if (!stderrHeadFull) {
@@ -375,7 +305,6 @@ export function runCodex(
   });
 
   rl.on('line', (line) => {
-    resetIdleTimeout();
     const event = parseCodexEvent(line);
     if (!event) return;
 
@@ -390,7 +319,6 @@ export function runCodex(
 
     if (type === 'turn.failed') {
       completed = true;
-      clearTimers();
       const err = event.error as { message?: string } | undefined;
       callbacks.onError(err?.message ?? 'Codex turn failed');
       return;
@@ -402,7 +330,6 @@ export function runCodex(
         return;
       }
       completed = true;
-      clearTimers();
       callbacks.onError(msg ?? 'Codex stream error');
       return;
     }
@@ -463,7 +390,6 @@ export function runCodex(
 
     if (type === 'turn.completed') {
       completed = true;
-      clearTimers();
       callbacks.onComplete({
         success: true,
         result: accumulated,
@@ -482,7 +408,6 @@ export function runCodex(
 
   const finalize = () => {
     if (!rlClosed || !childClosed) return;
-    clearTimers();
     if (completed) return;
 
     if (exitCode !== null && exitCode !== 0) {
@@ -537,7 +462,6 @@ export function runCodex(
   child.on('error', (err) => {
     const errorCode = (err as NodeJS.ErrnoException).code;
     log.error(`Codex CLI spawn error: ${err.message}, code=${errorCode}, path=${cliPath}`);
-    clearTimers();
     if (!completed) {
       completed = true;
       callbacks.onError(`Failed to start Codex CLI: ${err.message}`);
@@ -549,7 +473,6 @@ export function runCodex(
   return {
     abort: () => {
       completed = true;
-      clearTimers();
       rl.close();
       if (!child.killed) child.kill('SIGTERM');
     },

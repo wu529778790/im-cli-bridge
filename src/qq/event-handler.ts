@@ -15,7 +15,6 @@ import {
 import { CommandHandler } from "../commands/handler.js";
 import { getAdapter } from "../adapters/registry.js";
 import { runAITask, type TaskRunState } from "../shared/ai-task.js";
-import { startTaskCleanup } from "../shared/task-cleanup.js";
 import { setActiveChatId } from "../shared/active-chats.js";
 import { setChatUser } from "../shared/chat-user-map.js";
 import { createLogger } from "../logger.js";
@@ -145,7 +144,6 @@ export function setupQQHandlers(
   const runningTasks = new Map<string, TaskRunState>();
   const recentEventIds = new Map<string, number>();
   const recentEventFingerprints = new Map<string, number>();
-  const stopTaskCleanup = startTaskCleanup(runningTasks);
 
   const commandHandler = new CommandHandler({
     config,
@@ -323,7 +321,7 @@ export function setupQQHandlers(
   }
 
   return {
-    stop: () => stopTaskCleanup(),
+    stop: () => {},
     getRunningTaskCount: () => runningTasks.size,
     handleEvent,
   };
