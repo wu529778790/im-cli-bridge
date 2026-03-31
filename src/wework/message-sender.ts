@@ -425,9 +425,10 @@ export async function sendImageReply(chatId: string, imagePath: string): Promise
 export async function sendDirectorySelection(
   chatId: string,
   currentDir: string,
-  _userId: string
+  _userId: string,
+  reqId?: string,
 ): Promise<void> {
-  await sendTextReply(chatId, buildDirectoryMessage(currentDir));
+  await sendTextReply(chatId, buildDirectoryMessage(currentDir), reqId);
 }
 
 export function startTypingLoop(_chatId: string): () => void {

@@ -67,6 +67,7 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
       const texts = __PAGE_TEXTS__;
       let currentMeta = null;
       let cachedServiceData = null;
+      let lastHealthPayload = null;
       let currentLang = (localStorage.getItem(STORAGE_KEY_LANG) || "").startsWith("zh") ? "zh" : ((navigator.language || "").startsWith("zh") ? "zh" : "en");
 
       // Translation helper
@@ -104,7 +105,17 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
 
       // Button state
       const setBusy = (busy) => {
-        ["validateButton","saveButton","startButton","stopButton","langButton"].forEach((id) => {
+        [
+          "validateButton",
+          "saveButton",
+          "startButton",
+          "stopButton",
+          "headerValidateButton",
+          "headerSaveButton",
+          "headerStartButton",
+          "headerStopButton",
+          "langButton",
+        ].forEach((id) => {
           const node = el(id);
           if (node) node.disabled = busy;
         });
@@ -143,9 +154,9 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
       const LANGUAGE_UPDATES = {
         simpleText: [
           { id: "mainTitle", key: "dashboardTitle" },
-          { id: "mainSubtitle", key: "dashboardSubtitleFull" },
           { id: "navOverviewText", key: "dashboardTitle" },
           { id: "navPlatformsText", key: "platformsTitle" },
+          { id: "navConfigFilesText", key: "navConfigFiles" },
           { id: "navAiText", key: "aiTitle" },
           { id: "navServiceText", key: "serviceTitle" },
           { id: "footerGithubText", value: "GitHub" },
@@ -160,8 +171,13 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           { id: "statConfiguredLabel", key: "statConfiguredLabel" },
           { id: "statEnabledLabel", key: "statEnabledLabel" },
           { id: "statServiceLabel", key: "statServiceLabel" },
-          { id: "openImConfigSummary", key: "configJson" },
-          { id: "claudeSettingsSummary", key: "claudeSettingsLabel" },
+          { id: "configFilesTitle", key: "configFilesTitle" },
+          { id: "configFilesHint", key: "configFilesHint" },
+          { id: "openImConfigCardTitle", key: "configJson" },
+          { id: "openImConfigCardHint", key: "openImConfigCardHint" },
+          { id: "claudeSettingsCardTitle", key: "claudeSettingsLabel" },
+          { id: "claudeSettingsCardHint", key: "claudeSettingsCardHint" },
+          { id: "claudeJsonShortcutHint", key: "claudeJsonShortcutHint" },
           { id: "formatJsonButtonText", key: "formatJson" },
           { id: "resetJsonButtonText", key: "resetJson" },
           { id: "saveClaudeSettingsBtnText", key: "saveBtn" },
@@ -229,6 +245,10 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           { id: "saveButton", key: "save" },
           { id: "startButton", key: "start" },
           { id: "stopButton", key: "stop" },
+          { id: "headerValidateButton", key: "validate" },
+          { id: "headerSaveButton", key: "save" },
+          { id: "headerStartButton", key: "start" },
+          { id: "headerStopButton", key: "stop" },
         ],
         testButtons: [
           { prefix: "test-", key: "test" },
@@ -274,6 +294,21 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           if (helpBlock) helpBlock.innerHTML = t(key);
         });
 
+        // Short per-field tips (HTML)
+        [
+          ["telegram-botToken-tip", "tipTelegramToken"],
+          ["feishu-appId-tip", "tipFeishuAppId"],
+          ["feishu-appSecret-tip", "tipFeishuSecret"],
+          ["qq-appId-tip", "tipQqAppId"],
+          ["qq-secret-tip", "tipQqSecret"],
+          ["wework-corpId-tip", "tipWeworkCorp"],
+          ["dingtalk-clientId-tip", "tipDingtalkClient"],
+          ["workbuddy-accessToken-tip", "tipWorkbuddyToken"],
+        ].forEach(([tipId, tipKey]) => {
+          const tipEl = el(tipId);
+          if (tipEl) tipEl.innerHTML = t(tipKey);
+        });
+
         // AI labels
         LANGUAGE_UPDATES.aiLabels.forEach(({ id, key }) => {
           const label = el(id + "-label");
@@ -300,6 +335,9 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         // Dark mode toggle aria-label
         const darkModeToggle = el("darkModeToggle");
         if (darkModeToggle) darkModeToggle.setAttribute("aria-label", t("darkModeToggle"));
+
+        const headerToolbar = el("headerToolbar");
+        if (headerToolbar) headerToolbar.setAttribute("aria-label", t("headerToolbarAria"));
       }
 
       // AI tool switcher
@@ -331,6 +369,38 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         const liveSummary = el("liveSummary");
         if (liveSummary) liveSummary.textContent = summary;
         updateAiToolVisibility();
+      }
+
+      function collectClientValidationErrors() {
+        const errors = [];
+        const anyEnabled = platformDefinitions.some((p) => getChecked(p.key + "-enabled"));
+        if (!anyEnabled) {
+          errors.push(t("validationNoPlatformEnabled"));
+        }
+        platformDefinitions.forEach((platform) => {
+          if (!getChecked(platform.key + "-enabled")) return;
+          const missing = platform.requiredFields.filter((field) => !getValue(platform.key + "-" + field).trim());
+          if (missing.length > 0) {
+            errors.push(t("validationPlatformIncomplete", { platform: platform.label, fields: missing.join(", ") }));
+          }
+        });
+        const cmd = getValue("ai-aiCommand");
+        if (cmd === "codex" && !getValue("ai-codexCliPath").trim()) {
+          errors.push(t("validationAiCodexNoCli"));
+        }
+        if (cmd === "codebuddy" && !getValue("ai-codebuddyCliPath").trim()) {
+          errors.push(t("validationAiCodebuddyNoCli"));
+        }
+        return errors;
+      }
+
+      function validateClientSideOrAbort() {
+        const errors = collectClientValidationErrors();
+        if (errors.length > 0) {
+          setMessage(errors.join(" "), "error");
+          return false;
+        }
+        return true;
       }
 
       // Update dashboard with health status
@@ -386,6 +456,8 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           el("statEnabledValue").textContent = String(enabledCount);
           el("statServiceValue").textContent = serviceStatus.running ? t("serviceRunningShort") : t("serviceIdleShort");
 
+          lastHealthPayload = data;
+
           return data;
         } catch (error) {
           console.error("Failed to update dashboard:", error);
@@ -394,7 +466,7 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
 
       // Navigation
       function setActiveNav(targetId) {
-        ["navOverviewBtn","navPlatformsBtn","navAiBtn","navServiceBtn"].forEach((id) => {
+        ["navOverviewBtn","navPlatformsBtn","navConfigFilesBtn","navAiBtn","navServiceBtn"].forEach((id) => {
           const btn = el(id);
           if (btn) btn.classList.toggle("active", id === targetId);
         });
@@ -618,21 +690,6 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           }
         });
 
-        // Open-im config.json: load when expanded
-        const openImConfigContainer = document.getElementById("openImConfigContainer");
-        if (openImConfigContainer && openImConfigContainer instanceof HTMLDetailsElement) {
-          openImConfigContainer.addEventListener("toggle", () => {
-            if (openImConfigContainer.open) void loadOpenImConfig();
-          });
-        }
-        // Claude settings.json: load when expanded
-        const claudeSettingsContainer = document.getElementById("claudeSettingsContainer");
-        if (claudeSettingsContainer && claudeSettingsContainer instanceof HTMLDetailsElement) {
-          claudeSettingsContainer.addEventListener("toggle", () => {
-            if (claudeSettingsContainer.open) void loadClaudeSettings();
-          });
-        }
-
         el("saveClaudeSettingsBtn").onclick = async () => {
           try {
             await saveClaudeSettings();
@@ -681,6 +738,7 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         // Navigation
         el("navOverviewBtn").onclick = () => scrollToSection("dashboardSection", "navOverviewBtn");
         el("navPlatformsBtn").onclick = () => scrollToSection("configSection", "navPlatformsBtn");
+        el("navConfigFilesBtn").onclick = () => scrollToSection("configFilesSection", "navConfigFilesBtn");
         el("navAiBtn").onclick = () => scrollToSection("aiSection", "navAiBtn");
         el("navServiceBtn").onclick = () => scrollToSection("serviceSection", "navServiceBtn");
 
@@ -697,19 +755,25 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         el("darkModeToggle").onclick = toggleDarkMode;
         updateDarkMode(); // Initialize dark mode on load
 
-        // Service buttons
-        el("validateButton").onclick = validate;
-        el("saveButton").onclick = async () => {
-          // 先保存 JSON，再保存主配置
+        // Service buttons (page footer + sticky header toolbar)
+        const onSaveClick = async () => {
+          if (!validateClientSideOrAbort()) return;
           await saveClaudeSettings();
           await save();
         };
-        el("startButton").onclick = async () => {
-          // 启动前也顺带保存 JSON
+        const onStartClick = async () => {
+          if (!validateClientSideOrAbort()) return;
           await saveClaudeSettings();
           await startService();
         };
+        el("validateButton").onclick = validate;
+        el("headerValidateButton").onclick = validate;
+        el("saveButton").onclick = onSaveClick;
+        el("headerSaveButton").onclick = onSaveClick;
+        el("startButton").onclick = onStartClick;
+        el("headerStartButton").onclick = onStartClick;
         el("stopButton").onclick = stopService;
+        el("headerStopButton").onclick = stopService;
 
         // Platform test buttons
         platformKeys.forEach((platform) => {
@@ -725,6 +789,7 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
       async function validate() {
         setBusy(true);
         try {
+          if (!validateClientSideOrAbort()) return;
           await request("/api/config/validate", { method: "POST", body: JSON.stringify(payload()) });
           setMessage(t("validationOk"), "success");
         } catch (error) {
@@ -737,6 +802,7 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
       async function save() {
         setBusy(true);
         try {
+          if (!validateClientSideOrAbort()) return;
           // First save JSON editor content if changed
           await saveOpenImConfig();
           // Then save form data
@@ -778,9 +844,11 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
       async function startService() {
         setBusy(true);
         try {
+          if (!validateClientSideOrAbort()) return;
           await request("/api/config/save", { method: "POST", body: JSON.stringify(payload()) });
           await request("/api/service/start", { method: "POST" });
           await refreshStatus();
+          await updateDashboard();
           setMessage(t("startOk"), "success");
         } catch (error) {
           setMessage(error.message || String(error), "error");

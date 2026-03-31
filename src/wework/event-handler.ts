@@ -12,6 +12,7 @@ import {
   sendFinalMessages,
   sendTextReply,
   sendImageReply,
+  sendDirectorySelection,
   startTypingLoop,
 } from './message-sender.js';
 import { CommandHandler } from '../commands/handler.js';
@@ -234,11 +235,21 @@ export function setupWeWorkHandlers(
   const runningTasks = new Map<string, TaskRunState>();
   const stopTaskCleanup = startTaskCleanup(runningTasks);
 
+  // Mutable ref that captures the req_id of the message currently being handled.
+  // WeWork requires req_id to reply; CommandHandler doesn't carry it, so we inject
+  // it via a closure.  WeWork delivers messages sequentially over WebSocket, so
+  // there is no race condition between concurrent messages from the same bot.
+  const senderCtx = { reqId: '' };
   const commandHandler = new CommandHandler({
     config,
     sessionManager,
     requestQueue,
-    sender: { sendTextReply },
+    sender: {
+      sendTextReply: (chatId: string, text: string) =>
+        sendTextReply(chatId, text, senderCtx.reqId),
+      sendDirectorySelection: (chatId: string, currentDir: string, userId: string) =>
+        sendDirectorySelection(chatId, currentDir, userId, senderCtx.reqId),
+    },
     getRunningTasksSize: () => runningTasks.size,
   });
 
@@ -362,6 +373,7 @@ export function setupWeWorkHandlers(
     log.info('[handleEvent] Called with data:', JSON.stringify(data).slice(0, 800));
 
     const reqId = data.headers?.req_id ?? '';
+    senderCtx.reqId = reqId;
 
     try {
       const body = data.body;

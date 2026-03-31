@@ -209,24 +209,45 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
       }
 
       .main-header {
+        position: sticky;
+        top: 0;
+        z-index: 30;
         background: var(--bg-primary);
         border-bottom: 1px solid var(--border-subtle);
-        padding: 16px 32px;
+        padding: 16px 32px 14px;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+      }
+      :root.dark .main-header {
+        box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06);
+      }
+      .main-header-top {
         display: flex;
         justify-content: space-between;
         align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      .main-header-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        padding-top: 12px;
+        margin: 0 -2px;
+        border-top: 1px solid var(--border-subtle);
+      }
+      .main-header-toolbar .btn {
+        flex: 0 1 auto;
       }
 
       .main-title {
         font-size: 20px;
         font-weight: 600;
         color: var(--text-primary);
-      }
-
-      .main-subtitle {
-        font-size: 13px;
-        color: var(--text-secondary);
-        margin-top: 2px;
       }
 
       .header-actions {
@@ -354,6 +375,36 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
         color: var(--text-primary);
         margin-top: 8px;
         line-height: 1;
+      }
+
+      .field-inline-tip {
+        font-size: 12px;
+        color: var(--text-tertiary);
+        line-height: 1.45;
+        margin-top: 6px;
+      }
+      .field-inline-tip a {
+        color: var(--accent-primary);
+      }
+      .field-inline-tip code {
+        font-size: 11px;
+        background: var(--bg-tertiary);
+        padding: 1px 5px;
+        border-radius: var(--radius-xs);
+      }
+
+      .config-files-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+      .config-file-card .card-title.mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .config-file-card textarea {
+        width: 100%;
       }
 
       /* Platform Cards */
@@ -768,6 +819,15 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
             </svg>
             <span id="navPlatformsText">Platforms</span>
           </button>
+          <button class="nav-item" id="navConfigFilesBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+            <span id="navConfigFilesText">Config files</span>
+          </button>
           <button class="nav-item" id="navAiBtn">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 14a4 4 0 1 1 4-4 4 4 0 0 1-4 4z"/>
@@ -787,27 +847,34 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
       <!-- Main Content -->
       <main class="main">
         <header class="main-header">
-          <div>
-            <h1 class="main-title" id="mainTitle">Dashboard</h1>
-            <p class="main-subtitle" id="mainSubtitle">Platform status and setup progress</p>
+          <div class="main-header-top">
+            <div>
+              <h1 class="main-title" id="mainTitle">Dashboard</h1>
+            </div>
+            <div class="header-actions">
+              <a href="https://github.com/wu529778790/open-im" target="_blank" class="btn btn-ghost btn-sm">
+                <svg style="width:16px;height:16px" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+                </svg>
+                <span id="footerGithubText">GitHub</span>
+              </a>
+              <button class="dark-mode-toggle" id="darkModeToggle" type="button" aria-label="Toggle dark mode">
+                <svg class="sun-icon" style="width:16px;height:16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="5"/>
+                  <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                </svg>
+                <svg class="moon-icon" style="width:16px;height:16px;display:none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+              </button>
+              <button class="lang-button" id="langButton">中文</button>
+            </div>
           </div>
-          <div class="header-actions">
-            <a href="https://github.com/wu529778790/open-im" target="_blank" class="btn btn-ghost btn-sm">
-              <svg style="width:16px;height:16px" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
-              </svg>
-              <span id="footerGithubText">GitHub</span>
-            </a>
-            <button class="dark-mode-toggle" id="darkModeToggle" type="button" aria-label="Toggle dark mode">
-              <svg class="sun-icon" style="width:16px;height:16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="5"/>
-                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
-              </svg>
-              <svg class="moon-icon" style="width:16px;height:16px;display:none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-              </svg>
-            </button>
-            <button class="lang-button" id="langButton">中文</button>
+          <div class="main-header-toolbar" id="headerToolbar" role="toolbar" aria-label="Bridge controls">
+            <button type="button" id="headerValidateButton" class="btn btn-warning btn-sm">Validate</button>
+            <button type="button" id="headerSaveButton" class="btn btn-secondary btn-sm">Save config</button>
+            <button type="button" id="headerStartButton" class="btn btn-primary btn-sm">Start bridge</button>
+            <button type="button" id="headerStopButton" class="btn btn-danger btn-sm">Stop bridge</button>
           </div>
         </header>
 
@@ -864,6 +931,7 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                   <div class="form-group">
                     <label class="form-label" id="telegram-botToken-label">Bot Token</label>
                     <input id="telegram-botToken" class="form-input mono" type="password" />
+                    <div class="field-inline-tip" id="telegram-botToken-tip"></div>
                   </div>
                   <div class="form-group">
                     <label class="form-label" id="telegram-proxy-label">Proxy (optional)</label>
@@ -906,10 +974,12 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                   <div class="form-group">
                     <label class="form-label" id="feishu-appId-label">App ID</label>
                     <input id="feishu-appId" class="form-input mono" type="text" />
+                    <div class="field-inline-tip" id="feishu-appId-tip"></div>
                   </div>
                   <div class="form-group">
                     <label class="form-label" id="feishu-appSecret-label">App Secret</label>
                     <input id="feishu-appSecret" class="form-input mono" type="password" />
+                    <div class="field-inline-tip" id="feishu-appSecret-tip"></div>
                   </div>
                   <div class="form-group">
                     <label class="form-label" id="feishu-aiCommand-label">AI Tool</label>
@@ -947,10 +1017,12 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                   <div class="form-group">
                     <label class="form-label" id="qq-appId-label">App ID</label>
                     <input id="qq-appId" class="form-input mono" type="text" />
+                    <div class="field-inline-tip" id="qq-appId-tip"></div>
                   </div>
                   <div class="form-group">
                     <label class="form-label" id="qq-secret-label">App Secret</label>
                     <input id="qq-secret" class="form-input mono" type="password" />
+                    <div class="field-inline-tip" id="qq-secret-tip"></div>
                   </div>
                   <div class="form-group">
                     <label class="form-label" id="qq-aiCommand-label">AI Tool</label>
@@ -988,6 +1060,7 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                   <div class="form-group">
                     <label class="form-label" id="wework-corpId-label">Corp ID / Bot ID</label>
                     <input id="wework-corpId" class="form-input mono" type="text" />
+                    <div class="field-inline-tip" id="wework-corpId-tip"></div>
                   </div>
                   <div class="form-group">
                     <label class="form-label" id="wework-secret-label">Secret</label>
@@ -1029,6 +1102,7 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                   <div class="form-group">
                     <label class="form-label" id="dingtalk-clientId-label">Client ID / AppKey</label>
                     <input id="dingtalk-clientId" class="form-input mono" type="password" />
+                    <div class="field-inline-tip" id="dingtalk-clientId-tip"></div>
                   </div>
                   <div class="form-group">
                     <label class="form-label" id="dingtalk-clientSecret-label">Client Secret / AppSecret</label>
@@ -1083,6 +1157,7 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                   <div class="form-group">
                     <label class="form-label" id="workbuddy-accessToken-label">Access Token</label>
                     <input id="workbuddy-accessToken" class="form-input mono" type="password" autocomplete="off" />
+                    <div class="field-inline-tip" id="workbuddy-accessToken-tip"></div>
                   </div>
                   <div class="form-group">
                     <label class="form-label" id="workbuddy-refreshToken-label">Refresh Token</label>
@@ -1176,35 +1251,7 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                       <input id="ai-claudeConfigPath" class="form-input mono" type="text" readonly style="background: var(--bg-secondary);" />
                       <div class="form-hint" id="ai-claudeConfigPath-hint">Environment variables are saved to ~/.claude/settings.json</div>
                     </div>
-                    <div class="form-group">
-                      <details id="openImConfigContainer">
-                        <summary class="form-label" style="cursor: pointer;" id="openImConfigSummary">~/.open-im/config.json</summary>
-                        <div style="margin-top: 12px;">
-                          <div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:8px;">
-                            <button type="button" id="formatJsonButton" class="btn btn-sm btn-ghost"><span id="formatJsonButtonText">Format</span></button>
-                            <button type="button" id="resetJsonButton" class="btn btn-sm btn-ghost"><span id="resetJsonButtonText">Reset</span></button>
-                          </div>
-                          <textarea id="configJson" class="form-input mono" rows="16" style="font-family:monospace; font-size:13px; line-height:1.5; min-height:320px; resize:vertical; white-space:pre;" spellcheck="false"></textarea>
-                          <div id="jsonValidationMessage" class="message hidden" style="margin-top:6px;" aria-live="polite"></div>
-                          <div style="margin-top: 8px;">
-                            <button type="button" id="saveOpenImConfigBtn" class="btn btn-secondary btn-sm"><span id="saveOpenImConfigBtnText">Save</span></button>
-                          </div>
-                        </div>
-                      </details>
-                      <details id="claudeSettingsContainer" style="margin-top: 12px;">
-                        <summary class="form-label" style="cursor: pointer;" id="claudeSettingsSummary">~/.claude/settings.json</summary>
-                        <div style="margin-top: 12px;">
-                          <textarea
-                            id="claudeSettingsEditor"
-                            class="form-input mono"
-                            style="min-height: 180px; white-space: pre; font-family: var(--font-mono);"
-                          ></textarea>
-                          <div style="margin-top: 8px;">
-                            <button type="button" id="saveClaudeSettingsBtn" class="btn btn-secondary btn-sm"><span id="saveClaudeSettingsBtnText">Save</span></button>
-                          </div>
-                        </div>
-                      </details>
-                    </div>
+                    <p class="form-hint" id="claudeJsonShortcutHint"></p>
                   </div>
 
                   <div id="ai-tool-codex" class="ai-tool-panel" data-tool-panel="codex">
@@ -1231,6 +1278,51 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                       <label class="form-label" id="ai-codebuddyTimeoutMs-label">Timeout (ms)</label>
                       <input id="ai-codebuddyTimeoutMs" class="form-input" type="number" min="1" />
                     </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Standalone JSON editors (~/.open-im/config.json & ~/.claude/settings.json) -->
+          <section class="section" id="configFilesSection">
+            <div class="section-header">
+              <h2 class="section-title" id="configFilesTitle">Config files</h2>
+              <p class="section-description" id="configFilesHint"></p>
+            </div>
+            <div class="config-files-stack">
+              <div class="card config-file-card">
+                <div class="card-header">
+                  <h3 class="card-title mono" id="openImConfigCardTitle">~/.open-im/config.json</h3>
+                </div>
+                <div class="card-body">
+                  <p class="form-hint" id="openImConfigCardHint"></p>
+                  <div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:8px;">
+                    <button type="button" id="formatJsonButton" class="btn btn-sm btn-ghost"><span id="formatJsonButtonText">Format</span></button>
+                    <button type="button" id="resetJsonButton" class="btn btn-sm btn-ghost"><span id="resetJsonButtonText">Reset</span></button>
+                  </div>
+                  <textarea id="configJson" class="form-input mono" rows="18" style="font-family:monospace; font-size:13px; line-height:1.5; min-height:360px; resize:vertical; white-space:pre;" spellcheck="false"></textarea>
+                  <div id="jsonValidationMessage" class="message hidden" style="margin-top:6px;" aria-live="polite"></div>
+                  <div style="margin-top: 10px;">
+                    <button type="button" id="saveOpenImConfigBtn" class="btn btn-secondary btn-sm"><span id="saveOpenImConfigBtnText">Save</span></button>
+                  </div>
+                </div>
+              </div>
+              <div class="card config-file-card">
+                <div class="card-header">
+                  <h3 class="card-title mono" id="claudeSettingsCardTitle">~/.claude/settings.json</h3>
+                </div>
+                <div class="card-body">
+                  <p class="form-hint" id="claudeSettingsCardHint"></p>
+                  <textarea
+                    id="claudeSettingsEditor"
+                    class="form-input mono"
+                    rows="12"
+                    style="min-height: 220px; white-space: pre; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; line-height: 1.5; resize: vertical;"
+                    spellcheck="false"
+                  ></textarea>
+                  <div style="margin-top: 10px;">
+                    <button type="button" id="saveClaudeSettingsBtn" class="btn btn-secondary btn-sm"><span id="saveClaudeSettingsBtnText">Save</span></button>
                   </div>
                 </div>
               </div>
