@@ -81,7 +81,8 @@ export function setupWorkBuddyHandlers(
         sendComplete: async (content) => {
           const client = getCentrifugeClient();
           if (client) client.setStreamingMode(false);
-          await sendTextReply(null, chatId, content, msgId);
+          // 用 streaming 而非 end_turn，避免 CodeBuddy 平台显示 "✅ Local Agent task completed"
+          await sendStreamingReply(null, chatId, content, msgId);
         },
         sendError: async (error) => {
           const client = getCentrifugeClient();
