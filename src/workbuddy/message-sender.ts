@@ -75,3 +75,27 @@ export function sendStreamingChunk(
 
   client.sendMessageChunk(chatId, msgId, { type: 'text', text });
 }
+
+/**
+ * Send streaming reply to WeChat KF via HTTP COPILOT_RESPONSE.
+ * Used for intermediate progress updates during AI task execution.
+ */
+export async function sendStreamingReply(
+  _client: WorkBuddyCentrifugeClient | null,
+  chatId: string,
+  text: string,
+  msgId: string,
+): Promise<void> {
+  const client = _client ?? getCentrifugeClient();
+  if (!client) {
+    log.debug('WorkBuddy client not available, skipping streaming reply');
+    return;
+  }
+
+  await client.sendPromptResponse({
+    session_id: chatId,
+    prompt_id: msgId,
+    content: [{ type: 'text', text }],
+    stop_reason: 'streaming',
+  });
+}

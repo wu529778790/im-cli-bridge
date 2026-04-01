@@ -85,5 +85,5 @@ export interface PromptResponsePayload {
   prompt_id: string;
   content?: Array<{ type: string; text?: string }>;
   error?: string;
-  stop_reason: 'end_turn' | 'max_tokens' | 'tool_use' | 'stop_sequence' | 'error';
+  stop_reason: 'end_turn' | 'max_tokens' | 'tool_use' | 'stop_sequence' | 'error' | 'streaming';
 }

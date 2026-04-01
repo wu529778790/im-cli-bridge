@@ -6,7 +6,7 @@ import { resolvePlatformAiCommand, type Config } from '../config.js';
 import { AccessControl } from '../access/access-control.js';
 import type { SessionManager } from '../session/session-manager.js';
 import { RequestQueue } from '../queue/request-queue.js';
-import { sendTextReply, sendErrorReply } from './message-sender.js';
+import { sendTextReply, sendErrorReply, sendStreamingReply } from './message-sender.js';
 import { CommandHandler } from '../commands/handler.js';
 import { getAdapter } from '../adapters/registry.js';
 import { runAITask, type TaskRunState } from '../shared/ai-task.js';
@@ -14,7 +14,7 @@ import { WORKBUDDY_THROTTLE_MS } from '../constants.js';
 import { setActiveChatId } from '../shared/active-chats.js';
 import { setChatUser } from '../shared/chat-user-map.js';
 import { createLogger } from '../logger.js';
-import type { WorkBuddyCentrifugeClient } from './centrifuge-client.js';
+import { getCentrifugeClient } from './client.js';
 
 const log = createLogger('WorkBuddyHandler');
 
@@ -74,14 +74,18 @@ export function setupWorkBuddyHandlers(
       toolAdapter,
       {
         throttleMs: WORKBUDDY_THROTTLE_MS,
+        minContentDeltaChars: 200,
         streamUpdate: async (content) => {
-          // WorkBuddy doesn't support streaming updates via Centrifuge
-          log.debug(`Stream update (not sent): ${content.substring(0, 50)}...`);
+          await sendStreamingReply(null, chatId, content, msgId);
         },
         sendComplete: async (content) => {
+          const client = getCentrifugeClient();
+          if (client) client.setStreamingMode(false);
           await sendTextReply(null, chatId, content, msgId);
         },
         sendError: async (error) => {
+          const client = getCentrifugeClient();
+          if (client) client.setStreamingMode(false);
           await sendErrorReply(null, chatId, error, msgId);
         },
         extraCleanup: () => {
@@ -93,6 +97,11 @@ export function setupWorkBuddyHandlers(
         onTaskReady: (state) => {
           runningTasks.set(taskKey, state);
           taskKeyByChatId.set(chatId, taskKey);
+        },
+        onFirstContent: () => {
+          // Enable streaming mode: register channel once, then skip per-update registration
+          const client = getCentrifugeClient();
+          if (client) client.setStreamingMode(true);
         },
       },
     );
