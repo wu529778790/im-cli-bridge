@@ -142,6 +142,18 @@ export function setupWorkBuddyHandlers(
         handleAIRequest(u, c, msgId, p, w, conv)
       );
       if (handled) {
+        // /new 命令时，中止当前运行中的任务并清空队列
+        if (text === '/new') {
+          const runningTaskKey = taskKeyByChatId.get(chatId);
+          if (runningTaskKey) {
+            const state = runningTasks.get(runningTaskKey);
+            if (state) {
+              log.info(`Aborting running task ${runningTaskKey} due to /new command`);
+              state.handle.abort();
+            }
+          }
+          requestQueue.clear(userId, convId);
+        }
         log.info(`Command handled for message: ${text}`);
         return;
       }
@@ -162,7 +174,8 @@ export function setupWorkBuddyHandlers(
     if (enqueueResult === 'rejected') {
       await sendErrorReply(null, chatId, 'Request queue is full. Please try again later.', msgId);
     } else if (enqueueResult === 'queued') {
-      await sendTextReply(null, chatId, 'Your request is queued.', msgId);
+      // 用 streaming 而非 end_turn，避免 CodeBuddy 平台显示 "✅ Local Agent task completed"
+      await sendStreamingReply(null, chatId, '⏳ 请求已排队，请稍候...', msgId);
     }
   }
 

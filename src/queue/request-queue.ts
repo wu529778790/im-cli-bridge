@@ -38,6 +38,17 @@ export class RequestQueue {
     return 'running';
   }
 
+  /** 清除指定用户会话的所有排队任务（不中止正在运行的任务） */
+  clear(userId: string, convId: string): number {
+    const key = `${userId}:${convId}`;
+    const q = this.queues.get(key);
+    if (!q) return 0;
+    const cleared = q.tasks.length;
+    q.tasks.length = 0;
+    if (cleared > 0) log.info(`Cleared ${cleared} queued tasks for ${key}`);
+    return cleared;
+  }
+
   private async run(key: string, prompt: string, execute: (prompt: string) => Promise<void>): Promise<void> {
     try {
       await execute(prompt);
