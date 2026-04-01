@@ -6,7 +6,7 @@ import { resolvePlatformAiCommand, type Config } from '../config.js';
 import { AccessControl } from '../access/access-control.js';
 import type { SessionManager } from '../session/session-manager.js';
 import { RequestQueue } from '../queue/request-queue.js';
-import { sendTextReply, sendErrorReply, sendStreamingReply } from './message-sender.js';
+import { sendTextReply, sendErrorReply, sendStreamingReply, sendStreamingChunk } from './message-sender.js';
 import { CommandHandler } from '../commands/handler.js';
 import { getAdapter } from '../adapters/registry.js';
 import { runAITask, type TaskRunState } from '../shared/ai-task.js';
@@ -81,8 +81,9 @@ export function setupWorkBuddyHandlers(
         sendComplete: async (content) => {
           const client = getCentrifugeClient();
           if (client) client.setStreamingMode(false);
-          // 用 streaming 而非 end_turn，避免 CodeBuddy 平台显示 "✅ Local Agent task completed"
-          await sendStreamingReply(null, chatId, content, msgId);
+          // 不再发送 HTTP COPILOT_RESPONSE（无论 end_turn 还是 streaming 都会触发平台显示 "✅ Local Agent task completed"）
+          // 改用 Centrifuge WebSocket session.update 推送最终内容，避免触发平台的 task completed 指示器
+          sendStreamingChunk(null, chatId, content, msgId);
         },
         sendError: async (error) => {
           const client = getCentrifugeClient();
