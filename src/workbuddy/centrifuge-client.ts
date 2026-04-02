@@ -60,11 +60,6 @@ export class WorkBuddyCentrifugeClient {
   private state: WorkBuddyState = 'disconnected';
   private processedMsgIds = new Set<string>();
   private static readonly MAX_MSG_ID_CACHE = 1000;
-  private streamingActive = false;
-  private subscribedChannels = new Set<string>();
-  private lastErrorMsg = '';
-  private lastErrorTime = 0;
-  private pendingResponses: Array<{ payload: PromptResponsePayload; timestamp: number }> = [];
 
   constructor(config: CentrifugeClientConfig, callbacks: CentrifugeCallbacks = {}) {
     this.config = config;
@@ -77,29 +72,6 @@ export class WorkBuddyCentrifugeClient {
 
   getState(): WorkBuddyState {
     return this.state;
-  }
-
-  /** Enable/disable streaming mode: skip per-message channel registration during streaming. */
-  setStreamingMode(active: boolean): void {
-    this.streamingActive = active;
-    if (!active) {
-      this.config.releaseChannelLockFn?.();
-    }
-  }
-
-  /** Flush pending responses that failed to send. */
-  async flushPendingResponses(): Promise<void> {
-    if (this.pendingResponses.length === 0) return;
-    const pending = [...this.pendingResponses];
-    this.pendingResponses = [];
-    log.info(`${this.logPrefix} Flushing ${pending.length} pending responses`);
-    for (const item of pending) {
-      try {
-        await this.sendHttpResponse(item.payload);
-      } catch {
-        log.warn(`${this.logPrefix} Failed to flush pending response`);
-      }
-    }
   }
 
   start(): void {
@@ -138,16 +110,8 @@ export class WorkBuddyCentrifugeClient {
     });
 
     this.client.on('error', (ctx: any) => {
-      const msg = ctx.error?.message || String(ctx.error);
-      const now = Date.now();
-      // Suppress duplicate errors within 5 seconds to avoid log flooding
-      if (msg === this.lastErrorMsg && now - this.lastErrorTime < 5000) {
-        return;
-      }
-      this.lastErrorMsg = msg;
-      this.lastErrorTime = now;
-      log.error(`${this.logPrefix} Error: ${msg}`);
-      this.callbacks.onError?.(new Error(msg));
+      log.error(`${this.logPrefix} Error: ${ctx.error.message}`);
+      this.callbacks.onError?.(new Error(ctx.error.message));
     });
 
     // Create channel subscription
@@ -171,10 +135,6 @@ export class WorkBuddyCentrifugeClient {
     log.info(`${this.logPrefix} Stopping...`);
     this.state = 'disconnected';
     this.processedMsgIds.clear();
-    this.streamingActive = false;
-    this.subscribedChannels.clear();
-    this.lastErrorMsg = '';
-    this.pendingResponses = [];
 
     for (const sub of this.extraSubs) {
       sub.unsubscribe();
@@ -205,12 +165,6 @@ export class WorkBuddyCentrifugeClient {
       return;
     }
 
-    // Skip if already subscribed to this channel
-    if (this.subscribedChannels.has(channel)) {
-      log.info(`${this.logPrefix} Already subscribed to: ${channel}, skipping duplicate`);
-      return;
-    }
-
     log.info(`${this.logPrefix} Subscribing to additional channel: ${channel}`);
     const sub = this.client.newSubscription(channel, { token: subscriptionToken });
 
@@ -227,7 +181,6 @@ export class WorkBuddyCentrifugeClient {
     });
 
     this.extraSubs.push(sub);
-    this.subscribedChannels.add(channel);
     sub.subscribe();
   }
 
@@ -275,11 +228,15 @@ export class WorkBuddyCentrifugeClient {
   async sendPromptResponse(payload: PromptResponsePayload, _guid?: string, _userId?: string): Promise<void> {
     // WeChat KF messages: send via HTTP COPILOT_RESPONSE
     if (this.config.httpBaseUrl && this.config.httpAccessToken) {
-      const sessionId = payload.session_id;
+      const message = payload.content?.map((c) => c.text).join('') || payload.error || '';
+      const sessionId = payload.session_id; // e.g. "wmXXX::origin::wechatkfProxy"
 
-      // Register channel before sending (skip during streaming to reduce overhead)
+      // The WorkBuddy server uses the registered channelId as the WeChat KF send_msg
+      // `touser`.  Re-register the channel with the current WeChat user's externalUserId
+      // so that the server sends the reply to the correct customer.
       const externalUserId = sessionId.includes('::') ? sessionId.split('::')[0] : null;
-      if (this.config.registerChannelFn && externalUserId && !this.streamingActive) {
+      if (this.config.registerChannelFn && externalUserId) {
+        // Retry registerChannelFn up to 3 times on network failure
         for (let attempt = 1; attempt <= 3; attempt++) {
           try {
             await this.config.registerChannelFn(externalUserId);
@@ -295,77 +252,62 @@ export class WorkBuddyCentrifugeClient {
         }
       }
 
-      await this.sendHttpResponse(payload);
+      const httpPayload = {
+        type: 'COPILOT_RESPONSE',
+        msgId: payload.prompt_id,
+        chatId: sessionId,
+        success: payload.stop_reason === 'end_turn',
+        message,
+        metadata: {
+          sessionId: this.config.workspaceSessionId || sessionId,
+          requestId: payload.prompt_id,
+          state: payload.stop_reason === 'end_turn' ? 'completed' : payload.stop_reason,
+        },
+      };
 
-      // Release heartbeat lock (skip during streaming — released when streaming ends)
-      if (!this.streamingActive) {
-        this.config.releaseChannelLockFn?.();
+      const url = `${this.config.httpBaseUrl}/v2/backgroundagent/wecom/local-proxy/receive`;
+      log.debug(`${this.logPrefix} HTTP COPILOT_RESPONSE → ${url} chatId=${sessionId} msgLen=${message.length}`);
+
+      // Retry COPILOT_RESPONSE up to 3 times on network failure
+      let sent = false;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${this.config.httpAccessToken}`,
+            },
+            body: JSON.stringify(httpPayload),
+            signal: AbortSignal.timeout(30_000),
+          });
+          const body = await res.text().catch(() => '');
+          if (!res.ok) {
+            log.error(`${this.logPrefix} HTTP COPILOT_RESPONSE failed: ${res.status} ${body.substring(0, 300)}`);
+          } else {
+            log.info(`${this.logPrefix} HTTP COPILOT_RESPONSE ok: ${res.status} ${body.substring(0, 200)}`);
+          }
+          sent = true;
+          break;
+        } catch (err) {
+          if (attempt < 3) {
+            log.warn(`${this.logPrefix} HTTP COPILOT_RESPONSE attempt ${attempt} failed, retrying in 2s:`, err);
+            await new Promise((r) => setTimeout(r, 2000));
+          } else {
+            log.error(`${this.logPrefix} HTTP COPILOT_RESPONSE error after 3 attempts:`, err);
+          }
+        }
       }
+      if (!sent) {
+        log.error(`${this.logPrefix} Failed to send COPILOT_RESPONSE after retries`);
+      }
+
+      // Release the heartbeat lock so the periodic registration can resume
+      this.config.releaseChannelLockFn?.();
       return;
     }
 
     this.sendEnvelope('session.promptResponse', payload, _guid, _userId);
-  }
-
-  /** Send HTTP COPILOT_RESPONSE with retry and pending queue fallback. */
-  private async sendHttpResponse(payload: PromptResponsePayload): Promise<void> {
-    const message = payload.content?.map((c) => c.text).join('') || payload.error || '';
-    const sessionId = payload.session_id;
-    const isStreaming = payload.stop_reason === 'streaming';
-    const logLevel = isStreaming ? 'debug' : 'info';
-
-    const httpPayload = {
-      type: 'COPILOT_RESPONSE',
-      msgId: payload.prompt_id,
-      chatId: sessionId,
-      success: payload.stop_reason === 'end_turn' || isStreaming,
-      message,
-      metadata: {
-        sessionId: this.config.workspaceSessionId || sessionId,
-        requestId: payload.prompt_id,
-        state: payload.stop_reason === 'end_turn' ? 'completed' : payload.stop_reason,
-      },
-    };
-
-    const url = `${this.config.httpBaseUrl}/v2/backgroundagent/wecom/local-proxy/receive`;
-    log.debug(`${this.logPrefix} HTTP COPILOT_RESPONSE → chatId=${sessionId} msgLen=${message.length} streaming=${isStreaming}`);
-
-    const maxAttempts = isStreaming ? 2 : 5;
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${this.config.httpAccessToken}`,
-          },
-          body: JSON.stringify(httpPayload),
-          signal: AbortSignal.timeout(30_000),
-        });
-        const body = await res.text().catch(() => '');
-        if (!res.ok) {
-          log.error(`${this.logPrefix} HTTP COPILOT_RESPONSE failed: ${res.status} ${body.substring(0, 300)}`);
-        } else if (!isStreaming) {
-          log.info(`${this.logPrefix} HTTP COPILOT_RESPONSE ok: ${res.status} ${body.substring(0, 200)}`);
-        }
-        return; // sent successfully
-      } catch (err) {
-        if (attempt < maxAttempts) {
-          const delay = 2000 * attempt;
-          log.warn(`${this.logPrefix} HTTP COPILOT_RESPONSE attempt ${attempt} failed, retrying in ${delay}ms:`, err);
-          await new Promise((r) => setTimeout(r, delay));
-        } else {
-          log.error(`${this.logPrefix} HTTP COPILOT_RESPONSE error after ${maxAttempts} attempts:`, err);
-        }
-      }
-    }
-
-    // All retries failed — queue for later (only non-streaming responses)
-    if (!isStreaming) {
-      this.pendingResponses.push({ payload, timestamp: Date.now() });
-      if (this.pendingResponses.length > 10) this.pendingResponses.shift();
-      log.warn(`${this.logPrefix} Queued response for retry (queue: ${this.pendingResponses.length})`);
-    }
   }
 
   /**

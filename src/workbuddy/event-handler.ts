@@ -6,15 +6,16 @@ import { resolvePlatformAiCommand, type Config } from '../config.js';
 import { AccessControl } from '../access/access-control.js';
 import type { SessionManager } from '../session/session-manager.js';
 import { RequestQueue } from '../queue/request-queue.js';
-import { sendTextReply, sendErrorReply, sendStreamingReply, sendStreamingChunk } from './message-sender.js';
+import { sendTextReply, sendErrorReply } from './message-sender.js';
 import { CommandHandler } from '../commands/handler.js';
 import { getAdapter } from '../adapters/registry.js';
 import { runAITask, type TaskRunState } from '../shared/ai-task.js';
+import { startTaskCleanup } from '../shared/task-cleanup.js';
 import { WORKBUDDY_THROTTLE_MS } from '../constants.js';
 import { setActiveChatId } from '../shared/active-chats.js';
 import { setChatUser } from '../shared/chat-user-map.js';
 import { createLogger } from '../logger.js';
-import { getCentrifugeClient } from './client.js';
+import type { WorkBuddyCentrifugeClient } from './centrifuge-client.js';
 
 const log = createLogger('WorkBuddyHandler');
 
@@ -32,6 +33,7 @@ export function setupWorkBuddyHandlers(
   const requestQueue = new RequestQueue();
   const runningTasks = new Map<string, TaskRunState>();
   const taskKeyByChatId = new Map<string, string>();
+  const stopTaskCleanup = startTaskCleanup(runningTasks);
 
   // Base dependencies for creating per-event CommandHandler
   const baseCommandDeps = {
@@ -74,20 +76,14 @@ export function setupWorkBuddyHandlers(
       toolAdapter,
       {
         throttleMs: WORKBUDDY_THROTTLE_MS,
-        minContentDeltaChars: 200,
         streamUpdate: async (content) => {
-          await sendStreamingReply(null, chatId, content, msgId);
+          // WorkBuddy doesn't support streaming updates via Centrifuge
+          log.debug(`Stream update (not sent): ${content.substring(0, 50)}...`);
         },
         sendComplete: async (content) => {
-          const client = getCentrifugeClient();
-          if (client) client.setStreamingMode(false);
-          // 不再发送 HTTP COPILOT_RESPONSE（无论 end_turn 还是 streaming 都会触发平台显示 "✅ Local Agent task completed"）
-          // 改用 Centrifuge WebSocket session.update 推送最终内容，避免触发平台的 task completed 指示器
-          sendStreamingChunk(null, chatId, content, msgId);
+          await sendTextReply(null, chatId, content, msgId);
         },
         sendError: async (error) => {
-          const client = getCentrifugeClient();
-          if (client) client.setStreamingMode(false);
           await sendErrorReply(null, chatId, error, msgId);
         },
         extraCleanup: () => {
@@ -99,11 +95,6 @@ export function setupWorkBuddyHandlers(
         onTaskReady: (state) => {
           runningTasks.set(taskKey, state);
           taskKeyByChatId.set(chatId, taskKey);
-        },
-        onFirstContent: () => {
-          // Enable streaming mode: register channel once, then skip per-update registration
-          const client = getCentrifugeClient();
-          if (client) client.setStreamingMode(true);
         },
       },
     );
@@ -144,18 +135,6 @@ export function setupWorkBuddyHandlers(
         handleAIRequest(u, c, msgId, p, w, conv)
       );
       if (handled) {
-        // /new 命令时，中止当前运行中的任务并清空队列
-        if (text === '/new') {
-          const runningTaskKey = taskKeyByChatId.get(chatId);
-          if (runningTaskKey) {
-            const state = runningTasks.get(runningTaskKey);
-            if (state) {
-              log.info(`Aborting running task ${runningTaskKey} due to /new command`);
-              state.handle.abort();
-            }
-          }
-          requestQueue.clear(userId, convId);
-        }
         log.info(`Command handled for message: ${text}`);
         return;
       }
@@ -176,13 +155,12 @@ export function setupWorkBuddyHandlers(
     if (enqueueResult === 'rejected') {
       await sendErrorReply(null, chatId, 'Request queue is full. Please try again later.', msgId);
     } else if (enqueueResult === 'queued') {
-      // 用 streaming 而非 end_turn，避免 CodeBuddy 平台显示 "✅ Local Agent task completed"
-      await sendStreamingReply(null, chatId, '⏳ 请求已排队，请稍候...', msgId);
+      await sendTextReply(null, chatId, 'Your request is queued.', msgId);
     }
   }
 
   return {
-    stop: () => {},
+    stop: () => stopTaskCleanup(),
     getRunningTaskCount: () => runningTasks.size,
     handleEvent,
   };
