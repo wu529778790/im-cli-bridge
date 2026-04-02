@@ -217,7 +217,7 @@ async function connect(): Promise<void> {
         scheduleReconnect();
       },
       onError: (error) => {
-        log.error('WorkBuddy Centrifuge error:', error);
+        log.error(`WorkBuddy Centrifuge error: ${error instanceof Error ? error.message : JSON.stringify(error)}`);
         updateState('error');
       },
       onMessage: async (chatId, msgId, content) => {

@@ -386,7 +386,7 @@ export class WorkBuddyCentrifugeClient {
         if (msg.includes('WebSocket is not open') || msg.includes('readyState')) {
           log.warn(`${this.logPrefix} WebSocket not ready for send (will reconnect): ${msg}`);
         } else {
-          log.error(`${this.logPrefix} Message send failed:`, err);
+          log.error(`${this.logPrefix} Message send failed: ${msg}`);
           this.callbacks.onError?.(err instanceof Error ? err : new Error(String(err)));
         }
       });
@@ -397,7 +397,7 @@ export class WorkBuddyCentrifugeClient {
       if (msg.includes('WebSocket is not open') || msg.includes('readyState')) {
         log.warn(`${this.logPrefix} WebSocket not ready for send (will reconnect): ${msg}`);
       } else {
-        log.error(`${this.logPrefix} Message send failed:`, error);
+        log.error(`${this.logPrefix} Message send failed: ${msg}`);
         this.callbacks.onError?.(error instanceof Error ? error : new Error(`Message send failed: ${msg}`));
       }
     }
