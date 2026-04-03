@@ -49,6 +49,7 @@ const log = createLogger("Main");
 
 interface PlatformHandle {
   stop: () => void;
+  runningTasks?: Map<string, import('./shared/ai-task.js').TaskRunState>;
 }
 
 interface PlatformModule {
@@ -310,9 +311,17 @@ export async function main() {
       /* ignore */
     }
 
-    // Stop each platform: handle.stop() then module.stop()
+    // Stop each platform: abort running tasks, then handle.stop() then module.stop()
     for (const platform of successfulPlatforms) {
-      activeHandles.get(platform)?.stop();
+      const handle = activeHandles.get(platform);
+      if (handle?.runningTasks) {
+        for (const [key, state] of handle.runningTasks) {
+          log.info(`Aborting running task ${key} on ${platform} during shutdown`);
+          state.handle.abort();
+        }
+        handle.runningTasks.clear();
+      }
+      handle?.stop();
       await PLATFORM_MODULES[platform].stop();
     }
 

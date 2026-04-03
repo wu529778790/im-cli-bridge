@@ -55,6 +55,7 @@ interface WeWorkMediaPayload {
 
 export interface WeWorkEventHandlerHandle {
   stop: () => void;
+  runningTasks: Map<string, import('../shared/ai-task.js').TaskRunState>;
   getRunningTaskCount: () => number;
   handleEvent: (data: WeWorkCallbackMessage) => Promise<void>;
 }
@@ -423,6 +424,7 @@ export function setupWeWorkHandlers(
       }
       safetyTimers.clear();
     },
+    runningTasks: ctx.runningTasks,
     getRunningTaskCount: () => ctx.runningTasks.size,
     handleEvent,
   };

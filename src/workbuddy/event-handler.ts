@@ -18,6 +18,7 @@ const log = createLogger('WorkBuddyHandler');
 
 export interface WorkBuddyEventHandlerHandle {
   stop: () => void;
+  runningTasks: Map<string, import('../shared/ai-task.js').TaskRunState>;
   getRunningTaskCount: () => number;
   handleEvent: (chatId: string, msgId: string, content: string) => Promise<void>;
 }
@@ -238,6 +239,7 @@ export function setupWorkBuddyHandlers(
 
   return {
     stop: () => stopTaskCleanup(),
+    runningTasks: ctx.runningTasks,
     getRunningTaskCount: () => ctx.runningTasks.size,
     handleEvent,
   };

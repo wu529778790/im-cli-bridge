@@ -131,6 +131,7 @@ async function buildAttachmentPrompt(event: QQMessageEvent): Promise<string | nu
 
 export interface QQEventHandlerHandle {
   stop: () => void;
+  runningTasks: Map<string, import('../shared/ai-task.js').TaskRunState>;
   getRunningTaskCount: () => number;
   handleEvent: (event: QQMessageEvent) => Promise<void>;
 }
@@ -357,6 +358,7 @@ export function setupQQHandlers(
 
   return {
     stop: () => {},
+    runningTasks,
     getRunningTaskCount: () => runningTasks.size,
     handleEvent,
   };

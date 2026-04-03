@@ -160,6 +160,7 @@ async function downloadFeishuMessageResource(
 
 export interface FeishuEventHandlerHandle {
   stop: () => void;
+  runningTasks: Map<string, import('../shared/ai-task.js').TaskRunState>;
   getRunningTaskCount: () => number;
   handleEvent: (data: unknown) => Promise<void | Record<string, unknown>>;
 }
@@ -631,6 +632,7 @@ export function setupFeishuHandlers(
 
   return {
     stop: () => {},
+    runningTasks: ctx.runningTasks,
     getRunningTaskCount: () => ctx.runningTasks.size,
     handleEvent,
   };

@@ -37,6 +37,7 @@ type DingTalkRobotPayload = RobotMessage & Record<string, unknown>;
 
 export interface DingTalkEventHandlerHandle {
   stop: () => void;
+  runningTasks: Map<string, import('../shared/ai-task.js').TaskRunState>;
   getRunningTaskCount: () => number;
   handleEvent: (data: DWClientDownStream) => Promise<void>;
 }
@@ -355,6 +356,7 @@ export function setupDingTalkHandlers(
 
   return {
     stop: () => {},
+    runningTasks,
     getRunningTaskCount: () => runningTasks.size,
     handleEvent,
   };
