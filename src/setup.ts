@@ -6,7 +6,7 @@
 
 import prompts from "prompts";
 import { createInterface } from "node:readline";
-import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, existsSync, readFileSync, chmodSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { APP_HOME } from "./constants.js";
@@ -1112,6 +1112,7 @@ export async function runInteractiveSetup(): Promise<boolean> {
     mkdirSync(dir, { recursive: true });
   }
   writeFileSync(configPath, JSON.stringify(out, null, 2), "utf-8");
+  try { chmodSync(configPath, 0o600); } catch { /* ignore on unsupported platforms */ }
 
   console.log("\n✅ 配置已保存到", configPath);
   console.log("");
@@ -1229,6 +1230,7 @@ export async function runPlatformSelectionPrompt(
   const dir = dirname(configPath);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   writeFileSync(configPath, JSON.stringify(updated, null, 2), "utf-8");
+  try { chmodSync(configPath, 0o600); } catch { /* ignore on unsupported platforms */ }
 
   return loadConfig();
 }

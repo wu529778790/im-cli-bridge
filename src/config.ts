@@ -4,7 +4,7 @@ try {
   /* dotenv optional */
 }
 
-import { readFileSync, writeFileSync, accessSync, constants, existsSync, mkdirSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, accessSync, constants, existsSync, mkdirSync, statSync, chmodSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, dirname, isAbsolute, basename } from 'node:path';
 import { homedir } from 'node:os';
@@ -307,6 +307,7 @@ export function loadFileConfig(): FileConfig {
       const dir = dirname(CONFIG_PATH);
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
       writeFileSync(CONFIG_PATH, JSON.stringify(migrated, null, 2), 'utf-8');
+      try { chmodSync(CONFIG_PATH, 0o600); } catch { /* ignore */ }
       // Update cache with migrated config
       cachedConfig = { config: migrated as FileConfig, mtime: currentMtime };
       return migrated as FileConfig;
