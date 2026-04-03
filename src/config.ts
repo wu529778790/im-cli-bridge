@@ -53,6 +53,8 @@ export interface Config {
   codexProxy?: string;
   claudeWorkDir: string;
   claudeModel?: string;
+  /** 是否跳过 AI 工具的权限确认（默认 true） */
+  skipPermissions?: boolean;
   logDir: string;
   logLevel: LogLevel;
 
@@ -668,6 +670,9 @@ export function loadConfig(): Config {
     }
   }
   const claudeWorkDir = process.env.CLAUDE_WORK_DIR ?? tc.workDir ?? process.cwd();
+  const skipPermissions: boolean = process.env.OPEN_IM_SKIP_PERMISSIONS === 'false'
+    ? false
+    : (tc.skipPermissions ?? true);
 
   // 6. 校验 Claude API 凭证（SDK 模式需要）
   // 支持：官方 API Key、Auth Token、或自定义 API（第三方模型等，BASE_URL + token）
@@ -897,6 +902,7 @@ export function loadConfig(): Config {
     codexProxy,
     claudeWorkDir,
     claudeModel: process.env.ANTHROPIC_MODEL,
+    skipPermissions,
     logDir,
     logLevel,
     platforms,

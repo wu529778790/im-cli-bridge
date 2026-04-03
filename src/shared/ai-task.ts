@@ -289,8 +289,8 @@ export function runAITask(
         {
           model: sessionManager.getModel(ctx.userId, ctx.threadId) ?? config.claudeModel,
           chatId: ctx.chatId,
-          // 默认跳过权限确认，保持全自动执行
-          skipPermissions: true,
+          // 默认跳过权限确认，保持全自动执行（可通过 config 或环境变量关闭）
+          skipPermissions: config.skipPermissions ?? true,
           ...(aiCommand === 'codex' && config.codexProxy ? { proxy: config.codexProxy } : {}),
         }
       );
