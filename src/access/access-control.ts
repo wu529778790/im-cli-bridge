@@ -12,7 +12,7 @@ export class AccessControl {
 
   isAllowed(userId: string): boolean {
     if (this.allowedUserIds.size === 0) {
-      log.warn(`Allowing user ${userId} — no whitelist configured. Set allowedUserIds to restrict access.`);
+      log.warn(`SECURITY: Allowing user ${userId} -- no whitelist configured. Set allowedUserIds in config or OPEN_IM_ALLOWED_USER_IDS env var to restrict access.`);
       return true;
     }
     const allowed = this.allowedUserIds.has(userId);
