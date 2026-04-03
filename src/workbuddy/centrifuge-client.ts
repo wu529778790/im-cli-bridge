@@ -119,7 +119,7 @@ export class WorkBuddyCentrifugeClient {
       token: this.config.subscriptionToken,
     });
 
-    this.sub.on('publication', (ctx) => {
+    this.sub.on('publication', (ctx: any) => {
       this.handlePublication(ctx.data);
     });
 
@@ -168,7 +168,7 @@ export class WorkBuddyCentrifugeClient {
     log.info(`${this.logPrefix} Subscribing to additional channel: ${channel}`);
     const sub = this.client.newSubscription(channel, { token: subscriptionToken });
 
-    sub.on('publication', (ctx) => {
+    sub.on('publication', (ctx: any) => {
       this.handlePublication(ctx.data);
     });
 
