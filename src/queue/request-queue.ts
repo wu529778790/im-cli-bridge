@@ -14,6 +14,7 @@ interface UserQueue {
 }
 
 const MAX_QUEUE_SIZE = 3;
+const TASK_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 
 export type EnqueueResult = 'running' | 'queued' | 'rejected';
 
@@ -50,10 +51,16 @@ export class RequestQueue {
   }
 
   private async run(key: string, prompt: string, execute: (prompt: string) => Promise<void>): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      await execute(prompt);
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`Task timed out after ${TASK_TIMEOUT_MS / 1000}s`)), TASK_TIMEOUT_MS);
+      });
+      await Promise.race([execute(prompt), timeoutPromise]);
     } catch (err) {
       log.error(`Error executing task for ${key}:`, err);
+    } finally {
+      if (timer) clearTimeout(timer);
     }
     const q = this.queues.get(key);
     if (!q) return;

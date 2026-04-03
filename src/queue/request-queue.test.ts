@@ -90,6 +90,25 @@ describe('RequestQueue', () => {
     expect(queue.clear('nobody', 'noconv')).toBe(0);
   });
 
+  it('times out long-running tasks after 10 minutes', async () => {
+    vi.useFakeTimers();
+    const queue = new RequestQueue();
+    const execute = vi.fn().mockReturnValue(new Promise(() => {})); // never resolves
+
+    queue.enqueue('user1', 'conv1', 'hello', execute);
+    expect(execute).toHaveBeenCalledTimes(1);
+
+    // Advance past 10-minute timeout
+    vi.advanceTimersByTime(10 * 60 * 1000 + 1);
+    // Let microtasks settle
+    await vi.advanceTimersByTimeAsync(100);
+
+    // The timed-out task should be done, queue should be cleared
+    expect(execute).toHaveBeenCalledTimes(1);
+
+    vi.useRealTimers();
+  });
+
   it('handles task execution error gracefully and processes next', async () => {
     const queue = new RequestQueue();
     const execute = vi.fn()
