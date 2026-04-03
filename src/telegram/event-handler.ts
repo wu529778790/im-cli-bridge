@@ -91,6 +91,7 @@ async function downloadTelegramFile(
 
 export interface TelegramEventHandlerHandle {
   stop: () => void;
+  runningTasks: Map<string, import('../shared/ai-task.js').TaskRunState>;
   getRunningTaskCount: () => number;
 }
 
@@ -379,21 +380,28 @@ export function setupTelegramHandlers(
   });
 
   bot.on(message("text"), async (tgCtx) => {
-    const chatId = String(tgCtx.chat.id);
-    const userId = String(tgCtx.from!.id);
-    const messageId = String(tgCtx.message.message_id);
-    const text = tgCtx.message.text.trim();
+    try {
+      const chatId = String(tgCtx.chat.id);
+      const userId = String(tgCtx.from!.id);
+      const messageId = String(tgCtx.message.message_id);
+      const text = tgCtx.message.text.trim();
 
-    await handleTextFlow({
-      platform: 'telegram',
-      userId,
-      chatId,
-      text,
-      ctx,
-      handleAIRequest,
-      sendTextReply,
-      replyToMessageId: messageId,
-    });
+      await handleTextFlow({
+        platform: 'telegram',
+        userId,
+        chatId,
+        text,
+        ctx,
+        handleAIRequest,
+        sendTextReply,
+        replyToMessageId: messageId,
+      });
+    } catch (err) {
+      log.error('Unhandled error in Telegram text handler:', err);
+      try {
+        await tgCtx.reply('Internal error occurred. Please try again.');
+      } catch { /* ignore */ }
+    }
   });
 
   bot.on(message("photo"), async (ctx) => {
@@ -573,6 +581,7 @@ export function setupTelegramHandlers(
 
   return {
     stop: () => {},
+    runningTasks,
     getRunningTaskCount: () => runningTasks.size,
   };
 }

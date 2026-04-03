@@ -254,95 +254,104 @@ export function setupQQHandlers(
   }
 
   async function handleEvent(event: QQMessageEvent): Promise<void> {
-    const now = Date.now();
-    cleanupRecentEvents(now);
-
-    // QQ-specific: Event deduplication by ID
-    if (event.id) {
-      if (recentEventIds.has(event.id)) {
-        log.info(`Skipping duplicate QQ event: ${event.id}`);
-        return;
-      }
-      recentEventIds.set(event.id, now);
-    }
-
-    const userId = event.userOpenid;
     const chatId = toChatId(event);
-    const eventFingerprint = buildEventFingerprint(event, chatId);
-    const text = event.content?.trim() ?? "";
-    const attachmentPrompt = await buildAttachmentPrompt(event);
+    try {
+      const now = Date.now();
+      cleanupRecentEvents(now);
 
-    // QQ-specific: Event deduplication by fingerprint
-    if (recentEventFingerprints.has(eventFingerprint)) {
-      log.info(`Skipping duplicate QQ event fingerprint: ${eventFingerprint}`);
-      return;
-    }
-    recentEventFingerprints.set(eventFingerprint, now);
+      // QQ-specific: Event deduplication by ID
+      if (event.id) {
+        if (recentEventIds.has(event.id)) {
+          log.info(`Skipping duplicate QQ event: ${event.id}`);
+          return;
+        }
+        recentEventIds.set(event.id, now);
+      }
 
-    // Use shared handleTextFlow for text message processing
-    if (text) {
-      const processed = await handleTextFlow({
-        platform: "qq",
-        userId,
-        chatId,
-        text,
-        ctx: platformContext,
-        handleAIRequest,
-        sendTextReply,
-        workDir: sessionManager.getWorkDir(userId),
-        convId: sessionManager.getConvId(userId),
-        replyToMessageId: event.id,
-        accessDeniedMessage: (userId) => `Access denied. Your QQ user ID: ${userId}`,
-        queueFullMessage: "Request queue is full. Please try again later.",
-        queuedMessage: "Your request is queued.",
-      });
+      const userId = event.userOpenid;
+      const eventFingerprint = buildEventFingerprint(event, chatId);
+      const text = event.content?.trim() ?? "";
+      const attachmentPrompt = await buildAttachmentPrompt(event);
 
-      if (processed) {
-        log.info(`QQ message handled: user=${userId}, chat=${chatId}, text=true`);
+      // QQ-specific: Event deduplication by fingerprint
+      if (recentEventFingerprints.has(eventFingerprint)) {
+        log.info(`Skipping duplicate QQ event fingerprint: ${eventFingerprint}`);
         return;
       }
-    }
+      recentEventFingerprints.set(eventFingerprint, now);
 
-    // Handle attachments-only messages
-    if (attachmentPrompt) {
-      const workDir = sessionManager.getWorkDir(userId);
-      const convId = sessionManager.getConvId(userId);
+      // Use shared handleTextFlow for text message processing
+      if (text) {
+        const processed = await handleTextFlow({
+          platform: "qq",
+          userId,
+          chatId,
+          text,
+          ctx: platformContext,
+          handleAIRequest,
+          sendTextReply,
+          workDir: sessionManager.getWorkDir(userId),
+          convId: sessionManager.getConvId(userId),
+          replyToMessageId: event.id,
+          accessDeniedMessage: (userId) => `Access denied. Your QQ user ID: ${userId}`,
+          queueFullMessage: "Request queue is full. Please try again later.",
+          queuedMessage: "Your request is queued.",
+        });
 
-      // Check access control
-      if (!accessControl.isAllowed(userId)) {
-        await sendTextReply(chatId, `Access denied. Your QQ user ID: ${userId}`);
-        return;
+        if (processed) {
+          log.info(`QQ message handled: user=${userId}, chat=${chatId}, text=true`);
+          return;
+        }
       }
 
-      // Set active chat
-      setActiveChatId("qq", chatId);
-      setChatUser(chatId, userId, "qq");
+      // Handle attachments-only messages
+      if (attachmentPrompt) {
+        const workDir = sessionManager.getWorkDir(userId);
+        const convId = sessionManager.getConvId(userId);
 
-      // Enqueue attachment prompt
-      const enqueueResult = requestQueue.enqueue(
-        userId,
-        convId ?? '',
-        attachmentPrompt,
-        async (prompt) => {
-          await handleAIRequest(
-            userId,
-            chatId,
-            prompt,
-            workDir,
-            convId,
-            undefined,
-            event.id,
-          );
-        },
-      );
+        // Check access control
+        if (!accessControl.isAllowed(userId)) {
+          await sendTextReply(chatId, `Access denied. Your QQ user ID: ${userId}`);
+          return;
+        }
 
-      if (enqueueResult === "rejected") {
-        await sendTextReply(chatId, "Request queue is full. Please try again later.");
-      } else if (enqueueResult === "queued") {
-        await sendTextReply(chatId, "Your request is queued.");
+        // Set active chat
+        setActiveChatId("qq", chatId);
+        setChatUser(chatId, userId, "qq");
+
+        // Enqueue attachment prompt
+        const enqueueResult = requestQueue.enqueue(
+          userId,
+          convId ?? '',
+          attachmentPrompt,
+          async (prompt) => {
+            await handleAIRequest(
+              userId,
+              chatId,
+              prompt,
+              workDir,
+              convId,
+              undefined,
+              event.id,
+            );
+          },
+        );
+
+        if (enqueueResult === "rejected") {
+          await sendTextReply(chatId, "Request queue is full. Please try again later.");
+        } else if (enqueueResult === "queued") {
+          await sendTextReply(chatId, "Your request is queued.");
+        }
+
+        log.info(`QQ message handled: user=${userId}, chat=${chatId}, attachments=${event.attachments?.length ?? 0}`);
       }
-
-      log.info(`QQ message handled: user=${userId}, chat=${chatId}, attachments=${event.attachments?.length ?? 0}`);
+    } catch (err) {
+      log.error('Unhandled error in QQ event handler:', err);
+      try {
+        if (chatId) {
+          await sendTextReply(chatId, 'Internal error occurred. Please try again.');
+        }
+      } catch { /* ignore */ }
     }
   }
 
