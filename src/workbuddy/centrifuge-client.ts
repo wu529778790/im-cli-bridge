@@ -18,6 +18,15 @@ import type {
 
 const log = createLogger('WorkBuddyCentrifuge');
 
+/** Max consecutive errors before triggering full re-registration */
+const PERSISTENT_FAILURE_THRESHOLD = 5;
+
+/** Max queued replies awaiting delivery */
+const MAX_PENDING_REPLIES = 20;
+
+/** Max age (ms) of a queued reply before it's discarded */
+const PENDING_REPLY_TTL_MS = 5 * 60_000;
+
 /** Centrifuge client configuration */
 export interface CentrifugeClientConfig {
   url: string;
@@ -49,6 +58,15 @@ export interface CentrifugeCallbacks {
   onDisconnected?: (reason?: string) => void;
   onError?: (error: Error) => void;
   onMessage?: (chatId: string, msgId: string, content: string) => void;
+  /** Called when reconnection has failed too many times — caller should do a full re-registration */
+  onPersistentFailure?: () => void;
+}
+
+interface PendingReply {
+  url: string;
+  payload: Record<string, unknown>;
+  accessToken: string;
+  addedAt: number;
 }
 
 export class WorkBuddyCentrifugeClient {
@@ -59,6 +77,9 @@ export class WorkBuddyCentrifugeClient {
   private extraSubs: Subscription[] = [];
   private state: WorkBuddyState = 'disconnected';
   private processedMsgIds = new Set<string>();
+  private consecutiveErrors = 0;
+  private pendingReplies: PendingReply[] = [];
+  private flushing = false;
   private static readonly MAX_MSG_ID_CACHE = 1000;
 
   constructor(config: CentrifugeClientConfig, callbacks: CentrifugeCallbacks = {}) {
@@ -91,7 +112,9 @@ export class WorkBuddyCentrifugeClient {
     this.client.on('connected', (ctx: any) => {
       log.info(`${this.logPrefix} Connected (transport=${ctx.transport})`);
       this.state = 'connected';
+      this.consecutiveErrors = 0;
       this.callbacks.onConnected?.();
+      this.flushPendingReplies();
     });
 
     this.client.on('disconnected', (ctx: any) => {
@@ -111,7 +134,16 @@ export class WorkBuddyCentrifugeClient {
 
     this.client.on('error', (ctx: any) => {
       log.error(`${this.logPrefix} Error: ${ctx.error.message}`);
+      this.consecutiveErrors++;
       this.callbacks.onError?.(new Error(ctx.error.message));
+
+      if (this.consecutiveErrors >= PERSISTENT_FAILURE_THRESHOLD) {
+        log.warn(`${this.logPrefix} ${this.consecutiveErrors} consecutive errors — triggering full re-registration`);
+        this.consecutiveErrors = 0;
+        // Stop the current Centrifuge instance so client.ts can create a fresh one
+        this.stop();
+        this.callbacks.onPersistentFailure?.();
+      }
     });
 
     // Create channel subscription
@@ -299,7 +331,7 @@ export class WorkBuddyCentrifugeClient {
         }
       }
       if (!sent) {
-        log.error(`${this.logPrefix} Failed to send COPILOT_RESPONSE after retries`);
+        this.enqueuePendingReply(url, httpPayload, this.config.httpAccessToken);
       }
 
       // Release the heartbeat lock so the periodic registration can resume
@@ -416,5 +448,63 @@ export class WorkBuddyCentrifugeClient {
           this.processedMsgIds.add(id);
         });
     }
+  }
+
+  /**
+   * Enqueue a failed reply for later delivery
+   */
+  private enqueuePendingReply(url: string, payload: Record<string, unknown>, accessToken: string): void {
+    // Evict expired entries
+    const now = Date.now();
+    this.pendingReplies = this.pendingReplies.filter((r) => now - r.addedAt < PENDING_REPLY_TTL_MS);
+
+    if (this.pendingReplies.length >= MAX_PENDING_REPLIES) {
+      const evicted = this.pendingReplies.shift();
+      log.warn(`${this.logPrefix} Pending replies full, evicting oldest (msgId=${evicted?.payload.msgId})`);
+    }
+
+    this.pendingReplies.push({ url, payload, accessToken, addedAt: now });
+    log.warn(`${this.logPrefix} Queued pending reply (queue=${this.pendingReplies.length}, msgId=${payload.msgId})`);
+  }
+
+  /**
+   * Retry all pending replies after a successful reconnection
+   */
+  private async flushPendingReplies(): Promise<void> {
+    if (this.flushing || this.pendingReplies.length === 0) return;
+    this.flushing = true;
+
+    const now = Date.now();
+    // Take only non-expired replies
+    const toSend = this.pendingReplies.filter((r) => now - r.addedAt < PENDING_REPLY_TTL_MS);
+    this.pendingReplies = [];
+
+    if (toSend.length > 0) {
+      log.info(`${this.logPrefix} Flushing ${toSend.length} pending reply(ies)`);
+    }
+
+    for (const reply of toSend) {
+      try {
+        const res = await fetch(reply.url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${reply.accessToken}`,
+          },
+          body: JSON.stringify(reply.payload),
+          signal: AbortSignal.timeout(30_000),
+        });
+        const body = await res.text().catch(() => '');
+        if (res.ok) {
+          log.info(`${this.logPrefix} Flushed pending reply ok: msgId=${reply.payload.msgId}`);
+        } else {
+          log.error(`${this.logPrefix} Flushed pending reply failed: ${res.status} ${body.substring(0, 200)}`);
+        }
+      } catch (err) {
+        log.error(`${this.logPrefix} Flushed pending reply error: msgId=${reply.payload.msgId}`, err);
+      }
+    }
+
+    this.flushing = false;
   }
 }

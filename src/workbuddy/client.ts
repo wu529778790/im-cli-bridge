@@ -220,6 +220,12 @@ async function connect(): Promise<void> {
         log.error(`WorkBuddy Centrifuge error: ${error instanceof Error ? error.message : JSON.stringify(error)}`);
         updateState('error');
       },
+      onPersistentFailure: () => {
+        log.warn('WorkBuddy Centrifuge persistent failure detected — doing full re-registration');
+        if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
+        updateState('disconnected');
+        scheduleReconnect();
+      },
       onMessage: async (chatId, msgId, content) => {
         if (messageHandler) {
           try { await messageHandler(chatId, msgId, content); }
