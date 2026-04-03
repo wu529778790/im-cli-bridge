@@ -242,7 +242,6 @@ describe('createPlatformAIRequestHandler', () => {
       throttleMs: 1200,
       runningTasks: new Map(),
       taskCallbacks: {
-        throttleMs: 1200,
         extraCleanup: platformCleanup,
         streamUpdate: vi.fn(),
         sendComplete: vi.fn(),
