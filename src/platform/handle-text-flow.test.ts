@@ -175,15 +175,14 @@ describe('handleTextFlow', () => {
     expect(result).toBe(true);
 
     // handleAIRequest was called with the correct params
-    expect(handleAIRequest).toHaveBeenCalledWith(
-      'user-1',
-      'chat-1',
-      'hello world',
-      '/workspace',
-      'conv-42',
-      undefined,
-      'msg-99',
-    );
+    expect(handleAIRequest).toHaveBeenCalledWith({
+      userId: 'user-1',
+      chatId: 'chat-1',
+      prompt: 'hello world',
+      workDir: '/workspace',
+      convId: 'conv-42',
+      replyToMessageId: 'msg-99',
+    });
   });
 
   it('returns true without enqueuing when text is empty', async () => {

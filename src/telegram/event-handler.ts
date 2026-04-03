@@ -1,6 +1,6 @@
 import type { Telegraf } from "telegraf";
 import { message } from "telegraf/filters";
-import { resolvePlatformAiCommand, type Config } from "../config.js";
+import { type Config } from "../config.js";
 import type { SessionManager } from "../session/session-manager.js";
 import {
   sendThinkingMessage,
@@ -11,8 +11,6 @@ import {
   sendImageReply,
   sendDirectorySelection,
 } from "./message-sender.js";
-import { type MessageSender } from "../commands/handler.js";
-import { type TaskRunState } from "../shared/ai-task.js";
 import { TELEGRAM_THROTTLE_MS } from "../constants.js";
 import { createLogger } from "../logger.js";
 import { downloadMediaFromUrl } from "../shared/media-storage.js";
@@ -20,11 +18,10 @@ import { buildSavedMediaPrompt } from "../shared/media-analysis-prompt.js";
 import { buildMediaContext } from "../shared/media-context.js";
 import { buildErrorNote, buildProgressNote } from "../shared/message-note.js";
 import { createPlatformEventContext } from "../platform/create-event-context.js";
+import { createPlatformAIRequestHandler, type PlatformSender, type PlatformTaskCallbacks } from "../platform/handle-ai-request.js";
 import { handleTextFlow } from "../platform/handle-text-flow.js";
 import { setActiveChatId } from "../shared/active-chats.js";
 import { setChatUser } from "../shared/chat-user-map.js";
-import { getAdapter } from "../adapters/registry.js";
-import { runAITask } from "../shared/ai-task.js";
 
 const log = createLogger("TgHandler");
 
@@ -110,170 +107,141 @@ export function setupTelegramHandlers(
     sessionManager,
     sender: { sendTextReply, sendDirectorySelection },
   });
-  const { accessControl, requestQueue, runningTasks, commandHandler } = ctx;
+  const { accessControl, requestQueue, runningTasks } = ctx;
 
-  async function enqueueSavedMedia(
-    userId: string,
-    chatId: string,
-    kind: string,
-    localPath: string,
-    text?: string,
-  ): Promise<"running" | "queued" | "rejected"> {
-    const prompt = buildSavedMediaPrompt({
-      source: "Telegram",
-      kind,
-      localPath,
-      text,
-    });
-    const workDir = sessionManager.getWorkDir(userId);
-    const convId = sessionManager.getConvId(userId);
-    return requestQueue.enqueue(userId, convId, prompt, async (nextPrompt) => {
-      await handleAIRequest(userId, chatId, nextPrompt, workDir, convId);
-    });
-  }
+  // Telegram-specific sender callbacks for the factory
+  const telegramSender: PlatformSender = {
+    sendThinkingMessage: async (chatId, replyToMessageId, toolId) => {
+      return await sendThinkingMessage(chatId, replyToMessageId, toolId);
+    },
+    sendTextReply: async (chatId, text) => {
+      await sendTextReply(chatId, text);
+    },
+    startTyping: (chatId) => startTypingLoop(chatId),
+    sendImage: async (chatId, imagePath) => {
+      await sendImageReply(chatId, imagePath);
+    },
+  };
 
-  async function handleAIRequest(
-    userId: string,
-    chatId: string,
-    prompt: string,
-    workDir: string,
-    convId?: string,
-    _threadCtx?: { rootMessageId: string; threadId: string },
-    replyToMessageId?: string,
-  ) {
-    const currentTurns = sessionManager.addTurns(userId, 1);
-    log.info(`User request: total turns = ${currentTurns} for user ${userId}`);
-
-    const aiCommand = resolvePlatformAiCommand(config, "telegram");
-    const toolAdapter = getAdapter(aiCommand);
-    if (!toolAdapter) {
-      await sendTextReply(chatId, `未配置 AI 工具: ${aiCommand}`);
-      return;
-    }
-
-    const sessionId = convId
-      ? sessionManager.getSessionIdForConv(userId, convId, aiCommand)
-      : undefined;
-    log.info(
-      `Running ${aiCommand} for user ${userId}, sessionId=${sessionId ?? "new"}`,
-    );
-
-    const toolId = aiCommand;
-    let msgId: string;
-    try {
-      msgId = await sendThinkingMessage(chatId, replyToMessageId, toolId);
-    } catch (err) {
-      log.error("Failed to send thinking message:", err);
-      try {
-        await sendTextReply(chatId, "启动 AI 处理失败，请重试。");
-      } catch (err) {
-        log.warn('Failed to send startup error reply:', err);
-      }
-      return;
-    }
-
-    const stopTyping = startTypingLoop(chatId);
-    const taskKey = `${userId}:${msgId}`;
+  // Telegram-specific task callbacks factory with DynamicThrottle + debounced streaming
+  const telegramTaskCallbacksFactory = (factoryCtx: {
+    chatId: string;
+    msgId: string;
+    taskKey: string;
+    userId: string;
+    toolId: string;
+    replyToMessageId: string | undefined;
+  }): PlatformTaskCallbacks => {
     const throttle = new DynamicThrottle();
-
-    let savedThinkingText = "";
+    let savedThinkingText = '';
     let hasThinkingContent = false;
 
-    const createStreamUpdateWrapper = () => {
-      let lastUpdateTime = 0;
-      let lastContentLength = 0;
-      let updateInProgress = false;
-      let scheduledContent: string | null = null;
-      let scheduledToolNote: string | undefined;
-      const STREAM_PREVIEW_LENGTH = 1500;
-      const DEBOUNCE_MS = 150;
-      let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    // Debounced stream update wrapper
+    let lastUpdateTime = 0;
+    let lastContentLength = 0;
+    let updateInProgress = false;
+    let scheduledContent: string | null = null;
+    let scheduledToolNote: string | undefined;
+    const STREAM_PREVIEW_LENGTH = 1500;
+    const DEBOUNCE_MS = 150;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-      const performUpdate = async (
-        content: string,
-        toolNote?: string,
-        isComplete = false,
-      ) => {
-        if (isComplete) {
-          if (debounceTimer) {
-            clearTimeout(debounceTimer);
-            debounceTimer = null;
-          }
-          while (updateInProgress) {
-            await new Promise((resolve) => setTimeout(resolve, 50));
-          }
-          updateInProgress = false;
-          scheduledContent = null;
-          scheduledToolNote = undefined;
+    const performUpdate = async (
+      content: string,
+      toolNote?: string,
+      isComplete = false,
+    ) => {
+      if (isComplete) {
+        if (debounceTimer) {
+          clearTimeout(debounceTimer);
+          debounceTimer = null;
         }
-
-        if (updateInProgress) {
-          scheduledContent = content;
-          scheduledToolNote = toolNote;
-          return;
+        while (updateInProgress) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
         }
+        updateInProgress = false;
+        scheduledContent = null;
+        scheduledToolNote = undefined;
+      }
 
-        updateInProgress = true;
+      if (updateInProgress) {
+        scheduledContent = content;
+        scheduledToolNote = toolNote;
+        return;
+      }
 
-        try {
-          let displayContent = content;
+      updateInProgress = true;
 
-          if (hasThinkingContent && savedThinkingText) {
-            const thinkingFormatted = `💭 思考过程：\n${savedThinkingText}`;
-            const separator = "\n\n─────────\n\n";
-            const combined = thinkingFormatted + separator + content;
+      try {
+        let displayContent = content;
 
-            if (combined.length > STREAM_PREVIEW_LENGTH) {
-              const maxThinkingLength = 800;
-              const truncatedThinking =
-                savedThinkingText.length > maxThinkingLength
-                  ? `...(已省略 ${savedThinkingText.length - maxThinkingLength} 字符)...\n\n${savedThinkingText.slice(-maxThinkingLength)}`
-                  : savedThinkingText;
+        if (hasThinkingContent && savedThinkingText) {
+          const thinkingFormatted = `💭 思考过程：\n${savedThinkingText}`;
+          const separator = "\n\n─────────\n\n";
+          const combined = thinkingFormatted + separator + content;
 
-              displayContent = `💭 思考过程：\n${truncatedThinking}\n\n─────────\n\n`;
-              if (content.length > 800) {
-                displayContent += `...\n\n${content.slice(-800)}`;
-              } else {
-                displayContent += content;
-              }
+          if (combined.length > STREAM_PREVIEW_LENGTH) {
+            const maxThinkingLength = 800;
+            const truncatedThinking =
+              savedThinkingText.length > maxThinkingLength
+                ? `...(已省略 ${savedThinkingText.length - maxThinkingLength} 字符)...\n\n${savedThinkingText.slice(-maxThinkingLength)}`
+                : savedThinkingText;
+
+            displayContent = `💭 思考过程：\n${truncatedThinking}\n\n─────────\n\n`;
+            if (content.length > 800) {
+              displayContent += `...\n\n${content.slice(-800)}`;
             } else {
-              displayContent = combined;
+              displayContent += content;
             }
           } else {
-            displayContent =
-              content.length > STREAM_PREVIEW_LENGTH
-                ? `...\n\n${content.slice(-STREAM_PREVIEW_LENGTH)}`
-                : content;
+            displayContent = combined;
           }
-
-          const note = buildProgressNote(toolNote);
-          await updateMessage(
-            chatId,
-            msgId,
-            displayContent,
-            "streaming",
-            note,
-            toolId,
-          );
-          throttle.recordSuccess();
-          lastUpdateTime = Date.now();
-        } catch (err) {
-          log.debug('Stream update failed:', err);
-          throttle.recordError();
-        } finally {
-          updateInProgress = false;
-          if (scheduledContent !== null) {
-            const nextContent = scheduledContent;
-            const nextNote = scheduledToolNote;
-            scheduledContent = null;
-            scheduledToolNote = undefined;
-            await performUpdate(nextContent, nextNote);
-          }
+        } else {
+          displayContent =
+            content.length > STREAM_PREVIEW_LENGTH
+              ? `...\n\n${content.slice(-STREAM_PREVIEW_LENGTH)}`
+              : content;
         }
-      };
 
-      const wrapper = (content: string, toolNote?: string) => {
-        if (content.startsWith("💭 **思考中...**")) {
+        const note = buildProgressNote(toolNote);
+        await updateMessage(
+          factoryCtx.chatId,
+          factoryCtx.msgId,
+          displayContent,
+          'streaming',
+          note,
+          factoryCtx.toolId,
+        );
+        throttle.recordSuccess();
+        lastUpdateTime = Date.now();
+      } catch (err) {
+        log.debug('Stream update failed:', err);
+        throttle.recordError();
+      } finally {
+        updateInProgress = false;
+        if (scheduledContent !== null) {
+          const nextContent = scheduledContent;
+          const nextNote = scheduledToolNote;
+          scheduledContent = null;
+          scheduledToolNote = undefined;
+          await performUpdate(nextContent, nextNote);
+        }
+      }
+    };
+
+    const flush = async () => {
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+      }
+      while (updateInProgress) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    };
+
+    return {
+      streamUpdate: (content, toolNote) => {
+        if (content.startsWith('💭 **思考中...**')) {
           return;
         }
 
@@ -299,94 +267,85 @@ export function setupTelegramHandlers(
           },
           Math.max(DEBOUNCE_MS, baseDelay),
         );
-      };
-
-      // flush 排队的 debounce 更新，防止 sendComplete 时仍有 streaming 更新在排队
-      wrapper.flush = async () => {
+      },
+      sendComplete: async (content, note) => {
+        throttle.reset();
+        // Flush pending debounced updates before sending final message
+        await flush();
+        const maxAttempts = 3;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          try {
+            await sendFinalMessages(factoryCtx.chatId, factoryCtx.msgId, content, note, factoryCtx.toolId);
+            return;
+          } catch (err) {
+            log.error(`Failed to send complete message (attempt ${attempt}/${maxAttempts}):`, err);
+            if (attempt < maxAttempts) {
+              await new Promise((r) => setTimeout(r, 2000 * attempt));
+            } else {
+              try {
+                await sendTextReply(
+                  factoryCtx.chatId,
+                  `⚠️ 消息更新失败（网络异常），以下是 AI 回复：\n\n${content.slice(0, 4000)}`,
+                );
+              } catch (fallbackErr) {
+                log.error('All send attempts failed:', fallbackErr);
+                throw err;
+              }
+            }
+          }
+        }
+      },
+      sendError: async (error) => {
+        throttle.reset();
+        await updateMessage(
+          factoryCtx.chatId,
+          factoryCtx.msgId,
+          `错误：${error}`,
+          'error',
+          buildErrorNote(),
+          factoryCtx.toolId,
+        );
+      },
+      extraCleanup: () => {
+        throttle.reset();
+        savedThinkingText = '';
+        hasThinkingContent = false;
         if (debounceTimer) {
           clearTimeout(debounceTimer);
           debounceTimer = null;
         }
-        while (updateInProgress) {
-          await new Promise((resolve) => setTimeout(resolve, 50));
-        }
-      };
-
-      return wrapper;
+      },
     };
+  };
 
-    const streamUpdateWrapper = createStreamUpdateWrapper();
+  const handleAIRequest = createPlatformAIRequestHandler({
+    platform: 'telegram',
+    config,
+    sessionManager,
+    sender: telegramSender,
+    throttleMs: TELEGRAM_THROTTLE_MS,
+    runningTasks,
+    taskCallbacksFactory: telegramTaskCallbacksFactory,
+  });
 
-    await runAITask(
-      { config, sessionManager },
-      {
-        userId,
-        chatId,
-        workDir,
-        sessionId,
-        convId,
-        platform: "telegram",
-        taskKey,
-      },
-      prompt,
-      toolAdapter,
-      {
-        throttleMs: TELEGRAM_THROTTLE_MS,
-        streamUpdate: (content, toolNote) => {
-          streamUpdateWrapper(content, toolNote);
-        },
-        sendComplete: async (content, note) => {
-          throttle.reset();
-          // 先 flush 排队的 streaming 更新，防止它覆盖后续的 done 消息
-          await streamUpdateWrapper.flush?.();
-          const maxAttempts = 3;
-          for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-            try {
-              await sendFinalMessages(chatId, msgId, content, note, toolId);
-              return;
-            } catch (err) {
-              log.error(`Failed to send complete message (attempt ${attempt}/${maxAttempts}):`, err);
-              if (attempt < maxAttempts) {
-                await new Promise((r) => setTimeout(r, 2000 * attempt));
-              } else {
-                // 最终失败：尝试发送纯文本作为最后手段
-                try {
-                  await sendTextReply(
-                    chatId,
-                    `⚠️ 消息更新失败（网络异常），以下是 AI 回复：\n\n${content.slice(0, 4000)}`,
-                  );
-                } catch (fallbackErr) {
-                  log.error("All send attempts failed:", fallbackErr);
-                  throw err;
-                }
-              }
-            }
-          }
-        },
-        sendError: async (error) => {
-          throttle.reset();
-          await updateMessage(
-            chatId,
-            msgId,
-            `错误：${error}`,
-            "error",
-            buildErrorNote(),
-            toolId,
-          );
-        },
-        extraCleanup: () => {
-          throttle.reset();
-          savedThinkingText = "";
-          hasThinkingContent = false;
-          stopTyping();
-          runningTasks.delete(taskKey);
-        },
-        onTaskReady: (state) => {
-          runningTasks.set(taskKey, state);
-        },
-        sendImage: (path) => sendImageReply(chatId, path),
-      },
-    );
+  async function enqueueSavedMedia(
+    userId: string,
+    chatId: string,
+    kind: string,
+    localPath: string,
+    text?: string,
+  ): Promise<"running" | "queued" | "rejected"> {
+    const prompt = buildSavedMediaPrompt({
+      source: "Telegram",
+      kind,
+      localPath,
+      text,
+    });
+    const workDir = sessionManager.getWorkDir(userId);
+    const convId = sessionManager.getConvId(userId);
+    return requestQueue.enqueue(userId, convId, prompt, async (nextPrompt) => {
+      await handleAIRequest({ userId, chatId, prompt: nextPrompt, workDir, convId });
+    });
   }
 
   bot.on("callback_query", async (ctx) => {
@@ -419,18 +378,18 @@ export function setupTelegramHandlers(
     }
   });
 
-  bot.on(message("text"), async (ctx) => {
-    const chatId = String(ctx.chat.id);
-    const userId = String(ctx.from!.id);
-    const messageId = String(ctx.message.message_id);
-    const text = ctx.message.text.trim();
+  bot.on(message("text"), async (tgCtx) => {
+    const chatId = String(tgCtx.chat.id);
+    const userId = String(tgCtx.from!.id);
+    const messageId = String(tgCtx.message.message_id);
+    const text = tgCtx.message.text.trim();
 
     await handleTextFlow({
       platform: 'telegram',
       userId,
       chatId,
       text,
-      ctx: ctx as any,
+      ctx,
       handleAIRequest,
       sendTextReply,
       replyToMessageId: messageId,

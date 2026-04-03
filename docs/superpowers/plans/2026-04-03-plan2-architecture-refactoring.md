@@ -780,23 +780,23 @@ git commit -m "refactor(qq): use shared platform abstractions for event handling
 
 Each platform refactor follows the same pattern as Task A5:
 
-- [ ] **Step 1: Refactor Telegram event-handler**
+- [x] **Step 1: Refactor Telegram event-handler**
 
 Telegram has unique: `DynamicThrottle`, debounced stream updates with flush, stop button callback handler, multiple media handlers.
 
-- [ ] **Step 2: Refactor Feishu event-handler**
+- [x] **Step 2: Refactor Feishu event-handler**
 
 Feishu has unique: CardKit integration, rich text ("post") parsing, card action handler, permission error detection.
 
-- [ ] **Step 3: Refactor WeWork event-handler**
+- [x] **Step 3: Refactor WeWork event-handler**
 
 WeWork has unique: AES-256-CBC media decryption, `reqId` threading, safety timeout timer.
 
-- [ ] **Step 4: Refactor DingTalk event-handler**
+- [x] **Step 4: Refactor DingTalk event-handler**
 
 DingTalk has unique: `registerSessionWebhook`, `setDingTalkActiveTarget`, `ackMessage`, `dingtalkTarget`.
 
-- [ ] **Step 5: Refactor WorkBuddy event-handler**
+- [x] **Step 5: Refactor WorkBuddy event-handler**
 
 WorkBuddy has unique: No thinking message, log-only streaming, per-event CommandHandler, `taskKeyByChatId` map.
 
