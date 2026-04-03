@@ -57,7 +57,7 @@
 - Create: `src/platform/platform-types.ts`
 - Create: `src/platform/index.ts`
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 Create `src/platform/platform-types.test.ts`:
 
@@ -108,7 +108,7 @@ describe('platform-types', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 npx vitest run src/platform/platform-types.test.ts
@@ -116,7 +116,7 @@ npx vitest run src/platform/platform-types.test.ts
 
 Expected: FAIL — module not found
 
-- [ ] **Step 3: Write implementation**
+- [x] **Step 3: Write implementation**
 
 Create `src/platform/platform-types.ts`:
 
@@ -214,7 +214,7 @@ export { createPlatformEventContext } from './create-event-context.js';
 export { handleTextFlow } from './handle-text-flow.js';
 ```
 
-- [ ] **Step 4: Run tests and verify they pass**
+- [x] **Step 4: Run tests and verify they pass**
 
 ```bash
 npx vitest run src/platform/platform-types.test.ts
@@ -222,7 +222,7 @@ npx vitest run src/platform/platform-types.test.ts
 
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/platform/platform-types.ts src/platform/platform-types.test.ts src/platform/index.ts
@@ -236,7 +236,7 @@ git commit -m "refactor: define shared platform abstraction interfaces"
 **Files:**
 - Create: `src/platform/handle-ai-request.ts`
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 Create `src/platform/handle-ai-request.test.ts`:
 
@@ -293,7 +293,7 @@ describe('createPlatformAIRequestHandler', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 npx vitest run src/platform/handle-ai-request.test.ts
@@ -301,7 +301,7 @@ npx vitest run src/platform/handle-ai-request.test.ts
 
 Expected: FAIL — module not found
 
-- [ ] **Step 3: Write implementation**
+- [x] **Step 3: Write implementation**
 
 Create `src/platform/handle-ai-request.ts`:
 
@@ -443,7 +443,7 @@ export function createPlatformAIRequestHandler(deps: PlatformAIRequestDeps) {
 }
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 ```bash
 npx vitest run src/platform/handle-ai-request.test.ts
@@ -451,7 +451,7 @@ npx vitest run src/platform/handle-ai-request.test.ts
 
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/platform/handle-ai-request.ts src/platform/handle-ai-request.test.ts
@@ -465,7 +465,7 @@ git commit -m "refactor: create shared handleAIRequest factory for all platforms
 **Files:**
 - Create: `src/platform/create-event-context.ts`
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 Create `src/platform/create-event-context.test.ts`:
 
@@ -496,13 +496,13 @@ describe('createPlatformEventContext', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 npx vitest run src/platform/create-event-context.test.ts
 ```
 
-- [ ] **Step 3: Write implementation**
+- [x] **Step 3: Write implementation**
 
 Create `src/platform/create-event-context.ts`:
 
@@ -554,7 +554,7 @@ export function createPlatformEventContext(deps: CreateEventContextDeps): Platfo
 }
 ```
 
-- [ ] **Step 4: Run tests and verify they pass**
+- [x] **Step 4: Run tests and verify they pass**
 
 ```bash
 npx vitest run src/platform/create-event-context.test.ts
@@ -562,7 +562,7 @@ npx vitest run src/platform/create-event-context.test.ts
 
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/platform/create-event-context.ts src/platform/create-event-context.test.ts
@@ -576,7 +576,7 @@ git commit -m "refactor: create shared event context factory for platform handle
 **Files:**
 - Create: `src/platform/handle-text-flow.ts`
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 Create `src/platform/handle-text-flow.test.ts`:
 
@@ -619,13 +619,13 @@ describe('handleTextFlow', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 npx vitest run src/platform/handle-text-flow.test.ts
 ```
 
-- [ ] **Step 3: Write implementation**
+- [x] **Step 3: Write implementation**
 
 Create `src/platform/handle-text-flow.ts`:
 
@@ -710,7 +710,7 @@ export async function handleTextFlow(params: HandleTextFlowParams): Promise<void
 }
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 ```bash
 npx vitest run src/platform/handle-text-flow.test.ts
@@ -718,7 +718,7 @@ npx vitest run src/platform/handle-text-flow.test.ts
 
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/platform/handle-text-flow.ts src/platform/handle-text-flow.test.ts
@@ -734,17 +734,17 @@ git commit -m "refactor: create shared text flow handler for platform event proc
 
 QQ is chosen because it has the simplest `handleAIRequest` (no DynamicThrottle, no CardKit, no safety timer).
 
-- [ ] **Step 1: Read current `src/qq/event-handler.ts` and identify all code to replace**
+- [x] **Step 1: Read current `src/qq/event-handler.ts` and identify all code to replace**
 
 Read the file and understand the current structure. The `handleAIRequest` function (approximately 80 lines) should be replaced with a call to `createPlatformAIRequestHandler`. The `setupQQHandlers` function should use `createPlatformEventContext`.
 
-- [ ] **Step 2: Rewrite event-handler to use shared abstractions**
+- [x] **Step 2: Rewrite event-handler to use shared abstractions**
 
 Replace the duplicated `handleAIRequest` and event setup code with calls to the shared factory functions. Keep the QQ-specific deduplication logic and media handling.
 
  The key change is reduce the `handleAIRequest` body from ~80 lines to ~5-10 lines by calling `createPlatformAIRequestHandler(deps)`.
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 ```bash
 npx vitest run src/qq/event-handler.test.ts
@@ -752,7 +752,7 @@ npx vitest run src/qq/event-handler.test.ts
 
 Expected: PASS
 
-- [ ] **Step 4: Run full build and test suite**
+- [x] **Step 4: Run full build and test suite**
 
 ```bash
 npm run build && npm test
@@ -760,7 +760,7 @@ npm run build && npm test
 
 Expected: 0 errors, all tests pass
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/qq/event-handler.ts
@@ -800,7 +800,7 @@ DingTalk has unique: `registerSessionWebhook`, `setDingTalkActiveTarget`, `ackMe
 
 WorkBuddy has unique: No thinking message, log-only streaming, per-event CommandHandler, `taskKeyByChatId` map.
 
-- [ ] **Step 6: Run full build and test suite**
+- [x] **Step 6: Run full build and test suite**
 
 ```bash
 npm run build && npm test
@@ -808,7 +808,7 @@ npm run build && npm test
 
 Expected: 0 errors, all tests pass
 
-- [ ] **Step 7: Commit all platform refactors together**
+- [x] **Step 7: Commit all platform refactors together**
 
 ```bash
 git add src/telegram/event-handler.ts src/feishu/event-handler.ts src/wework/event-handler.ts src/dingtalk/event-handler.ts src/workbuddy/event-handler.ts
@@ -822,25 +822,25 @@ git commit -m "refactor: migrate remaining platforms to shared abstractions"
 **Files:**
 - Modify: `src/index.ts`
 
-- [ ] **Step 1: Replace the 6 platform init blocks with a data-driven loop**
+- [x] **Step 1: Replace the 6 platform init blocks with a data-driven loop**
 
 Create a `PLATFORM_INIT_HANDLERS` map that maps platform name → { init, setupHandlers } and loop over it instead of the 6 copy-paste blocks.
 
-- [ ] **Step 2: Replace `sendLifecycleNotification` with data-driven dispatch**
+- [x] **Step 2: Replace `sendLifecycleNotification` with data-driven dispatch**
 
 Replace the 5-way if/else chain with a map lookup from platform name to sender function.
 
-- [ ] **Step 3: Add shutdown double-invocation guard**
+- [x] **Step 3: Add shutdown double-invocation guard**
 
 Wrap the shutdown function with a `shuttingDown` flag to prevent double-fire from SIGINT + SIGTERM.
 
-- [ ] **Step 4: Run full build and test suite**
+- [x] **Step 4: Run full build and test suite**
 
 ```bash
 npm run build && npm test
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/index.ts
@@ -857,21 +857,21 @@ git commit -m "refactor: data-driven platform init and lifecycle in index.ts"
 - Create: `src/config/types.ts`
 - Modify: `src/config.ts` (or replace with `src/config/index.ts`)
 
-- [ ] **Step 1: Move all type definitions to `src/config/types.ts`**
+- [x] **Step 1: Move all type definitions to `src/config/types.ts`**
 
 Extract: `Platform`, `AiCommand`, `Config`, `FileConfig`, all `FilePlatform*` interfaces, `FileTool*` interfaces from config.ts.
 
-- [ ] **Step 2: Update imports in all 24 consumer files**
+- [x] **Step 2: Update imports in all 24 consumer files**
 
 All files that import from `../config.js` should continue to work because `src/config/index.ts` re-exports everything.
 
-- [ ] **Step 3: Run build and tests**
+- [x] **Step 3: Run build and tests**
 
 ```bash
 npm run build && npm test
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/config/types.ts
@@ -886,11 +886,11 @@ git commit -m "refactor: extract config type definitions to config/types.ts"
 - Create: `src/config/file-io.ts`
 - Create: `src/config/credentials.ts`
 
-- [ ] **Step 1: Move file I/O functions to `file-io.ts`**
+- [x] **Step 1: Move file I/O functions to `file-io.ts`**
 
 Extract: `CONFIG_PATH`, `CODEX_AUTH_PATHS`, `loadFileConfig`, `saveFileConfig`, cache vars.
 
-- [ ] **Step 2: Create generic credential resolver in `credentials.ts`**
+- [x] **Step 2: Create generic credential resolver in `credentials.ts`**
 
 Create a helper that replaces the 6x repeated credential loading pattern:
 
@@ -903,15 +903,15 @@ export function resolvePlatformCredentials(
 ): { enabled: boolean; credentials: Record<string, string> }
 ```
 
-- [ ] **Step 3: Rewrite `loadConfig` to use the generic helpers**
+- [x] **Step 3: Rewrite `loadConfig` to use the generic helpers**
 
-- [ ] **Step 4: Run build and tests**
+- [x] **Step 4: Run build and tests**
 
 ```bash
 npm run build && npm test
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/config/file-io.ts src/config/credentials.ts
@@ -928,7 +928,7 @@ git commit -m "refactor: extract config file I/O and generic credential resoluti
 - Create: `src/dingtalk/api.ts`
 - Modify: `src/dingtalk/client.ts`
 
-- [ ] **Step 1: Extract deduplicated HTTP functions**
+- [x] **Step 1: Extract deduplicated HTTP functions**
 
 The 3 functions (`callOpenApi`, `callOapi`, `callOpenApiWithMethod`) share ~80% identical code. Create a single `dingtalkFetch()` base function, then 3 thin wrappers:
 
@@ -944,15 +944,15 @@ export async function callOpenApi(path: string, body: unknown, config: DingTalkA
 export async function callOapi(path: string, params: Record<string, string>, config: DingTalkApiConfig): Promise<unknown>
 ```
 
-- [ ] **Step 2: Update dingtalk/client.ts imports**
+- [x] **Step 2: Update dingtalk/client.ts imports**
 
-- [ ] **Step 3: Run build and tests**
+- [x] **Step 3: Run build and tests**
 
 ```bash
 npm run build && npm test
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/dingtalk/api.ts src/dingtalk/client.ts
@@ -968,25 +968,25 @@ git commit -m "refactor(dingtalk): extract deduplicated HTTP layer to api.ts"
 - Create: `src/dingtalk/streaming-card.ts`
 - Modify: `src/dingtalk/client.ts`
 
-- [ ] **Step 1: Extract webhook management**
+- [x] **Step 1: Extract webhook management**
 
 Move: `registerSessionWebhook`, `sendByWebhook`, `sendText`, `sendMarkdown`, `downloadRobotMessageFile` to `webhook.ts`.
 
-- [ ] **Step 2: Extract streaming card system**
+- [x] **Step 2: Extract streaming card system**
 
 Move: `prepareStreamingCard`, `updateStreamingCard`, `finishStreamingCard`, `createAndDeliverCard`, `updateCardInstance`, `sendRobotInteractiveCard`, `updateRobotInteractiveCard`, `buildStandardCardData`, `buildCardParamMap`, `buildAiCardContent` to `streaming-card.ts`.
 
-- [ ] **Step 3: Slim down client.ts to ~120 lines**
+- [x] **Step 3: Slim down client.ts to ~120 lines**
 
 client.ts should only contain: `initDingTalk`, `stopDingTalk`, `getClient`, `ackMessage`, state management, and the warn filter.
 
-- [ ] **Step 4: Run build and tests**
+- [x] **Step 4: Run build and tests**
 
 ```bash
 npm run build && npm test
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/dingtalk/webhook.ts src/dingtalk/streaming-card.ts src/dingtalk/client.ts
@@ -1002,25 +1002,25 @@ git commit -m "refactor(dingtalk): decompose client.ts into focused modules"
 **Files:**
 - Modify: `src/adapters/claude-sdk-adapter.ts`
 
-- [ ] **Step 1: Remove `lazyCleanupIdleSessions` function and counter**
+- [x] **Step 1: Remove `lazyCleanupIdleSessions` function and counter**
 
 Remove the `LAZY_CLEANUP_INTERVAL` counter and the `lazyCleanupIdleSessions` function. The `setInterval` timer at 5-minute intervals already handles cleanup.
 
-- [ ] **Step 2: Add session pool size limit**
+- [x] **Step 2: Add session pool size limit**
 
 Add a `MAX_ACTIVE_SESSIONS = 100` constant. In `getOrCreateSession`, reject new sessions when the pool is full (log error + throw).
 
-- [ ] **Step 3: Document chdir mutex limitation**
+- [x] **Step 3: Document chdir mutex limitation**
 
 Add JSDoc to `withChdirMutex` explaining the concurrency constraint and that the ideal fix is for the SDK to accept a `cwd` parameter.
 
-- [ ] **Step 4: Run build and tests**
+- [x] **Step 4: Run build and tests**
 
 ```bash
 npm run build && npm test
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/adapters/claude-sdk-adapter.ts
