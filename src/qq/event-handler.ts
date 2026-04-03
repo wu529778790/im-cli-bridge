@@ -187,7 +187,6 @@ export function setupQQHandlers(
       };
     },
     taskCallbacks: {
-      throttleMs: QQ_THROTTLE_MS,
       streamUpdate: async (content: string, toolNote?: string) => {
         // QQ doesn't support streaming updates; this is a no-op
       },

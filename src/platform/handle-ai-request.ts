@@ -37,12 +37,12 @@ export interface PlatformSender {
 
 /**
  * The runAITask callback set, minus the fields the factory fills in
- * (extraCleanup, onTaskReady). Platforms provide these to control
+ * (extraCleanup, onTaskReady, throttleMs). Platforms provide these to control
  * streaming, completion, and error behavior.
  */
 export interface PlatformTaskCallbacks
-  extends Omit<TaskAdapter, 'extraCleanup' | 'onTaskReady' | 'onTaskReady' | 'sendImage'> {
-  /** Called after the AI task finishes (success, error, or abort) for cleanup beyond runningTasks.delete. */
+  extends Omit<TaskAdapter, 'extraCleanup' | 'onTaskReady' | 'onTaskReady' | 'sendImage' | 'throttleMs'> {
+  /** Called after the AI task finishes (success, error, or abort) for cleanup beyond by runningTasks.delete. */
   extraCleanup?: () => void;
 }
 
@@ -76,6 +76,19 @@ export interface HandleAIRequestConfig {
    * like Feishu's CardKit streaming or WorkBuddy's non-streaming mode.
    */
   taskCallbacks?: PlatformTaskCallbacks;
+  /**
+   * Optional: factory function to create callbacks with full context.
+   * Called after sendThinkingMessage with access to msgId and taskKey.
+   * This is useful for platforms like WeWork that need msgId for streaming.
+   */
+  taskCallbacksFactory?: (ctx: {
+    chatId: string;
+    msgId: string;
+    taskKey: string;
+    userId: string;
+    toolId: string;
+    replyToMessageId: string | undefined;
+  }) => PlatformTaskCallbacks;
 }
 
 export interface HandleAIRequestParams {
@@ -112,6 +125,7 @@ export function createPlatformAIRequestHandler(
     onThinkingToText,
     extraInit,
     taskCallbacks,
+    taskCallbacksFactory,
   } = deps;
 
   async function handleAIRequest(params: HandleAIRequestParams): Promise<void> {
@@ -167,13 +181,13 @@ export function createPlatformAIRequestHandler(
       throttleMs,
       ...(minContentDeltaChars != null ? { minContentDeltaChars } : {}),
       streamUpdate: async (_content: string, _toolNote?: string) => {
-        // Default no-op; platforms override via taskCallbacks
+        // Default no-op; platforms override via taskCallbacks or taskCallbacksFactory
       },
       sendComplete: async (_content: string, _note?: string) => {
-        // Default no-op; platforms override via taskCallbacks
+        // Default no-op; platforms override via taskCallbacks or taskCallbacksFactory
       },
       sendError: async (_error: string) => {
-        // Default no-op; platforms override via taskCallbacks
+        // Default no-op; platforms override via taskCallbacks or taskCallbacksFactory
       },
       onTaskReady: (state: TaskRunState) => {
         runningTasks.set(taskKey, state);
@@ -186,8 +200,32 @@ export function createPlatformAIRequestHandler(
     };
 
     // Merge in platform callbacks (if provided)
-    const mergedCallbacks: TaskAdapter = { ...defaultCallbacks };
-    if (taskCallbacks) {
+    let mergedCallbacks: TaskAdapter = { ...defaultCallbacks };
+
+    // Use taskCallbacksFactory if provided (has full context access)
+    if (taskCallbacksFactory) {
+      const factoryCallbacks = taskCallbacksFactory({
+        chatId,
+        msgId,
+        taskKey,
+        userId,
+        toolId,
+        replyToMessageId,
+      });
+      if (factoryCallbacks.streamUpdate) {
+        mergedCallbacks.streamUpdate = factoryCallbacks.streamUpdate;
+      }
+      if (factoryCallbacks.sendComplete) {
+        mergedCallbacks.sendComplete = factoryCallbacks.sendComplete;
+      }
+      if (factoryCallbacks.sendError) {
+        mergedCallbacks.sendError = factoryCallbacks.sendError;
+      }
+      if (factoryCallbacks.onFirstContent) {
+        mergedCallbacks.onFirstContent = factoryCallbacks.onFirstContent;
+      }
+    } else if (taskCallbacks) {
+      // Fall back to static taskCallbacks
       if (taskCallbacks.streamUpdate) {
         mergedCallbacks.streamUpdate = taskCallbacks.streamUpdate;
       }
@@ -201,6 +239,7 @@ export function createPlatformAIRequestHandler(
         mergedCallbacks.onFirstContent = taskCallbacks.onFirstContent;
       }
     }
+
     if (onThinkingToText) {
       mergedCallbacks.onThinkingToText = onThinkingToText;
     }
@@ -209,7 +248,7 @@ export function createPlatformAIRequestHandler(
     }
 
     // Wrap extraCleanup to also call the platform's extraCleanup
-    const platformExtraCleanup = taskCallbacks?.extraCleanup;
+    const platformExtraCleanup = taskCallbacks?.extraCleanup ?? taskCallbacksFactory?.({ chatId, msgId, taskKey, userId, toolId, replyToMessageId }).extraCleanup;
     const originalExtraCleanup = mergedCallbacks.extraCleanup!;
     mergedCallbacks.extraCleanup = () => {
       originalExtraCleanup();

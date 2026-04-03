@@ -1,9 +1,7 @@
 import type { Telegraf } from "telegraf";
 import { message } from "telegraf/filters";
 import { resolvePlatformAiCommand, type Config } from "../config.js";
-import { AccessControl } from "../access/access-control.js";
 import type { SessionManager } from "../session/session-manager.js";
-import { RequestQueue } from "../queue/request-queue.js";
 import {
   sendThinkingMessage,
   updateMessage,
@@ -13,17 +11,20 @@ import {
   sendImageReply,
   sendDirectorySelection,
 } from "./message-sender.js";
-import { CommandHandler } from "../commands/handler.js";
-import { getAdapter } from "../adapters/registry.js";
-import { runAITask, type TaskRunState } from "../shared/ai-task.js";
+import { type MessageSender } from "../commands/handler.js";
+import { type TaskRunState } from "../shared/ai-task.js";
 import { TELEGRAM_THROTTLE_MS } from "../constants.js";
-import { setActiveChatId } from "../shared/active-chats.js";
-import { setChatUser } from "../shared/chat-user-map.js";
 import { createLogger } from "../logger.js";
 import { downloadMediaFromUrl } from "../shared/media-storage.js";
 import { buildSavedMediaPrompt } from "../shared/media-analysis-prompt.js";
 import { buildMediaContext } from "../shared/media-context.js";
 import { buildErrorNote, buildProgressNote } from "../shared/message-note.js";
+import { createPlatformEventContext } from "../platform/create-event-context.js";
+import { handleTextFlow } from "../platform/handle-text-flow.js";
+import { setActiveChatId } from "../shared/active-chats.js";
+import { setChatUser } from "../shared/chat-user-map.js";
+import { getAdapter } from "../adapters/registry.js";
+import { runAITask } from "../shared/ai-task.js";
 
 const log = createLogger("TgHandler");
 
@@ -101,17 +102,15 @@ export function setupTelegramHandlers(
   config: Config,
   sessionManager: SessionManager,
 ): TelegramEventHandlerHandle {
-  const accessControl = new AccessControl(config.telegramAllowedUserIds);
-  const requestQueue = new RequestQueue();
-  const runningTasks = new Map<string, TaskRunState>();
-
-  const commandHandler = new CommandHandler({
+  // Create shared platform event context
+  const ctx = createPlatformEventContext({
+    platform: 'telegram',
+    allowedUserIds: config.telegramAllowedUserIds,
     config,
     sessionManager,
-    requestQueue,
     sender: { sendTextReply, sendDirectorySelection },
-    getRunningTasksSize: () => runningTasks.size,
   });
+  const { accessControl, requestQueue, runningTasks, commandHandler } = ctx;
 
   async function enqueueSavedMedia(
     userId: string,
@@ -426,50 +425,16 @@ export function setupTelegramHandlers(
     const messageId = String(ctx.message.message_id);
     const text = ctx.message.text.trim();
 
-    if (!accessControl.isAllowed(userId)) {
-      await sendTextReply(chatId, "抱歉，您没有访问权限。\n您的 ID: " + userId);
-      return;
-    }
-
-    setActiveChatId("telegram", chatId);
-    setChatUser(chatId, userId, "telegram");
-
-    if (
-      await commandHandler.dispatch(
-        text,
-        chatId,
-        userId,
-        "telegram",
-        handleAIRequest,
-      )
-    ) {
-      return;
-    }
-
-    const workDir = sessionManager.getWorkDir(userId);
-    const convId = sessionManager.getConvId(userId);
-    const enqueueResult = requestQueue.enqueue(
+    await handleTextFlow({
+      platform: 'telegram',
       userId,
-      convId,
+      chatId,
       text,
-      async (prompt) => {
-        await handleAIRequest(
-          userId,
-          chatId,
-          prompt,
-          workDir,
-          convId,
-          undefined,
-          messageId,
-        );
-      },
-    );
-
-    if (enqueueResult === "rejected") {
-      await sendTextReply(chatId, "请求队列已满，请稍后再试。");
-    } else if (enqueueResult === "queued") {
-      await sendTextReply(chatId, "您的请求已排队等待。");
-    }
+      ctx: ctx as any,
+      handleAIRequest,
+      sendTextReply,
+      replyToMessageId: messageId,
+    });
   });
 
   bot.on(message("photo"), async (ctx) => {

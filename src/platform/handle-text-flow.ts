@@ -45,8 +45,8 @@ export interface HandleTextFlowParams {
   text: string;
   /** The platform event context (accessControl, commandHandler, requestQueue, etc.). */
   ctx: PlatformEventContext;
-  /** The platform-specific AI request handler (typically from createPlatformAIRequestHandler). */
-  handleAIRequest: ClaudeRequestHandler;
+  /** The platform-specific AI request handler (from createPlatformAIRequestHandler). */
+  handleAIRequest: any;
   /** Function to send a text reply back to the user. */
   sendTextReply: SendTextReplyFn;
   /** Optional: additional workDir override. If not provided, resolved from sessionManager. */
@@ -126,12 +126,32 @@ export async function handleTextFlow(params: HandleTextFlowParams): Promise<bool
 
   // 4. Command dispatch
   try {
+    // Create a wrapper that matches ClaudeRequestHandler signature
+    const handleAIRequestWrapper: ClaudeRequestHandler = (
+      userId,
+      chatId,
+      prompt,
+      workDir,
+      convId,
+      _threadCtx,
+      replyToMessageId
+    ) => {
+      return handleAIRequest({
+        userId,
+        chatId,
+        prompt,
+        workDir,
+        convId,
+        replyToMessageId,
+      });
+    };
+
     const handled = await ctx.commandHandler.dispatch(
       text,
       chatId,
       userId,
       platform,
-      handleAIRequest,
+      handleAIRequestWrapper,
     );
     if (handled) {
       return true;
@@ -166,15 +186,14 @@ export async function handleTextFlow(params: HandleTextFlowParams): Promise<bool
       convId ?? '',
       text,
       async (prompt) => {
-        await handleAIRequest(
+        await handleAIRequest({
           userId,
           chatId,
           prompt,
-          workDir ?? '',
+          workDir: workDir ?? '',
           convId,
-          undefined,
           replyToMessageId,
-        );
+        });
       },
     );
 
