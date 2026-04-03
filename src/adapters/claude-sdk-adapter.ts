@@ -29,6 +29,9 @@ const sessionLastUsed = new Map<string, number>();
 const runningSessions = new Set<string>();
 const SESSION_IDLE_TTL_MS = 30 * 60 * 1000; // 30 分钟未使用则清理
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;  // 每 5 分钟检查一次
+const MAX_ACTIVE_SESSIONS = 100;
+
+let sessionSeq = 0;
 
 const cleanupInterval = setInterval(() => {
   const now = Date.now();
@@ -47,29 +50,17 @@ const cleanupInterval = setInterval(() => {
 }, CLEANUP_INTERVAL_MS);
 cleanupInterval.unref(); // 不阻止进程退出
 
-// Lazy cleanup: check idle sessions periodically during getOrCreateSession calls
-let lazyCleanupCounter = 0;
-const LAZY_CLEANUP_INTERVAL = 10;
-let sessionSeq = 0;
-function lazyCleanupIdleSessions(): void {
-  lazyCleanupCounter++;
-  if (lazyCleanupCounter % LAZY_CLEANUP_INTERVAL !== 0) return;
-  const now = Date.now();
-  for (const [id, lastUsed] of sessionLastUsed) {
-    if (runningSessions.has(id)) continue; // 跳过正在运行任务的 session
-    if (now - lastUsed > SESSION_IDLE_TTL_MS) {
-      const s = activeSessions.get(id);
-      if (s) {
-        try { s.close(); } catch { /* ignore */ }
-        activeSessions.delete(id);
-      }
-      sessionLastUsed.delete(id);
-      log.info(`Lazy cleanup: idle session ${id} (unused ${Math.round((now - lastUsed) / 60000)}min)`);
-    }
-  }
-}
-
-// Mutex to serialize process.chdir() calls across concurrent users
+/**
+ * Serializes process.chdir() calls across concurrent users.
+ *
+ * process.chdir() is a process-wide global side effect — only one chdir can
+ * be active at a time. The SDK's createSession/resumeSession do not accept a
+ * `cwd` parameter, so we must chdir before calling them. This mutex ensures
+ * concurrent requests don't race on the working directory.
+ *
+ * **Limitation:** If the SDK ever supports a `cwd` option, this mutex should
+ * be removed entirely.
+ */
 let chdirMutex: Promise<void> = Promise.resolve();
 function withChdirMutex<T>(fn: () => T): Promise<T> {
   const previous = chdirMutex;
@@ -119,9 +110,11 @@ async function getOrCreateSession(
   model: string | undefined,
   permissionMode: 'default' | 'bypassPermissions' | 'acceptEdits' | 'plan'
 ): Promise<{ session: SDKSession; sessionId: string }> {
-  lazyCleanupIdleSessions();
-
   const resolvedModel = model?.trim() || 'claude-opus-4-5';
+
+  if (activeSessions.size >= MAX_ACTIVE_SESSIONS) {
+    throw new Error(`Session pool is full (${MAX_ACTIVE_SESSIONS}). Cannot create new session.`);
+  }
   const sessionOptions = {
     model: resolvedModel,
     permissionMode,
