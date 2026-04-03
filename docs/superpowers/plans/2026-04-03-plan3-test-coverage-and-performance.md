@@ -19,7 +19,7 @@
 **Files:**
 - Modify: `vitest.config.ts`
 
-- [ ] **Step 1: Update vitest.config.ts with coverage config**
+- [x] **Step 1: Update vitest.config.ts with coverage config**
 
 ```typescript
 import { defineConfig } from "vitest/config";
@@ -54,7 +54,7 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 2: Verify config is valid**
+- [x] **Step 2: Verify config is valid**
 
 ```bash
 npx vitest run --coverage 2>&1 | tail -20
@@ -62,7 +62,7 @@ npx vitest run --coverage 2>&1 | tail -20
 
 Expected: Tests pass, coverage report shown (may be below thresholds since we haven't added tests yet — that's fine for now).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add vitest.config.ts
@@ -76,7 +76,7 @@ git commit -m "test: add coverage thresholds (60% lines) to vitest config"
 **Files:**
 - Create: `src/queue/request-queue.test.ts`
 
-- [ ] **Step 1: Write tests**
+- [x] **Step 1: Write tests**
 
 Create `src/queue/request-queue.test.ts`:
 
@@ -190,7 +190,7 @@ describe('RequestQueue', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests**
+- [x] **Step 2: Run tests**
 
 ```bash
 npx vitest run src/queue/request-queue.test.ts
@@ -198,7 +198,7 @@ npx vitest run src/queue/request-queue.test.ts
 
 Expected: All 8 tests pass.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/queue/request-queue.test.ts
@@ -214,11 +214,11 @@ git commit -m "test: add comprehensive tests for RequestQueue"
 
 The existing test file only tests `resolveWorkDirInput`. We add tests for core session operations.
 
-- [ ] **Step 1: Read existing test file**
+- [x] **Step 1: Read existing test file**
 
 Read `src/session/session-manager.test.ts` to understand existing tests and imports.
 
-- [ ] **Step 2: Add SessionManager class tests**
+- [x] **Step 2: Add SessionManager class tests**
 
 Add a new `describe` block for `SessionManager` class tests. Use a temp directory for the session file to avoid polluting the real config:
 
@@ -313,7 +313,7 @@ describe('SessionManager', () => {
 });
 ```
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 ```bash
 npx vitest run src/session/session-manager.test.ts
@@ -321,7 +321,7 @@ npx vitest run src/session/session-manager.test.ts
 
 Expected: All tests pass (existing + new).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/session/session-manager.test.ts
@@ -337,7 +337,7 @@ git commit -m "test: add SessionManager CRUD and persistence tests"
 
 Since the adapter uses `@anthropic-ai/claude-agent-sdk` which may not be available in test env, we mock it.
 
-- [ ] **Step 1: Write tests**
+- [x] **Step 1: Write tests**
 
 Create `src/adapters/claude-sdk-adapter.test.ts`:
 
@@ -383,7 +383,7 @@ describe('ClaudeSDKAdapter session pool', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests**
+- [x] **Step 2: Run tests**
 
 ```bash
 npx vitest run src/adapters/claude-sdk-adapter.test.ts
@@ -391,7 +391,7 @@ npx vitest run src/adapters/claude-sdk-adapter.test.ts
 
 Expected: Tests pass.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/adapters/claude-sdk-adapter.test.ts
@@ -407,11 +407,11 @@ git commit -m "test: add basic ClaudeSDKAdapter shape tests"
 
 The existing test only tests the usage-limit error path. Add tests for normal completion and abort.
 
-- [ ] **Step 1: Read existing test file**
+- [x] **Step 1: Read existing test file**
 
 Read `src/shared/ai-task.test.ts` to understand existing structure.
 
-- [ ] **Step 2: Add completion and abort tests**
+- [x] **Step 2: Add completion and abort tests**
 
 Add new test cases to the existing file:
 
@@ -533,7 +533,7 @@ vi.mock('../config.js', async () => {
 });
 ```
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 ```bash
 npx vitest run src/shared/ai-task.test.ts
@@ -541,7 +541,7 @@ npx vitest run src/shared/ai-task.test.ts
 
 Expected: All tests pass.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/shared/ai-task.test.ts
@@ -557,11 +557,11 @@ git commit -m "test: add runAITask completion and error path tests"
 **Files:**
 - Modify: `src/session/session-manager.ts`
 
-- [ ] **Step 1: Read the full session-manager.ts**
+- [x] **Step 1: Read the full session-manager.ts**
 
 Read the file to understand all callers of `flushSync`, `doFlush`, `save`, and `destroy`.
 
-- [ ] **Step 2: Replace writeFileSync with async writeFile + atomic rename**
+- [x] **Step 2: Replace writeFileSync with async writeFile + atomic rename**
 
 Change `doFlush()` from sync to async:
 
@@ -593,7 +593,7 @@ private async doFlush(): Promise<void> {
 }
 ```
 
-- [ ] **Step 3: Convert flushSync to async flush**
+- [x] **Step 3: Convert flushSync to async flush**
 
 ```typescript
 async flush(): Promise<void> {
@@ -620,7 +620,7 @@ destroy(): void {
 }
 ```
 
-- [ ] **Step 4: Update all callers of flushSync**
+- [x] **Step 4: Update all callers of flushSync**
 
 Search for all callers of `flushSync` in the codebase and update them to use `await flush()`. The `save()` method (debounced) should call the async version:
 
@@ -636,7 +636,7 @@ private save(): void {
 
 Note: The `save()` timer still calls `doFlush()` without await (fire-and-forget is acceptable for debounced saves). Only explicit `flush()` calls need to be awaited.
 
-- [ ] **Step 5: Run build and tests**
+- [x] **Step 5: Run build and tests**
 
 ```bash
 npx tsc --noEmit && npx vitest run
@@ -644,7 +644,7 @@ npx tsc --noEmit && npx vitest run
 
 Expected: 0 errors, all tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/session/session-manager.ts
@@ -660,7 +660,7 @@ git commit -m "perf: convert session persistence to async with atomic writes"
 **Files:**
 - Modify: `src/qq/client.ts`
 
-- [ ] **Step 1: Add lastServerResponseTime tracking**
+- [x] **Step 1: Add lastServerResponseTime tracking**
 
 In `src/qq/client.ts`, add a module-level variable:
 
@@ -668,7 +668,7 @@ In `src/qq/client.ts`, add a module-level variable:
 let lastServerResponseTime = 0;
 ```
 
-- [ ] **Step 2: Update lastServerResponseTime on every socket message**
+- [x] **Step 2: Update lastServerResponseTime on every socket message**
 
 In the `socket.on("message", ...)` handler inside `connectWebSocket`, set:
 
@@ -678,7 +678,7 @@ lastServerResponseTime = Date.now();
 
 at the top of the handler, before any processing.
 
-- [ ] **Step 3: Add dead connection check in heartbeat**
+- [x] **Step 3: Add dead connection check in heartbeat**
 
 In `startHeartbeat()`, after sending the heartbeat, check if last response was too long ago:
 
@@ -703,7 +703,7 @@ function startHeartbeat(intervalMs: number): void {
 }
 ```
 
-- [ ] **Step 4: Reset lastServerResponseTime on reconnect**
+- [x] **Step 4: Reset lastServerResponseTime on reconnect**
 
 In `stopQQ()` and in the reconnect logic, reset:
 
@@ -711,7 +711,7 @@ In `stopQQ()` and in the reconnect logic, reset:
 lastServerResponseTime = 0;
 ```
 
-- [ ] **Step 5: Run build and tests**
+- [x] **Step 5: Run build and tests**
 
 ```bash
 npx tsc --noEmit && npx vitest run
@@ -719,7 +719,7 @@ npx tsc --noEmit && npx vitest run
 
 Expected: 0 errors, all tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/qq/client.ts
@@ -734,7 +734,7 @@ git commit -m "fix(qq): add dead connection detection via heartbeat timeout"
 - Modify: `src/queue/request-queue.ts`
 - Modify: `src/queue/request-queue.test.ts`
 
-- [ ] **Step 1: Add timeout to QueuedTask interface and run method**
+- [x] **Step 1: Add timeout to QueuedTask interface and run method**
 
 ```typescript
 const MAX_QUEUE_SIZE = 3;
@@ -754,7 +754,7 @@ interface UserQueue {
 }
 ```
 
-- [ ] **Step 2: Add timeout check to the run method**
+- [x] **Step 2: Add timeout check to the run method**
 
 In the `run` method, wrap the execute call with a timeout guard:
 
@@ -800,7 +800,7 @@ private async run(key: string, prompt: string, execute: (prompt: string) => Prom
 }
 ```
 
-- [ ] **Step 3: Add timeout test**
+- [x] **Step 3: Add timeout test**
 
 Add to `src/queue/request-queue.test.ts`:
 
@@ -823,7 +823,7 @@ it('times out long-running tasks', async () => {
 });
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 ```bash
 npx vitest run src/queue/request-queue.test.ts
@@ -831,7 +831,7 @@ npx vitest run src/queue/request-queue.test.ts
 
 Expected: All tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/queue/request-queue.ts src/queue/request-queue.test.ts
@@ -845,11 +845,11 @@ git commit -m "feat: add 10-minute task timeout to RequestQueue"
 **Files:**
 - Modify: `src/index.ts`
 
-- [ ] **Step 1: Track running tasks per platform in index.ts**
+- [x] **Step 1: Track running tasks per platform in index.ts**
 
 Read the current `src/index.ts` to find the `PLATFORM_MODULES` data structure and the `activeHandles` map.
 
-- [ ] **Step 2: Create a per-platform runningTasks map**
+- [x] **Step 2: Create a per-platform runningTasks map**
 
 In `src/index.ts`, after the existing imports, create a shared `runningTasks` map that gets passed to each platform's setup function:
 
@@ -860,7 +860,7 @@ import { TaskRunState } from './shared/ai-task.js';
 const platformRunningTasks = new Map<string, Map<string, TaskRunState>>();
 ```
 
-- [ ] **Step 3: Update each PlatformModule init to return runningTasks**
+- [x] **Step 3: Update each PlatformModule init to return runningTasks**
 
 In the PLATFORM_MODULES entries, each platform's `init` already creates a `runningTasks` map internally via `createPlatformEventContext`. We need the handle to expose it for cleanup.
 
@@ -880,7 +880,7 @@ interface PlatformHandle {
 }
 ```
 
-- [ ] **Step 4: Update shutdown to abort tasks**
+- [x] **Step 4: Update shutdown to abort tasks**
 
 In the shutdown function, before calling `handle.stop()`, abort all running tasks:
 
@@ -900,7 +900,7 @@ for (const platform of successfulPlatforms) {
 }
 ```
 
-- [ ] **Step 5: Run build and tests**
+- [x] **Step 5: Run build and tests**
 
 ```bash
 npx tsc --noEmit && npx vitest run
@@ -908,7 +908,7 @@ npx tsc --noEmit && npx vitest run
 
 Expected: 0 errors, all tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/index.ts
@@ -923,7 +923,7 @@ git commit -m "fix: abort running AI tasks during graceful shutdown"
 - Modify: `src/telegram/event-handler.ts`
 - Modify: `src/qq/event-handler.ts`
 
-- [ ] **Step 1: Wrap Telegram text handler with try/catch**
+- [x] **Step 1: Wrap Telegram text handler with try/catch**
 
 In `src/telegram/event-handler.ts`, find the `bot.on(message("text"), ...)` handler and wrap the body:
 
@@ -940,7 +940,7 @@ bot.on(message("text"), async (tgCtx) => {
 });
 ```
 
-- [ ] **Step 2: Wrap QQ handleEvent with try/catch**
+- [x] **Step 2: Wrap QQ handleEvent with try/catch**
 
 In `src/qq/event-handler.ts`, find the `handleEvent` function and wrap the body:
 
@@ -973,7 +973,7 @@ async function handleEvent(event: QQMessageEvent): Promise<void> {
 }
 ```
 
-- [ ] **Step 3: Run build and tests**
+- [x] **Step 3: Run build and tests**
 
 ```bash
 npx tsc --noEmit && npx vitest run
@@ -981,7 +981,7 @@ npx tsc --noEmit && npx vitest run
 
 Expected: 0 errors, all tests pass.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/telegram/event-handler.ts src/qq/event-handler.ts
