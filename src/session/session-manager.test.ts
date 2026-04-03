@@ -40,6 +40,8 @@ vi.mock('node:fs', () => ({
 
 vi.mock('node:fs/promises', () => ({
   realpath: vi.fn((p: string) => Promise.resolve(p)),
+  writeFile: vi.fn((_p: string, _d: string) => Promise.resolve()),
+  rename: vi.fn((_o: string, _n: string) => Promise.resolve()),
 }));
 
 import { SessionManager } from './session-manager.js';
@@ -103,14 +105,17 @@ describe('SessionManager', () => {
     expect(newConvId).not.toBe(oldConvId);
   });
 
-  it('persists sessions via writeFileSync on destroy', async () => {
-    const { writeFileSync } = await import('node:fs');
+  it('persists sessions via writeFile on destroy', async () => {
     sm = new SessionManager('/tmp/project');
     sm.getConvId('user1');
     sm.destroy();
 
-    expect(writeFileSync).toHaveBeenCalled();
-    const lastCall = vi.mocked(writeFileSync).mock.calls.at(-1);
+    // destroy fires async flush; wait for microtasks
+    await new Promise((r) => setTimeout(r, 50));
+
+    const { writeFile } = await import('node:fs/promises');
+    expect(writeFile).toHaveBeenCalled();
+    const lastCall = vi.mocked(writeFile).mock.calls.at(-1);
     expect(lastCall).toBeDefined();
     const writtenData = JSON.parse(lastCall![1] as string);
     expect(writtenData.sessions['user1']).toBeDefined();

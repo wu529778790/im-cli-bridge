@@ -1,5 +1,5 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { realpath } from 'node:fs/promises';
+import { readFileSync, existsSync, mkdirSync } from 'node:fs';
+import { realpath, writeFile, rename } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { dirname, join, resolve, win32 } from 'node:path';
 import { createLogger } from '../logger.js';
@@ -351,7 +351,7 @@ export class SessionManager {
     this.doFlush();
   }
 
-  private doFlush(): void {
+  private async doFlush(): Promise<void> {
     try {
       const dir = dirname(SESSIONS_FILE);
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
@@ -359,7 +359,11 @@ export class SessionManager {
       for (const [k, v] of this.sessions) sessions[k] = v;
       const convSessionMapObj: Record<string, string> = {};
       for (const [k, v] of this.convSessionMap) convSessionMapObj[k] = v;
-      writeFileSync(SESSIONS_FILE, JSON.stringify({ sessions, convSessionMap: convSessionMapObj }, null, 2), 'utf-8');
+      const data = JSON.stringify({ sessions, convSessionMap: convSessionMapObj }, null, 2);
+      // Atomic write: write to temp file then rename
+      const tmpPath = SESSIONS_FILE + '.tmp';
+      await writeFile(tmpPath, data, 'utf-8');
+      await rename(tmpPath, SESSIONS_FILE);
     } catch (err) {
       log.error('Failed to save sessions:', err);
     }
