@@ -18,7 +18,6 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 
 // Import after mocks are set up
 import { ClaudeSDKAdapter } from './claude-sdk-adapter.js';
-import type { ToolAdapter } from './tool-adapter.interface.js';
 
 describe('ClaudeSDKAdapter', () => {
   let adapter: ClaudeSDKAdapter;
