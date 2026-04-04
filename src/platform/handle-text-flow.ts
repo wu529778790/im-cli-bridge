@@ -185,7 +185,7 @@ export async function handleTextFlow(params: HandleTextFlowParams): Promise<bool
       userId,
       convId ?? '',
       text,
-      async (prompt) => {
+      async (prompt, signal) => {
         await handleAIRequest({
           userId,
           chatId,
@@ -193,6 +193,7 @@ export async function handleTextFlow(params: HandleTextFlowParams): Promise<bool
           workDir: workDir ?? '',
           convId,
           replyToMessageId,
+          signal,
         });
       },
     );

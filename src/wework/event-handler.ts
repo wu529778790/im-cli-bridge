@@ -333,8 +333,8 @@ export function setupWeWorkHandlers(
   ): Promise<void> {
     const workDir = sessionManager.getWorkDir(userId);
     const convId = sessionManager.getConvId(userId);
-    const enqueueResult = ctx.requestQueue.enqueue(userId, convId, prompt, async (nextPrompt) => {
-      await handleAIRequest({ userId, chatId, prompt: nextPrompt, workDir, convId, replyToMessageId: undefined });
+    const enqueueResult = ctx.requestQueue.enqueue(userId, convId, prompt, async (nextPrompt, signal) => {
+      await handleAIRequest({ userId, chatId, prompt: nextPrompt, workDir, convId, replyToMessageId: undefined, signal });
     });
 
     if (enqueueResult === 'rejected') {

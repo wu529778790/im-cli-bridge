@@ -261,9 +261,9 @@ export function setupDingTalkHandlers(
   ): Promise<'running' | 'queued' | 'rejected'> {
     const workDir = sessionManager.getWorkDir(userId);
     const convId = sessionManager.getConvId(userId);
-    return requestQueue.enqueue(userId, convId, prompt, async (nextPrompt) => {
+    return requestQueue.enqueue(userId, convId, prompt, async (nextPrompt, signal) => {
       senderCtx.dingtalkTarget = dingtalkTarget;
-      await handleAIRequest({ userId, chatId, prompt: nextPrompt, workDir, convId });
+      await handleAIRequest({ userId, chatId, prompt: nextPrompt, workDir, convId, signal });
     });
   }
 

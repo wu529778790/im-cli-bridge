@@ -11,7 +11,7 @@ describe('RequestQueue', () => {
     expect(result).toBe('running');
     // Allow microtask queue to settle
     await new Promise((r) => setTimeout(r, 10));
-    expect(execute).toHaveBeenCalledWith('hello');
+    expect(execute).toHaveBeenCalledWith('hello', expect.any(AbortSignal));
   });
 
   it('returns "queued" when a task is already running', () => {
@@ -49,13 +49,13 @@ describe('RequestQueue', () => {
     queue.enqueue('user1', 'conv1', 'second', execute);
 
     expect(execute).toHaveBeenCalledTimes(1);
-    expect(execute).toHaveBeenCalledWith('first');
+    expect(execute).toHaveBeenCalledWith('first', expect.any(AbortSignal));
 
     resolveFirst!();
     await new Promise((r) => setTimeout(r, 20));
 
     expect(execute).toHaveBeenCalledTimes(2);
-    expect(execute).toHaveBeenCalledWith('second');
+    expect(execute).toHaveBeenCalledWith('second', expect.any(AbortSignal));
   });
 
   it('isolates queues per user:convId', () => {
@@ -121,7 +121,30 @@ describe('RequestQueue', () => {
     await new Promise((r) => setTimeout(r, 20));
 
     expect(execute).toHaveBeenCalledTimes(2);
-    expect(execute).toHaveBeenCalledWith('first');
-    expect(execute).toHaveBeenCalledWith('second');
+    expect(execute).toHaveBeenCalledWith('first', expect.any(AbortSignal));
+    expect(execute).toHaveBeenCalledWith('second', expect.any(AbortSignal));
+  });
+
+  it('aborts the AbortSignal on timeout', async () => {
+    vi.useFakeTimers();
+    const queue = new RequestQueue();
+    let receivedSignal: AbortSignal | undefined;
+    const execute = vi.fn().mockImplementation(async (_prompt: string, signal: AbortSignal) => {
+      receivedSignal = signal;
+      // Never resolve — simulates a stuck task
+      await new Promise(() => {});
+    });
+
+    queue.enqueue('user1', 'conv1', 'hello', execute);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(receivedSignal?.aborted).toBe(false);
+
+    // Advance past timeout
+    vi.advanceTimersByTime(10 * 60 * 1000 + 1);
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(receivedSignal?.aborted).toBe(true);
+
+    vi.useRealTimers();
   });
 });

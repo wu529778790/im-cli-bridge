@@ -31,6 +31,8 @@ export interface TaskContext {
   threadId?: string;
   platform: string;
   taskKey: string;
+  /** AbortSignal from the request queue; fires on task timeout to abort the running SDK session */
+  signal?: AbortSignal;
 }
 
 export interface TaskAdapter {
@@ -325,5 +327,14 @@ export function runAITask(
       return;
     }
     platformAdapter.onTaskReady(taskState);
+
+    // Wire queue abort signal to the running task's abort handle
+    if (ctx.signal) {
+      if (ctx.signal.aborted) {
+        taskState.handle.abort();
+      } else {
+        ctx.signal.addEventListener('abort', () => taskState.handle.abort(), { once: true });
+      }
+    }
   });
 }

@@ -4,7 +4,7 @@ const log = createLogger('Queue');
 
 interface QueuedTask {
   prompt: string;
-  execute: (prompt: string) => Promise<void>;
+  execute: (prompt: string, signal: AbortSignal) => Promise<void>;
   enqueuedAt: number;
 }
 
@@ -21,7 +21,7 @@ export type EnqueueResult = 'running' | 'queued' | 'rejected';
 export class RequestQueue {
   private queues = new Map<string, UserQueue>();
 
-  enqueue(userId: string, convId: string, prompt: string, execute: (prompt: string) => Promise<void>): EnqueueResult {
+  enqueue(userId: string, convId: string, prompt: string, execute: (prompt: string, signal: AbortSignal) => Promise<void>): EnqueueResult {
     const key = `${userId}:${convId}`;
     let q = this.queues.get(key);
     if (!q) {
@@ -50,13 +50,17 @@ export class RequestQueue {
     return cleared;
   }
 
-  private async run(key: string, prompt: string, execute: (prompt: string) => Promise<void>): Promise<void> {
+  private async run(key: string, prompt: string, execute: (prompt: string, signal: AbortSignal) => Promise<void>): Promise<void> {
+    const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const timeoutPromise = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`Task timed out after ${TASK_TIMEOUT_MS / 1000}s`)), TASK_TIMEOUT_MS);
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new Error(`Task timed out after ${TASK_TIMEOUT_MS / 1000}s`));
+        }, TASK_TIMEOUT_MS);
       });
-      await Promise.race([execute(prompt), timeoutPromise]);
+      await Promise.race([execute(prompt, controller.signal), timeoutPromise]);
     } catch (err) {
       log.error(`Error executing task for ${key}:`, err);
     } finally {

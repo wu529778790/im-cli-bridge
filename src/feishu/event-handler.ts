@@ -553,8 +553,8 @@ export function setupFeishuHandlers(
 
             const work = sessionManager.getWorkDir(senderId);
             const convId = sessionManager.getConvId(senderId);
-            const enqueueResult = ctx.requestQueue.enqueue(senderId, convId, prompt, async (p) => {
-              await handleAIRequest({ userId: senderId, chatId, prompt: p, workDir: work, convId, replyToMessageId: messageId });
+            const enqueueResult = ctx.requestQueue.enqueue(senderId, convId, prompt, async (p, signal) => {
+              await handleAIRequest({ userId: senderId, chatId, prompt: p, workDir: work, convId, replyToMessageId: messageId, signal });
             });
             if (enqueueResult === 'rejected') {
               sendTextReply(chatId, 'Request queue is full. Please try again later.').catch((sendErr) => {
@@ -602,8 +602,8 @@ export function setupFeishuHandlers(
 
             const workDir = sessionManager.getWorkDir(senderId);
             const convId = sessionManager.getConvId(senderId);
-            const enqueueResult = ctx.requestQueue.enqueue(senderId, convId, prompt, async (p) => {
-              await handleAIRequest({ userId: senderId, chatId, prompt: p, workDir, convId, replyToMessageId: messageId });
+            const enqueueResult = ctx.requestQueue.enqueue(senderId, convId, prompt, async (p, signal) => {
+              await handleAIRequest({ userId: senderId, chatId, prompt: p, workDir, convId, replyToMessageId: messageId, signal });
             });
             if (enqueueResult === 'rejected') {
               sendTextReply(chatId, 'Request queue is full. Please try again later.').catch((sendErr) => {

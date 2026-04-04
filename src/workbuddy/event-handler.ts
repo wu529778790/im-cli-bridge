@@ -113,6 +113,7 @@ export function setupWorkBuddyHandlers(
     prompt: string,
     workDir: string,
     convId?: string,
+    signal?: AbortSignal,
   ) {
     log.info(`[AI_REQUEST] userId=${userId}, chatId=${chatId}, msgId=${msgId}, promptLength=${prompt.length}`);
 
@@ -142,7 +143,7 @@ export function setupWorkBuddyHandlers(
 
     await runAITask(
       { config, sessionManager },
-      { userId, chatId, workDir, sessionId, convId, platform: 'workbuddy', taskKey },
+      { userId, chatId, workDir, sessionId, convId, platform: 'workbuddy', taskKey, signal },
       prompt,
       toolAdapter,
       {
@@ -225,9 +226,9 @@ export function setupWorkBuddyHandlers(
       return;
     }
 
-    const enqueueResult = ctx.requestQueue.enqueue(userId, convId, text, async (nextPrompt) => {
+    const enqueueResult = ctx.requestQueue.enqueue(userId, convId, text, async (nextPrompt, signal) => {
       log.info(`Executing AI request for: ${nextPrompt}`);
-      await handleAIRequest(userId, chatId, msgId, nextPrompt, workDir, convId);
+      await handleAIRequest(userId, chatId, msgId, nextPrompt, workDir, convId, signal);
     });
 
     if (enqueueResult === 'rejected') {

@@ -98,6 +98,8 @@ export interface HandleAIRequestParams {
   workDir: string;
   convId?: string;
   replyToMessageId?: string;
+  /** AbortSignal from the request queue; fires on task timeout */
+  signal?: AbortSignal;
 }
 
 /**
@@ -129,7 +131,7 @@ export function createPlatformAIRequestHandler(
   } = deps;
 
   async function handleAIRequest(params: HandleAIRequestParams): Promise<void> {
-    const { userId, chatId, prompt, workDir, convId, replyToMessageId } = params;
+    const { userId, chatId, prompt, workDir, convId, replyToMessageId, signal } = params;
 
     log.info(`[${platform}] AI request: userId=${userId}, chatId=${chatId}, promptLength=${prompt.length}`);
 
@@ -267,6 +269,7 @@ export function createPlatformAIRequestHandler(
           convId,
           platform,
           taskKey,
+          signal,
         },
         prompt,
         toolAdapter,

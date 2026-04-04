@@ -344,8 +344,8 @@ export function setupTelegramHandlers(
     });
     const workDir = sessionManager.getWorkDir(userId);
     const convId = sessionManager.getConvId(userId);
-    return requestQueue.enqueue(userId, convId, prompt, async (nextPrompt) => {
-      await handleAIRequest({ userId, chatId, prompt: nextPrompt, workDir, convId });
+    return requestQueue.enqueue(userId, convId, prompt, async (nextPrompt, signal) => {
+      await handleAIRequest({ userId, chatId, prompt: nextPrompt, workDir, convId, signal });
     });
   }
 

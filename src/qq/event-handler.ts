@@ -210,6 +210,7 @@ export function setupQQHandlers(
     convId?: string,
     _threadCtx?: ThreadContext,
     replyToMessageId?: string,
+    signal?: AbortSignal,
   ): Promise<void> {
     await factoryHandleAIRequest({
       userId,
@@ -218,6 +219,7 @@ export function setupQQHandlers(
       workDir,
       convId,
       replyToMessageId,
+      signal,
     });
   }
 
@@ -325,7 +327,7 @@ export function setupQQHandlers(
           userId,
           convId ?? '',
           attachmentPrompt,
-          async (prompt) => {
+          async (prompt, signal) => {
             await handleAIRequest(
               userId,
               chatId,
@@ -334,6 +336,7 @@ export function setupQQHandlers(
               convId,
               undefined,
               event.id,
+              signal,
             );
           },
         );
