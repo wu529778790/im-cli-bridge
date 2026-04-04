@@ -3,6 +3,9 @@
  */
 
 import { hostname } from 'node:os';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('WorkBuddyOAuth');
 import type { WorkBuddyCredentials, CentrifugeTokens } from './types.js';
 
 const DEFAULT_BASE_URL = 'https://copilot.tencent.com';
@@ -242,7 +245,13 @@ export class WorkBuddyOAuth {
       return { success: false, message: `获取链接失败: ${res.status} ${body}` };
     }
     const body = (await res.json()) as ApiResponse<KfLinkData>;
-    return body.data ?? { success: false, message: 'Empty response' };
+    log.debug('getWeChatKfLink response:', JSON.stringify(body).slice(0, 500));
+    if (body.data) return body.data;
+    // API may return fields directly without data wrapper
+    if ((body as Record<string, unknown>).success !== undefined || (body as Record<string, unknown>).url !== undefined) {
+      return body as unknown as KfLinkData;
+    }
+    return { success: false, message: `Empty response: ${JSON.stringify(body).slice(0, 200)}` };
   }
 
   /**
