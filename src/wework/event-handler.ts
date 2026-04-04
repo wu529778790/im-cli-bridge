@@ -285,7 +285,7 @@ export function setupWeWorkHandlers(
       await sendFinalMessages(ctx.chatId, ctx.msgId, content, note ?? '', ctx.toolId, senderCtx.reqId);
     },
     sendError: async (error) => {
-      await updateMessage(ctx.chatId, ctx.msgId, `Error: ${error}`, 'error', buildErrorNote(), ctx.toolId, senderCtx.reqId);
+      await updateMessage(ctx.chatId, ctx.msgId, `错误：${error}`, 'error', buildErrorNote(), ctx.toolId, senderCtx.reqId);
     },
   });
 
@@ -338,9 +338,9 @@ export function setupWeWorkHandlers(
     });
 
     if (enqueueResult === 'rejected') {
-      await sendTextReply(chatId, 'Request queue is full. Please try again later.', reqId);
+      await sendTextReply(chatId, '请求队列已满，请稍后再试。', reqId);
     } else if (enqueueResult === 'queued') {
-      await sendTextReply(chatId, 'Your request is queued.', reqId);
+      await sendTextReply(chatId, '您的请求已排队等待。', reqId);
     }
   }
 
@@ -361,7 +361,7 @@ export function setupWeWorkHandlers(
       // Check access control
       if (!ctx.accessControl.isAllowed(fromUser)) {
         log.warn(`Access denied for sender: ${fromUser}`);
-        await sendTextReply(chatId, `Access denied. Your WeWork user ID: ${fromUser}`, reqId);
+        await sendTextReply(chatId, `抱歉，您没有访问权限。\n您的 ID: ${fromUser}`, reqId);
         return;
       }
 

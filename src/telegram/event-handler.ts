@@ -401,7 +401,7 @@ export function setupTelegramHandlers(
     } catch (err) {
       log.error('Unhandled error in Telegram text handler:', err);
       try {
-        await tgCtx.reply('Internal error occurred. Please try again.');
+        await tgCtx.reply('内部错误，请重试。');
       } catch { /* ignore */ }
     }
   });
@@ -433,9 +433,9 @@ export function setupTelegramHandlers(
 
     const enqueueResult = await enqueueSavedMedia(userId, chatId, "image", imagePath, contextText);
     if (enqueueResult === "rejected") {
-      await sendTextReply(chatId, "Request queue is full. Please try again later.");
+      await sendTextReply(chatId, "请求队列已满，请稍后再试。");
     } else if (enqueueResult === "queued") {
-      await sendTextReply(chatId, "Your request is queued.");
+      await sendTextReply(chatId, "您的请求已排队等待。");
     }
   });
 
@@ -464,13 +464,13 @@ export function setupTelegramHandlers(
       );
       const enqueueResult = await enqueueSavedMedia(userId, chatId, "document", path, contextText);
       if (enqueueResult === "rejected") {
-        await sendTextReply(chatId, "Request queue is full. Please try again later.");
+        await sendTextReply(chatId, "请求队列已满，请稍后再试。");
       } else if (enqueueResult === "queued") {
-        await sendTextReply(chatId, "Your request is queued.");
+        await sendTextReply(chatId, "您的请求已排队等待。");
       }
     } catch (err) {
       log.error("Failed to download document:", err);
-      await sendTextReply(chatId, "Document download failed.");
+      await sendTextReply(chatId, "文档下载失败。");
     }
   });
 
@@ -501,13 +501,13 @@ export function setupTelegramHandlers(
       );
       const enqueueResult = await enqueueSavedMedia(userId, chatId, "audio", path, contextText);
       if (enqueueResult === "rejected") {
-        await sendTextReply(chatId, "Request queue is full. Please try again later.");
+        await sendTextReply(chatId, "请求队列已满，请稍后再试。");
       } else if (enqueueResult === "queued") {
-        await sendTextReply(chatId, "Your request is queued.");
+        await sendTextReply(chatId, "您的请求已排队等待。");
       }
     } catch (err) {
       log.error("Failed to download audio:", err);
-      await sendTextReply(chatId, "Audio download failed.");
+      await sendTextReply(chatId, "音频下载失败。");
     }
   });
 
@@ -534,13 +534,13 @@ export function setupTelegramHandlers(
       );
       const enqueueResult = await enqueueSavedMedia(userId, chatId, "voice", path, contextText);
       if (enqueueResult === "rejected") {
-        await sendTextReply(chatId, "Request queue is full. Please try again later.");
+        await sendTextReply(chatId, "请求队列已满，请稍后再试。");
       } else if (enqueueResult === "queued") {
-        await sendTextReply(chatId, "Your request is queued.");
+        await sendTextReply(chatId, "您的请求已排队等待。");
       }
     } catch (err) {
       log.error("Failed to download voice message:", err);
-      await sendTextReply(chatId, "Voice download failed.");
+      await sendTextReply(chatId, "语音下载失败。");
     }
   });
 
@@ -571,13 +571,13 @@ export function setupTelegramHandlers(
       );
       const enqueueResult = await enqueueSavedMedia(userId, chatId, "video", path, contextText);
       if (enqueueResult === "rejected") {
-        await sendTextReply(chatId, "Request queue is full. Please try again later.");
+        await sendTextReply(chatId, "请求队列已满，请稍后再试。");
       } else if (enqueueResult === "queued") {
-        await sendTextReply(chatId, "Your request is queued.");
+        await sendTextReply(chatId, "您的请求已排队等待。");
       }
     } catch (err) {
       log.error("Failed to download video:", err);
-      await sendTextReply(chatId, "Video download failed.");
+      await sendTextReply(chatId, "视频下载失败。");
     }
   });
 

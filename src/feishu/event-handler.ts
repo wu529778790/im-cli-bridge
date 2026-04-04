@@ -398,11 +398,11 @@ export function setupFeishuHandlers(
               await handleAIRequest({ userId: senderId, chatId, prompt: p, workDir: work, convId, replyToMessageId: messageId, signal });
             });
             if (enqueueResult === 'rejected') {
-              sendTextReply(chatId, 'Request queue is full. Please try again later.').catch((sendErr) => {
+              sendTextReply(chatId, '请求队列已满，请稍后再试。').catch((sendErr) => {
                 log.warn('[feishu] Failed to send queue full message for image:', sendErr);
               });
             } else if (enqueueResult === 'queued') {
-              sendTextReply(chatId, 'Your request is queued.').catch((sendErr) => {
+              sendTextReply(chatId, '您的请求已排队等待。').catch((sendErr) => {
                 log.warn('[feishu] Failed to send queued message for image:', sendErr);
               });
             }
@@ -447,11 +447,11 @@ export function setupFeishuHandlers(
               await handleAIRequest({ userId: senderId, chatId, prompt: p, workDir, convId, replyToMessageId: messageId, signal });
             });
             if (enqueueResult === 'rejected') {
-              sendTextReply(chatId, 'Request queue is full. Please try again later.').catch((sendErr) => {
+              sendTextReply(chatId, '请求队列已满，请稍后再试。').catch((sendErr) => {
                 log.warn(`[feishu] Failed to send queue full message for ${msgType}:`, sendErr);
               });
             } else if (enqueueResult === 'queued') {
-              sendTextReply(chatId, 'Your request is queued.').catch((sendErr) => {
+              sendTextReply(chatId, '您的请求已排队等待。').catch((sendErr) => {
                 log.warn(`[feishu] Failed to send queued message for ${msgType}:`, sendErr);
               });
             }

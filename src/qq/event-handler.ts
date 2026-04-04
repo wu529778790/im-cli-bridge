@@ -274,9 +274,9 @@ export function setupQQHandlers(
           workDir: sessionManager.getWorkDir(userId),
           convId: sessionManager.getConvId(userId),
           replyToMessageId: event.id,
-          accessDeniedMessage: (userId) => `Access denied. Your QQ user ID: ${userId}`,
-          queueFullMessage: "Request queue is full. Please try again later.",
-          queuedMessage: "Your request is queued.",
+          accessDeniedMessage: (userId) => `抱歉，您没有访问权限。\n您的 ID: ${userId}`,
+          queueFullMessage: "请求队列已满，请稍后再试。",
+          queuedMessage: "您的请求已排队等待。",
         });
 
         if (processed) {
@@ -292,7 +292,7 @@ export function setupQQHandlers(
 
         // Check access control
         if (!accessControl.isAllowed(userId)) {
-          await sendTextReply(chatId, `Access denied. Your QQ user ID: ${userId}`);
+          await sendTextReply(chatId, `抱歉，您没有访问权限。\n您的 ID: ${userId}`);
           return;
         }
 
@@ -319,9 +319,9 @@ export function setupQQHandlers(
         );
 
         if (enqueueResult === "rejected") {
-          await sendTextReply(chatId, "Request queue is full. Please try again later.");
+          await sendTextReply(chatId, "请求队列已满，请稍后再试。");
         } else if (enqueueResult === "queued") {
-          await sendTextReply(chatId, "Your request is queued.");
+          await sendTextReply(chatId, "您的请求已排队等待。");
         }
 
         log.info(`QQ message handled: user=${userId}, chat=${chatId}, attachments=${event.attachments?.length ?? 0}`);
@@ -330,7 +330,7 @@ export function setupQQHandlers(
       log.error('Unhandled error in QQ event handler:', err);
       try {
         if (chatId) {
-          await sendTextReply(chatId, 'Internal error occurred. Please try again.');
+          await sendTextReply(chatId, '内部错误，请重试。');
         }
       } catch { /* ignore */ }
     }

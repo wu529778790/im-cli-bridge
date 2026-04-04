@@ -284,7 +284,7 @@ export function setupDingTalkHandlers(
     log.info(`[MSG] DingTalk message: type=${message.msgtype}, user=${userId}, chat=${chatId}`);
 
     if (!accessControl.isAllowed(userId)) {
-      await sendTextReply(chatId, `Access denied. Your DingTalk user ID: ${userId}`);
+      await sendTextReply(chatId, `抱歉，您没有访问权限。\n您的 ID: ${userId}`);
       ackMessage(callbackId, { denied: true });
       return;
     }
@@ -318,9 +318,9 @@ export function setupDingTalkHandlers(
 
       const enqueueResult = await enqueuePrompt(userId, chatId, prompt, dingtalkTarget);
       if (enqueueResult === 'rejected') {
-        await sendTextReply(chatId, 'Request queue is full. Please try again later.');
+        await sendTextReply(chatId, '请求队列已满，请稍后再试。');
       } else if (enqueueResult === 'queued') {
-        await sendTextReply(chatId, 'Your request is queued.');
+        await sendTextReply(chatId, '您的请求已排队等待。');
       }
       ackMessage(callbackId, { queued: enqueueResult, kind });
       return;
@@ -346,9 +346,9 @@ export function setupDingTalkHandlers(
     const enqueueResult = await enqueuePrompt(userId, chatId, text, dingtalkTarget);
 
     if (enqueueResult === 'rejected') {
-      await sendTextReply(chatId, 'Request queue is full. Please try again later.');
+      await sendTextReply(chatId, '请求队列已满，请稍后再试。');
     } else if (enqueueResult === 'queued') {
-      await sendTextReply(chatId, 'Your request is queued.');
+      await sendTextReply(chatId, '您的请求已排队等待。');
     }
 
     ackMessage(callbackId, { queued: enqueueResult });

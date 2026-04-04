@@ -30,10 +30,10 @@ function getReqId(explicitReqId?: string): string {
 type MessageStatus = 'thinking' | 'streaming' | 'done' | 'error';
 
 const STATUS_CONFIG: Record<MessageStatus, { icon: string; title: string }> = {
-  thinking: { icon: '[thinking]', title: '思考中' },
-  streaming: { icon: '[streaming]', title: '输出中' },
-  done: { icon: '[done]', title: '完成' },
-  error: { icon: '[error]', title: '错误' },
+  thinking: { icon: '🔵', title: '思考中' },
+  streaming: { icon: '🔄', title: '输出中' },
+  done: { icon: '✅', title: '完成' },
+  error: { icon: '❌', title: '错误' },
 };
 
 function getToolTitle(toolId: string, status: MessageStatus): string {
@@ -107,7 +107,7 @@ function formatWeWorkMessage(
   if (content) {
     message += `${content}\n\n`;
   } else if (status === 'thinking') {
-    message += `_正在思考，请稍候..._\n\n[thinking] **准备中**\n\n`;
+    message += `_正在思考，请稍候..._\n\n🔵 **准备中**\n\n`;
   }
 
   if (note) {

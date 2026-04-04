@@ -180,7 +180,7 @@ export function setupWorkBuddyHandlers(
     // Access control check
     if (!ctx.accessControl.isAllowed(userId)) {
       log.warn(`Access denied for sender: ${userId}`);
-      await sendErrorReply(null, chatId, `Access denied. Your chat ID: ${userId}`, msgId);
+      await sendErrorReply(null, chatId, `抱歉，您没有访问权限。\n您的 ID: ${userId}`, msgId);
       return;
     }
 
@@ -231,9 +231,9 @@ export function setupWorkBuddyHandlers(
     });
 
     if (enqueueResult === 'rejected') {
-      await sendErrorReply(null, chatId, 'Request queue is full. Please try again later.', msgId);
+      await sendErrorReply(null, chatId, '请求队列已满，请稍后再试。', msgId);
     } else if (enqueueResult === 'queued') {
-      await sendTextReply(null, chatId, 'Your request is queued.', msgId);
+      await sendTextReply(null, chatId, '您的请求已排队等待。', msgId);
     }
   }
 
