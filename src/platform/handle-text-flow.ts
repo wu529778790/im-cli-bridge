@@ -21,6 +21,8 @@ import type { Platform } from '../config.js';
 import type { PlatformEventContext } from './create-event-context.js';
 import type { EnqueueResult } from '../queue/request-queue.js';
 import type { ClaudeRequestHandler } from '../commands/handler.js';
+
+type HandleAIRequestFn = ClaudeRequestHandler;
 import { createLogger } from '../logger.js';
 
 const log = createLogger('TextFlow');
@@ -46,7 +48,7 @@ export interface HandleTextFlowParams {
   /** The platform event context (accessControl, commandHandler, requestQueue, etc.). */
   ctx: PlatformEventContext;
   /** The platform-specific AI request handler (from createPlatformAIRequestHandler). */
-  handleAIRequest: any;
+  handleAIRequest: HandleAIRequestFn;
   /** Function to send a text reply back to the user. */
   sendTextReply: SendTextReplyFn;
   /** Optional: additional workDir override. If not provided, resolved from sessionManager. */

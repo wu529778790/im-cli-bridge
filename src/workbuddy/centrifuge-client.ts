@@ -2,14 +2,12 @@
  * WorkBuddy Centrifuge Client - WebSocket connection for WeChat KF messages
  */
 
-import { Centrifuge, Subscription } from 'centrifuge';
+import { Centrifuge, Subscription, type ConnectedContext, type DisconnectedContext, type ErrorContext, type ServerPublicationContext, type SubscriptionErrorContext } from 'centrifuge';
 import { WebSocket } from 'ws';
 import { randomUUID } from 'node:crypto';
 import { createLogger } from '../logger.js';
 import type {
   WorkBuddyState,
-  CentrifugeTokens,
-  WeChatKfMessage,
   AGPEnvelope,
   PromptPayload,
   UpdatePayload,
@@ -109,7 +107,7 @@ export class WorkBuddyCentrifugeClient {
       websocket: WebSocket,
     });
 
-    this.client.on('connected', (ctx: any) => {
+    this.client.on('connected', (ctx: ConnectedContext) => {
       log.info(`${this.logPrefix} Connected (transport=${ctx.transport})`);
       this.state = 'connected';
       this.consecutiveErrors = 0;
@@ -117,7 +115,7 @@ export class WorkBuddyCentrifugeClient {
       this.flushPendingReplies();
     });
 
-    this.client.on('disconnected', (ctx: any) => {
+    this.client.on('disconnected', (ctx: DisconnectedContext) => {
       log.info(`${this.logPrefix} Disconnected: code=${ctx.code}, reason=${ctx.reason}`);
       if (this.state !== 'disconnected') {
         this.state = 'disconnected';
@@ -125,14 +123,14 @@ export class WorkBuddyCentrifugeClient {
       }
     });
 
-    this.client.on('connecting', (ctx: any) => {
+    this.client.on('connecting', (ctx: DisconnectedContext) => {
       log.info(`${this.logPrefix} Reconnecting: code=${ctx.code}, reason=${ctx.reason}`);
       if (this.state === 'connected') {
         this.state = 'reconnecting';
       }
     });
 
-    this.client.on('error', (ctx: any) => {
+    this.client.on('error', (ctx: ErrorContext) => {
       log.error(`${this.logPrefix} Error: ${ctx.error.message}`);
       this.consecutiveErrors++;
       this.callbacks.onError?.(new Error(ctx.error.message));
@@ -151,11 +149,11 @@ export class WorkBuddyCentrifugeClient {
       token: this.config.subscriptionToken,
     });
 
-    this.sub.on('publication', (ctx: any) => {
+    this.sub.on('publication', (ctx: ServerPublicationContext) => {
       this.handlePublication(ctx.data);
     });
 
-    this.sub.on('error', (ctx: any) => {
+    this.sub.on('error', (ctx: SubscriptionErrorContext) => {
       log.error(`${this.logPrefix} Subscription error: ${ctx.error.message}`);
     });
 
@@ -200,11 +198,11 @@ export class WorkBuddyCentrifugeClient {
     log.info(`${this.logPrefix} Subscribing to additional channel: ${channel}`);
     const sub = this.client.newSubscription(channel, { token: subscriptionToken });
 
-    sub.on('publication', (ctx: any) => {
+    sub.on('publication', (ctx: ServerPublicationContext) => {
       this.handlePublication(ctx.data);
     });
 
-    sub.on('error', (ctx: any) => {
+    sub.on('error', (ctx: SubscriptionErrorContext) => {
       log.error(`${this.logPrefix} Extra subscription error (${channel}): ${ctx.error.message}`);
     });
 
@@ -387,7 +385,7 @@ export class WorkBuddyCentrifugeClient {
 
       const preview = JSON.stringify(data).substring(0, 500);
       log.warn(`${this.logPrefix} Unknown message format: ${preview}`);
-    } catch (error: any) {
+    } catch (error: unknown) {
       log.error(`${this.logPrefix} Message handling failed:`, error);
       this.callbacks.onError?.(error instanceof Error ? error : new Error(`Message handling failed: ${String(error)}`));
     }

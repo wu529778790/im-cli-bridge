@@ -57,7 +57,7 @@ function createFeishuCard(
   note?: string
 ): string {
   const statusConfig = STATUS_CONFIG[status];
-  const elements: any[] = [];
+  const elements: Record<string, unknown>[] = [];
 
   // Main content - use native lark_md tag
   elements.push({
@@ -80,7 +80,7 @@ function createFeishuCard(
     });
   }
 
-  const card: any = {
+  const card: Record<string, unknown> = {
     config: {
       wide_screen_mode: true,
     },

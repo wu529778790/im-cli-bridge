@@ -1,4 +1,4 @@
-import { resolvePlatformAiCommand, type Config } from "../config.js";
+import { type Config } from "../config.js";
 import type { SessionManager } from "../session/session-manager.js";
 import {
   sendThinkingMessage,
@@ -146,7 +146,7 @@ export function setupQQHandlers(
     sender: { sendTextReply, sendDirectorySelection },
   });
 
-  const { accessControl, requestQueue, runningTasks, commandHandler } = platformContext;
+  const { accessControl, requestQueue, runningTasks } = platformContext;
 
   const recentEventIds = new Map<string, number>();
   const recentEventFingerprints = new Map<string, number>();

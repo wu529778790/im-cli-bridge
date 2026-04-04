@@ -47,10 +47,6 @@ function getToolTitle(toolId: string, status: MessageStatus): string {
   });
 }
 
-function generateReqId(): string {
-  return `${Date.now()}-${randomBytes(8).toString('hex')}`;
-}
-
 function generateStreamId(): string {
   return `${Date.now()}-${randomBytes(8).toString('hex')}`;
 }

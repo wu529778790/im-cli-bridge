@@ -2,10 +2,9 @@
  * WorkBuddy OAuth - CodeBuddy authentication for WeChat KF integration
  */
 
-import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
 import { createLogger } from '../logger.js';
-import type { WorkBuddyCredentials, CentrifugeTokens } from './types.js';
+import type { WorkBuddyCredentials } from './types.js';
 
 const log = createLogger('WorkBuddyOAuth');
 const DEFAULT_BASE_URL = 'https://copilot.tencent.com';

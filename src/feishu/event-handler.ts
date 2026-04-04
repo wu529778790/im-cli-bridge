@@ -2,11 +2,7 @@ import { Client } from '@larksuiteoapi/node-sdk';
 import { resolvePlatformAiCommand, type Config } from '../config.js';
 import type { SessionManager } from '../session/session-manager.js';
 import {
-  sendThinkingMessage,
-  updateMessage,
-  sendFinalMessages,
   sendTextReply,
-  sendTextReplyByOpenId,
   startTypingLoop,
   sendImageReply,
   sendThinkingCard,
@@ -18,13 +14,12 @@ import { buildCardV2 } from './card-builder.js';
 import { disableStreaming, updateCardFull, destroySession } from './cardkit-manager.js';
 import { CARDKIT_THROTTLE_MS } from '../constants.js';
 import { setActiveChatId } from '../shared/active-chats.js';
-import { setChatUser } from '../shared/chat-user-map.js';
 import { createLogger } from '../logger.js';
 import { createMediaTargetPath } from '../shared/media-storage.js';
 import { buildSavedMediaPrompt } from '../shared/media-analysis-prompt.js';
 import { buildMediaContext } from '../shared/media-context.js';
 import { buildProgressNote } from '../shared/message-note.js';
-import { createPlatformEventContext, type PlatformEventContext } from '../platform/create-event-context.js';
+import { createPlatformEventContext } from '../platform/create-event-context.js';
 import { createPlatformAIRequestHandler, type PlatformSender } from '../platform/handle-ai-request.js';
 import { handleTextFlow } from '../platform/handle-text-flow.js';
 
@@ -264,48 +259,6 @@ export function setupFeishuHandlers(
       },
     }),
   });
-
-  /**
-   * 解析 action value（兼容对象、JSON 字符串）
-   */
-  function parseActionValue(raw: unknown): { action?: string; value?: string } | null {
-    if (!raw) return null;
-    let obj: { action?: string; value?: string } | null = null;
-    if (typeof raw === 'string') {
-      try {
-        obj = JSON.parse(raw) as { action?: string; value?: string };
-      } catch (err) {
-        log.debug('Failed to parse action value as JSON:', err);
-        return null;
-      }
-    } else if (typeof raw === 'object' && raw !== null) {
-      obj = raw as { action?: string; value?: string };
-    }
-    return obj?.action && obj?.value ? obj : null;
-  }
-
-  /**
-   * 从卡片回调事件中提取延时更新 token（格式 c-xxxx）
-   * 飞书文档：从卡片交互返回内容获取，用于延时更新接口
-   */
-  function extractCardToken(data: unknown): string | null {
-    const raw = data as Record<string, unknown>;
-    const event = (raw?.event ?? raw) as Record<string, unknown>;
-    const action = event?.action as Record<string, unknown> | undefined;
-    const context = event?.context as Record<string, unknown> | undefined;
-    const candidates = [
-      event?.token,
-      event?.open_api_token,
-      raw?.token,
-      action?.token,
-      context?.token,
-    ].filter((t): t is string => typeof t === 'string' && t.startsWith('c-'));
-    const token = candidates[0] ?? null;
-    if (!token) {
-      log.debug('[extractCardToken] No token found, event keys:', Object.keys(event ?? {}));
-    }
-    return token;
-  }
 
   /**
    * Handle card button click (card.action.trigger) - 需在 3 秒内返回响应

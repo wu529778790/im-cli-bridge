@@ -919,12 +919,12 @@ export async function runInteractiveSetup(): Promise<boolean> {
     ? (JSON.parse(JSON.stringify(existing)) as ExistingConfig)
     : null;
   const {
-    telegramBotToken: _,
-    feishuAppId: __,
-    feishuAppSecret: ___,
-    claudeWorkDir: _cwd,
-    claudeTimeoutMs: _ctm,
-    claudeModel: _cm,
+    telegramBotToken: _telegramBotToken,
+    feishuAppId: _feishuAppId,
+    feishuAppSecret: _feishuAppSecret,
+    claudeWorkDir: _claudeWorkDir,
+    claudeTimeoutMs: _claudeTimeoutMs,
+    claudeModel: _claudeModel,
     ...baseRest
   } = (base ?? {}) as Record<string, unknown>;
 

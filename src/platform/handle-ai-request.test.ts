@@ -23,7 +23,6 @@ vi.mock('../logger.js', () => ({
 }));
 
 import { createPlatformAIRequestHandler } from './handle-ai-request.js';
-import { resolvePlatformAiCommand } from '../config.js';
 import { getAdapter } from '../adapters/registry.js';
 import { runAITask } from '../shared/ai-task.js';
 import type { TaskRunState } from '../shared/ai-task.js';

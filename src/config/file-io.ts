@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync, chmodSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
-import { createLogger, type LogLevel } from '../logger.js';
+import { createLogger } from '../logger.js';
 import { APP_HOME } from '../constants.js';
 import type { AiCommand, FileConfig } from './types.js';
 

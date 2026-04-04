@@ -4,8 +4,8 @@ import type { RequestQueue } from '../queue/request-queue.js';
 import { escapePathForMarkdown } from '../shared/utils.js';
 import { TERMINAL_ONLY_COMMANDS } from '../constants.js';
 import { execFile } from 'node:child_process';
-import { readdirSync, statSync } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import { readdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import type { ThreadContext } from '../shared/types.js';
 
 export type { ThreadContext };
@@ -41,7 +41,7 @@ export class CommandHandler {
     chatId: string,
     userId: string,
     platform: Platform,
-    handleClaudeRequest: ClaudeRequestHandler
+    _handleClaudeRequest: ClaudeRequestHandler
   ): Promise<boolean> {
     const t = text.trim();
 
@@ -117,7 +117,7 @@ export class CommandHandler {
     return true;
   }
 
-  private async handleCd(chatId: string, userId: string, dir: string, platform: Platform): Promise<boolean> {
+  private async handleCd(chatId: string, userId: string, dir: string, _platform: Platform): Promise<boolean> {
     // 如果 dir 为空，显示目录选择界面
     if (!dir) {
       const currentDir = this.deps.sessionManager.getWorkDir(userId);

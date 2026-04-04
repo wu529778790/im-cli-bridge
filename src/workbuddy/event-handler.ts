@@ -10,9 +10,8 @@ import { WORKBUDDY_THROTTLE_MS } from '../constants.js';
 import { setActiveChatId } from '../shared/active-chats.js';
 import { setChatUser } from '../shared/chat-user-map.js';
 import { createLogger } from '../logger.js';
-import { createPlatformEventContext, type PlatformEventContext } from '../platform/create-event-context.js';
+import { createPlatformEventContext } from '../platform/create-event-context.js';
 import { createPlatformAIRequestHandler, type PlatformSender, type PlatformTaskCallbacks } from '../platform/handle-ai-request.js';
-import { handleTextFlow } from '../platform/handle-text-flow.js';
 
 const log = createLogger('WorkBuddyHandler');
 
@@ -49,16 +48,16 @@ export function setupWorkBuddyHandlers(
 
   // WorkBuddy-specific sender callbacks (no thinking message needed)
   const platformSender: PlatformSender = {
-    sendThinkingMessage: async (chatId, _replyToMessageId, toolId) => {
+    sendThinkingMessage: async (_chatId, _replyToMessageId, _toolId) => {
       // WorkBuddy uses incoming msgId as thinking message ID
       // This is a no-op since we'll use the incoming msgId
       return 'workbuddy_no_thinking';
     },
-    sendTextReply: async (chatId, text) => {
+    sendTextReply: async (_chatId, text) => {
       // WorkBuddy-specific reply (needs msgId captured per event)
-      await sendTextReply(null, chatId, text, '');
+      await sendTextReply(null, _chatId, text, '');
     },
-    startTyping: (chatId) => {
+    startTyping: (_chatId) => {
       // WorkBuddy doesn't support typing indicators
       return () => {};
     },
@@ -70,10 +69,10 @@ export function setupWorkBuddyHandlers(
       // WorkBuddy doesn't support streaming updates via Centrifuge
       log.debug(`Stream update (not sent): ${content.substring(0, 50)}...`);
     },
-    sendComplete: async (content) => {
+    sendComplete: async (_content) => {
       // Will be handled per-event with correct msgId
     },
-    sendError: async (error) => {
+    sendError: async (_error) => {
       // Will be handled per-event with correct msgId
     },
     extraCleanup: () => {
@@ -94,7 +93,7 @@ export function setupWorkBuddyHandlers(
   // Create platform-specific AI request handler
   // Note: WorkBuddy uses a different handleAIRequest signature with msgId
   // We'll need to wrap the standard handler
-  const standardHandleAIRequest = createPlatformAIRequestHandler({
+  createPlatformAIRequestHandler({
     platform: 'workbuddy',
     config,
     sessionManager,

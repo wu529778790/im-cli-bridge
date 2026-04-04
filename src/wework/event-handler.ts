@@ -23,7 +23,7 @@ import { buildMediaMetadataPrompt } from '../shared/media-prompt.js';
 import { buildSavedMediaPrompt } from '../shared/media-analysis-prompt.js';
 import { buildMediaContext } from '../shared/media-context.js';
 import { buildErrorNote, buildProgressNote } from '../shared/message-note.js';
-import { createPlatformEventContext, type PlatformEventContext } from '../platform/create-event-context.js';
+import { createPlatformEventContext } from '../platform/create-event-context.js';
 import { createPlatformAIRequestHandler, type PlatformSender, type PlatformTaskCallbacks } from '../platform/handle-ai-request.js';
 import { handleTextFlow } from '../platform/handle-text-flow.js';
 import {

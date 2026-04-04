@@ -1,4 +1,4 @@
-import { existsSync, accessSync, constants } from 'node:fs';
+import { accessSync, constants } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, isAbsolute } from 'node:path';
 import type { FileConfig, FilePlatformWechat } from './types.js';

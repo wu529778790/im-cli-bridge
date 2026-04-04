@@ -4,7 +4,7 @@ try {
   /* dotenv optional */
 }
 
-import { accessSync, constants, existsSync } from 'node:fs';
+import { accessSync, constants } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, isAbsolute } from 'node:path';
 import { createLogger, type LogLevel } from './logger.js';
@@ -30,7 +30,7 @@ export type {
   FileConfig,
 } from './config/types.js';
 
-import type { Platform, AiCommand, Config, FileConfig, FilePlatformWechat } from './config/types.js';
+import type { Platform, AiCommand, Config, FilePlatformWechat } from './config/types.js';
 
 // Re-export file I/O and credential helpers from sub-modules
 export {
@@ -52,18 +52,6 @@ import {
   parseCommaSeparated,
   loadClaudeSettingsEnv,
 } from './config/file-io.js';
-
-const AI_COMMANDS: readonly AiCommand[] = ['claude', 'codex', 'codebuddy'];
-
-/** 检查是否已配置 Claude API 凭证 */
-function hasClaudeCredentials(): boolean {
-  return !!(
-    process.env.ANTHROPIC_API_KEY ||
-    process.env.ANTHROPIC_AUTH_TOKEN ||
-    process.env.CLAUDE_CODE_OAUTH_TOKEN ||
-    process.env.ANTHROPIC_BASE_URL // 使用自定义 API（如第三方模型）时可能不需要标准凭证
-  );
-}
 
 /** 检测是否需要交互式配置（无 token 且无环境变量） */
 export function needsSetup(): boolean {

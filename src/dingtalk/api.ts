@@ -1,6 +1,3 @@
-import { createLogger } from '../logger.js';
-
-const log = createLogger('DingTalk');
 export const DINGTALK_OPENAPI_BASE = 'https://api.dingtalk.com';
 const DINGTALK_OAPI_BASE = 'https://oapi.dingtalk.com';
 const TEXT_MSG_KEY = 'sampleText';
