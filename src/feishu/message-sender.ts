@@ -17,6 +17,7 @@ import {
   disableStreaming,
   destroySession,
 } from './cardkit-manager.js';
+import { isPermissionError, handlePermissionError } from './permission.js';
 
 const log = createLogger('FeishuSender');
 
@@ -144,6 +145,9 @@ export async function sendThinkingMessage(
     return resp.data.message_id;
   } catch (err) {
     log.error('Failed to send thinking message:', err);
+    if (isPermissionError(err)) {
+      handlePermissionError(err, chatId);
+    }
     throw err;
   }
 }
@@ -206,14 +210,22 @@ export async function sendFinalCards(
       'done',
       note
     );
-    await client.im.message.create({
-      data: {
-        receive_id: chatId,
-        msg_type: 'interactive',
-        content: overflowCard,
-      },
-      params: { receive_id_type: 'chat_id' },
-    });
+    try {
+      await client.im.message.create({
+        data: {
+          receive_id: chatId,
+          msg_type: 'interactive',
+          content: overflowCard,
+        },
+        params: { receive_id_type: 'chat_id' },
+      });
+    } catch (err) {
+      if (isPermissionError(err)) {
+        handlePermissionError(err, chatId);
+        break;
+      }
+      log.error(`Failed to send overflow card ${i + 1}:`, err);
+    }
   }
 
   destroySession(cardId);
@@ -388,6 +400,10 @@ export async function sendFinalMessages(
         params: { receive_id_type: 'chat_id' },
       });
     } catch (err) {
+      if (isPermissionError(err)) {
+        handlePermissionError(err, chatId);
+        break;
+      }
       log.error(`Failed to send part ${i + 1}:`, err);
     }
   }
@@ -412,7 +428,11 @@ export async function sendTextReply(chatId: string, text: string): Promise<void>
       params: { receive_id_type: 'chat_id' },
     });
   } catch (err) {
-    log.error('Failed to send text:', err);
+    if (isPermissionError(err)) {
+      handlePermissionError(err, chatId);
+    } else {
+      log.error('Failed to send text:', err);
+    }
   }
 }
 
@@ -430,7 +450,11 @@ export async function sendTextReplyByOpenId(openId: string, text: string): Promi
       params: { receive_id_type: 'open_id' },
     });
   } catch (err) {
-    log.error('Failed to send text by open_id:', err);
+    if (isPermissionError(err)) {
+      handlePermissionError(err);
+    } else {
+      log.error('Failed to send text by open_id:', err);
+    }
   }
 }
 
@@ -476,7 +500,11 @@ export async function sendImageReply(chatId: string, imagePath: string): Promise
       params: { receive_id_type: 'chat_id' },
     });
   } catch (err) {
-    log.error('Failed to send image:', err);
+    if (isPermissionError(err)) {
+      handlePermissionError(err, chatId);
+    } else {
+      log.error('Failed to send image:', err);
+    }
   }
 }
 

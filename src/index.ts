@@ -11,7 +11,7 @@ export { needsSetup, runInteractiveSetup };
 import { initTelegram, stopTelegram } from "./telegram/client.js";
 import { setupTelegramHandlers } from "./telegram/event-handler.js";
 import { sendTextReply as sendTelegramTextReply } from "./telegram/message-sender.js";
-import { initFeishu, stopFeishu } from "./feishu/client.js";
+import { initFeishu, stopFeishu, formatFeishuInitError } from "./feishu/client.js";
 import { setupFeishuHandlers } from "./feishu/event-handler.js";
 import { sendTextReply as sendFeishuTextReply } from "./feishu/message-sender.js";
 import { initQQ, stopQQ } from "./qq/client.js";
@@ -78,6 +78,7 @@ const PLATFORM_MODULES: Record<Platform, PlatformModule> = {
     },
     stop: () => stopFeishu(),
     sendNotification: (chatId, msg) => sendFeishuTextReply(chatId, msg),
+    formatError: (err) => formatFeishuInitError(err),
   },
   qq: {
     init: async (config, sessionManager) => {
