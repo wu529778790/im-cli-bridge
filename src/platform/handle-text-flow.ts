@@ -20,7 +20,6 @@ import { setChatUser } from '../shared/chat-user-map.js';
 import type { Platform } from '../config.js';
 import type { PlatformEventContext } from './create-event-context.js';
 import type { EnqueueResult } from '../queue/request-queue.js';
-import type { ClaudeRequestHandler } from '../commands/handler.js';
 import type { HandleAIRequestParams } from './handle-ai-request.js';
 import { createLogger } from '../logger.js';
 

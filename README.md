@@ -1,24 +1,25 @@
 # open-im
 
-[中文](./README.zh-CN.md)
+[中文文档](./README.zh-CN.md)
 
-Multi-platform IM bridge for AI CLI tools. Connect Telegram, Feishu, WeCom, DingTalk, QQ, and WeChat to Claude Code, Codex, and CodeBuddy so you can use your coding assistant remotely from a phone or chat window.
+Multi-platform IM bridge for AI CLI tools. Connect Telegram, Feishu, WeCom, DingTalk, QQ, and WeChat to Claude Code, Codex, and CodeBuddy — use your AI coding assistant from any phone or chat window.
 
 ## Features
 
-- Multi-platform support: Telegram, Feishu, WeCom, DingTalk, QQ, and WeChat (WorkBuddy), with multiple platforms enabled at the same time
-- Multiple AI tools: Claude, Codex, and CodeBuddy
-- Per-platform AI routing: each IM platform can use a different AI tool, with `aiCommand` as the global default and `platforms.<name>.aiCommand` as the override
-- Streaming replies: relay AI output and tool execution progress in real time (DingTalk streaming is not fully supported yet)
-- Graphical configuration page and CLI setup flow
-- Isolated sessions: each user gets an independent local session, and `/new` resets it
-- Built-in commands: `/help`, `/new`, `/cd`, `/pwd`, `/status`
+- **6 IM platforms** — Telegram, Feishu, WeCom, DingTalk, QQ, WeChat (WorkBuddy), all can run simultaneously
+- **3 AI backends** — Claude (Agent SDK), Codex, CodeBuddy
+- **Per-platform AI routing** — each IM can use a different AI tool
+- **Streaming replies** — real-time AI output and tool progress (platform-dependent)
+- **Media support** — send images, files, voice, video for AI analysis
+- **Session isolation** — independent sessions per user, `/new` to reset
+- **Web config UI** — graphical dashboard for setup and management
+- **Built-in commands** — `/help`, `/new`, `/cd`, `/pwd`, `/status`, `/allow`, `/deny`
 
 ## Requirements
 
 - Node.js >= 20
 - At least one IM platform configured
-- Authentication completed for the AI tool you want to use
+- Authentication for the AI tool you want to use
 
 ## Quick Start
 
@@ -33,114 +34,95 @@ npm install -g @wu529778790/open-im
 open-im start
 ```
 
-The config file is stored at `~/.open-im/config.json` by default.
+Config file: `~/.open-im/config.json`
 
 ## CLI Commands
 
-| Command           | Description                                                      |
-| ----------------- | ---------------------------------------------------------------- |
-| `open-im init`    | Initialize or append configuration without starting the service |
-| `open-im start`   | Run the service in the background                                |
-| `open-im stop`    | Stop the background service                                      |
-| `open-im dev`     | Run in the foreground for development/debugging                  |
-| `open-im dashboard` | Run only the config web UI (no bridge)                        |
+| Command             | Description                            |
+| ------------------- | -------------------------------------- |
+| `open-im init`      | Configure without starting the service |
+| `open-im start`     | Run as background service              |
+| `open-im stop`      | Stop background service                |
+| `open-im dev`       | Run in foreground (debugging)          |
+| `open-im dashboard` | Web config UI only (no bridge)         |
 
-## Server Deployment & Config Page
+## Web Configuration
 
-### Local (with browser)
+### Local
 
-Open the config page at [`http://127.0.0.1:39282`](http://127.0.0.1:39282) (or the URL shown after `open-im start`). The page includes:
+Open [`http://127.0.0.1:39282`](http://127.0.0.1:39282) after starting. The dashboard includes:
 
-- **Dashboard** – Configured / Enabled platform count and service status (Idle or Running)
-- **Platforms** – Enable and configure Telegram, Feishu, QQ, WeCom, and DingTalk (credentials, proxy, per-platform AI tool, allowed user IDs). Each platform has a “Test Configuration” button.
-- **AI Tooling** – **General**: default AI tool (Claude / Codex / CodeBuddy), work directory, hook port, log level. **Per-tool tabs**: Claude (CLI path, timeout, proxy, config path, ANTHROPIC\_\* fields), Codex (CLI path, timeout, proxy), CodeBuddy (CLI path, timeout).
-- **Service control** – Validate config, Save, Start bridge, Stop bridge.
+- **Overview** — platform count, service status
+- **Platforms** — enable and configure each IM (credentials, proxy, AI tool, allowed users)
+- **AI Tooling** — default tool, work directory, per-tool settings (CLI path, timeout, proxy, API keys)
+- **Service control** — validate, save, start/stop bridge
 
-WorkBuddy (WeChat) is not in the web UI; configure it in `~/.open-im/config.json` or via `open-im init`.
+> WorkBuddy (WeChat) is configured via `open-im init` or directly in `~/.open-im/config.json`.
 
-- `open-im start` serves both the config page and the bridge on your local machine.
-- `open-im dev` opens the page automatically only when setup is incomplete.
-- To open the page when config already exists, you can also run `open-im dashboard` to launch the config UI only (without starting the bridge).
+### Remote Server
 
-### Recommended server workflow
+```bash
+export OPEN_IM_NO_BROWSER=1
+# Optional: allow access from other devices
+# export OPEN_IM_WEB_HOST=0.0.0.0
+open-im dashboard
+```
 
-On a remote server, the simplest and safest pattern is:
+If `OPEN_IM_WEB_HOST=0.0.0.0`, the server prints a one-time login URL:
 
-1. **Use `dashboard` to configure via browser**
+```
+http://your-server-ip:39282/?login_token=xxxx
+```
 
-   On the server:
+Complete setup in the browser, then start the bridge:
 
-   ```bash
-   export OPEN_IM_NO_BROWSER=1
-   # Optional: bind to all interfaces if you want to open from another device
-   # export OPEN_IM_WEB_HOST=0.0.0.0
-   open-im dashboard
-   ```
+```bash
+open-im start
+```
 
-   - This starts only the config web UI (no bridge yet).
-   - If `OPEN_IM_WEB_HOST` is `0.0.0.0`, the server will print a one-time login URL like:
+## IM Commands
 
-     ```text
-     http://your-server-ip:39282/?login_token=xxxx
-     ```
-
-   - Open this URL in your browser, complete all platform/AI settings, then click **Start bridge** in the web UI.
-
-2. **Run the bridge as a background service**
-
-   After configuration is saved, you have two options:
-   - Start from the web UI: use the **Start bridge** button on the Service panel.
-   - Or start from the CLI:
-
-     ```bash
-     open-im start
-     ```
-
-   This runs the full bridge in the background using the saved config.
+| Command       | Description                          |
+| ------------- | ------------------------------------ |
+| `/help`       | Show help                            |
+| `/new`        | Start a new AI session               |
+| `/status`     | Show AI tool, version, session info  |
+| `/cd <path>`  | Change session working directory     |
+| `/pwd`        | Show current working directory       |
+| `/allow` `/y` | Approve a permission request         |
+| `/deny` `/n`  | Reject a permission request          |
 
 ## Session Behavior
 
-Session context is stored locally in `~/.open-im/data/sessions.json` and is separate from the IM chat history itself. Each user has an independent session directory and session metadata. Sending `/new` resets the current AI session.
+Sessions are stored locally in `~/.open-im/data/sessions.json`, separate from IM chat history. Each user gets an independent session directory. `/new` resets the AI session.
 
 ## Configuration
 
-The root-level `aiCommand` is the default AI tool for all platforms. If you want a specific IM platform to use a different tool, set `platforms.<platform>.aiCommand`.
+### Per-Platform AI Routing
 
-Example:
+The root-level `aiCommand` is the default AI tool. Override per-platform with `platforms.<name>.aiCommand`:
 
 ```json
 {
   "aiCommand": "claude",
   "platforms": {
-    "telegram": {
-      "enabled": true,
-      "aiCommand": "codex"
-    },
-    "feishu": {
-      "enabled": true,
-      "aiCommand": "codex"
-    },
-    "qq": {
-      "enabled": true,
-      "aiCommand": "codebuddy"
-    }
+    "telegram": { "enabled": true, "aiCommand": "codex" },
+    "feishu":   { "enabled": true, "aiCommand": "codex" },
+    "qq":       { "enabled": true, "aiCommand": "codebuddy" }
   }
 }
 ```
 
-In that setup, Telegram uses Codex, Feishu uses Codex, QQ uses CodeBuddy, and any platform without its own `aiCommand` continues using Claude.
+### Claude (Agent SDK)
 
-### Claude
+Claude uses the Agent SDK by default — no local `claude` executable needed. Provide API credentials:
 
-Claude uses the Agent SDK by default and does not depend on a local `claude` executable. In most cases you only need to provide API credentials.
-
-Load order:
-
+Credential load order:
 1. Environment variables
 2. `env` in `~/.open-im/config.json`
 3. `~/.claude/settings.json` or `~/.claude.json`
 
-Both the official API and compatible third-party endpoints are supported:
+Compatible with third-party endpoints:
 
 ```json
 {
@@ -152,47 +134,41 @@ Both the official API and compatible third-party endpoints are supported:
 }
 ```
 
+Claude automatically inherits plugins and settings from your local `~/.claude/settings.json`.
+
 ### CodeBuddy
 
-CodeBuddy uses the local CLI. Install it first, then either log in interactively or provide credentials through `env`.
+Install the CLI and log in:
 
 ```bash
 npm install -g @tencent-ai/codebuddy-code
-codebuddy --version
 codebuddy login
 ```
 
-Common config keys:
+Config keys:
+- `tools.codebuddy.cliPath` — CLI path (default: `codebuddy`)
+- `tools.codebuddy.skipPermissions` — skip permission prompts (default: `true`)
+- `tools.codebuddy.timeoutMs` — execution timeout (default: `600000`)
 
-- `tools.codebuddy.cliPath`: CLI path, defaults to `codebuddy`
-- `tools.codebuddy.skipPermissions`: whether to skip permission confirmation, defaults to `true`
-- `tools.codebuddy.timeoutMs`: total execution timeout, defaults to `600000`
-- `platforms.<platform>.aiCommand`: set to `codebuddy` if that IM platform should use CodeBuddy
+On Windows, if `cliPath` is `codebuddy`, open-im also checks `AppData\Roaming\npm\codebuddy.cmd`.
 
-On Windows, if `cliPath` is still `codebuddy`, open-im also tries common npm global locations such as `AppData\\Roaming\\npm\\codebuddy.cmd`.
-
-### Example Config File
-
-The following is valid JSON and can be saved directly as `~/.open-im/config.json`:
+### Example Config
 
 ```json
 {
   "aiCommand": "claude",
   "tools": {
     "claude": {
-      "cliPath": "claude",
-      "workDir": "D:/coding/open-im",
+      "workDir": "/path/to/project",
       "skipPermissions": true,
       "timeoutMs": 600000
     },
     "codex": {
-      "cliPath": "codex",
-      "workDir": "D:/coding/open-im",
+      "workDir": "/path/to/project",
       "skipPermissions": true,
       "proxy": "http://127.0.0.1:7890"
     },
     "codebuddy": {
-      "cliPath": "codebuddy",
       "skipPermissions": true,
       "timeoutMs": 600000
     }
@@ -200,44 +176,31 @@ The following is valid JSON and can be saved directly as `~/.open-im/config.json
   "platforms": {
     "telegram": {
       "enabled": true,
-      "aiCommand": "codex",
-      "proxy": "http://127.0.0.1:7890",
-      "allowedUserIds": [],
       "botToken": "YOUR_TELEGRAM_BOT_TOKEN"
     },
     "feishu": {
       "enabled": false,
-      "aiCommand": "codex",
-      "allowedUserIds": [],
       "appId": "YOUR_FEISHU_APP_ID",
       "appSecret": "YOUR_FEISHU_APP_SECRET"
     },
     "qq": {
       "enabled": false,
-      "aiCommand": "codebuddy",
-      "allowedUserIds": [],
       "appId": "YOUR_QQ_APP_ID",
       "secret": "YOUR_QQ_APP_SECRET"
     },
     "wework": {
       "enabled": false,
-      "aiCommand": "claude",
-      "allowedUserIds": [],
       "corpId": "YOUR_WEWORK_CORP_ID",
       "secret": "YOUR_WEWORK_SECRET"
     },
     "dingtalk": {
       "enabled": false,
-      "aiCommand": "claude",
-      "allowedUserIds": [],
       "clientId": "YOUR_DINGTALK_CLIENT_ID",
       "clientSecret": "YOUR_DINGTALK_CLIENT_SECRET",
       "cardTemplateId": "YOUR_DINGTALK_AI_CARD_TEMPLATE_ID"
     },
     "workbuddy": {
       "enabled": false,
-      "aiCommand": "claude",
-      "allowedUserIds": [],
       "accessToken": "",
       "refreshToken": "",
       "userId": ""
@@ -246,101 +209,93 @@ The following is valid JSON and can be saved directly as `~/.open-im/config.json
 }
 ```
 
-### Common Environment Variables
+### Environment Variables
 
-| Variable                     | Description                                                            |
-| ---------------------------- | ---------------------------------------------------------------------- |
-| `AI_COMMAND`                 | Select `claude`, `codex`, or `codebuddy`                               |
-| `CLAUDE_WORK_DIR`            | Default session working directory                                      |
-| `LOG_DIR`                    | Log directory                                                          |
-| `LOG_LEVEL`                  | Log level                                                              |
-| `HOOK_PORT`                  | Permission service port                                                |
-| `CODEX_PROXY`                | Proxy used by Codex to access `chatgpt.com`                            |
-| `OPENAI_API_KEY`             | Codex API key, can replace `codex login`                               |
-| `CODEBUDDY_CLI_PATH`         | Override CodeBuddy CLI path                                            |
-| `CODEBUDDY_TIMEOUT_MS`       | Override CodeBuddy timeout                                             |
-| `CODEBUDDY_SKIP_PERMISSIONS` | Override CodeBuddy skip-permissions behavior                           |
-| `CODEBUDDY_IDLE_TIMEOUT_MS`  | Abort CodeBuddy when it stays silent for too long                      |
-| `CODEBUDDY_API_KEY`          | CodeBuddy API key, can replace `codebuddy login`                       |
-| `CODEBUDDY_AUTH_TOKEN`       | CodeBuddy auth token, can replace `codebuddy login`                    |
-| `TELEGRAM_BOT_TOKEN`         | Telegram bot token                                                     |
-| `TELEGRAM_PROXY`             | Telegram proxy URL                                                     |
-| `TELEGRAM_ALLOWED_USER_IDS`  | Telegram allowlist                                                     |
-| `FEISHU_APP_ID`              | Feishu app ID                                                          |
-| `FEISHU_APP_SECRET`          | Feishu app secret                                                      |
-| `FEISHU_ALLOWED_USER_IDS`    | Feishu allowlist                                                       |
-| `QQ_BOT_APPID`               | QQ bot app ID                                                          |
-| `QQ_BOT_SECRET`              | QQ bot app secret                                                      |
-| `QQ_BOT_SANDBOX`             | QQ bot sandbox mode (`1` / `true` to enable, disabled by default)      |
-| `QQ_ALLOWED_USER_IDS`        | QQ allowlist                                                           |
-| `DINGTALK_CLIENT_ID`         | DingTalk client ID / AppKey                                            |
-| `DINGTALK_CLIENT_SECRET`     | DingTalk client secret / AppSecret                                     |
-| `DINGTALK_CARD_TEMPLATE_ID`  | DingTalk AI card template ID; enables single-message streaming replies |
-| `DINGTALK_ALLOWED_USER_IDS`  | DingTalk allowlist                                                     |
-| `WEWORK_CORP_ID`             | WeCom bot ID                                                           |
-| `WEWORK_SECRET`              | WeCom secret                                                           |
-| `WEWORK_WS_URL`              | WeCom WebSocket URL                                                    |
-| `WEWORK_ALLOWED_USER_IDS`    | WeCom allowlist                                                        |
-| `WORKBUDDY_ACCESS_TOKEN`     | WorkBuddy OAuth access token (auto-generated by `open-im init`)        |
-| `WORKBUDDY_REFRESH_TOKEN`    | WorkBuddy OAuth refresh token (auto-generated by `open-im init`)       |
-| `WORKBUDDY_USER_ID`          | WorkBuddy user ID                                                      |
-| `WORKBUDDY_BASE_URL`         | WorkBuddy API base URL, defaults to `https://copilot.tencent.com`      |
-| `WORKBUDDY_GUID`             | WorkBuddy connection GUID (optional)                                   |
-| `WORKBUDDY_WORKSPACE_PATH`   | WorkBuddy workspace path (optional)                                    |
-| `WORKBUDDY_ALLOWED_USER_IDS` | WorkBuddy allowlist                                                    |
+#### General
 
-### Platform Setup Sources
+| Variable            | Description                                    |
+| ------------------- | ---------------------------------------------- |
+| `AI_COMMAND`        | Default AI tool (`claude` / `codex` / `codebuddy`) |
+| `CLAUDE_WORK_DIR`   | Default session working directory              |
+| `LOG_DIR`           | Log directory                                  |
+| `LOG_LEVEL`         | Log level                                      |
+| `HOOK_PORT`         | Permission service port                        |
 
-- Telegram: get the bot token from [@BotFather](https://t.me/BotFather)
-- Feishu: create an app and enable the bot in the [Feishu Open Platform](https://open.feishu.cn/)
-- QQ: create a bot in the [QQ Open Platform](https://bot.q.qq.com/) and get the `App ID` and `App Secret`
-- DingTalk: create an internal enterprise app in DingTalk Open Platform, enable bot Stream Mode, and get the `Client ID` and `Client Secret`
-- WeCom: get the bot ID and secret from the [WeCom admin console](https://work.weixin.qq.com/)
-- WeChat (WorkBuddy): connects via CodeBuddy (copilot.tencent.com) Centrifuge WebSocket; run `open-im init` and select "WorkBuddy 微信客服 (WeChat KF)" to complete OAuth login and WeChat KF binding
+#### AI Tool Credentials
 
-Notes on DingTalk: the current implementation uses a hybrid model of "Stream Mode for receiving messages + OpenAPI for sending messages".
+| Variable                     | Description                                |
+| ---------------------------- | ------------------------------------------ |
+| `ANTHROPIC_API_KEY`          | Claude API key                             |
+| `ANTHROPIC_AUTH_TOKEN`       | Claude OAuth token                         |
+| `ANTHROPIC_BASE_URL`         | Claude API base URL                        |
+| `ANTHROPIC_MODEL`            | Claude model name                          |
+| `OPENAI_API_KEY`             | Codex API key                              |
+| `CODEX_PROXY`                | Codex proxy for `chatgpt.com`              |
+| `CODEBUDDY_CLI_PATH`         | CodeBuddy CLI path                         |
+| `CODEBUDDY_TIMEOUT_MS`       | CodeBuddy timeout                          |
+| `CODEBUDDY_API_KEY`          | CodeBuddy API key                          |
+| `CODEBUDDY_AUTH_TOKEN`       | CodeBuddy auth token                       |
 
-- Plain text replies in a session are sent through `sessionWebhook`
-- If `cardTemplateId` is configured, the app will try AI assistant `prepare/update/finish` streaming cards; if that fails, it falls back to plain text. In custom bot or regular group scenarios, the interactive card API may return `param.error`, so single-message streaming updates are not available there yet
-- Startup and shutdown notifications are not sent to DingTalk (the OpenAPI robot API does not support proactive messages in the same way). Other platforms (e.g. Telegram, Feishu, WeCom) still receive lifecycle notifications when configured
+#### Platform Credentials
 
-DingTalk AI card templates are already compatible with the official "Search Result Card" template and use the variables `lastMessage`, `content`, `resources`, `users`, and `flowStatus`. If you use that template, no template changes are required for streaming updates.
+| Variable                     | Description                                |
+| ---------------------------- | ------------------------------------------ |
+| `TELEGRAM_BOT_TOKEN`         | Telegram bot token                         |
+| `TELEGRAM_PROXY`             | Telegram proxy URL                         |
+| `TELEGRAM_ALLOWED_USER_IDS`  | Telegram allowed user IDs                  |
+| `FEISHU_APP_ID`              | Feishu app ID                              |
+| `FEISHU_APP_SECRET`          | Feishu app secret                          |
+| `FEISHU_ALLOWED_USER_IDS`    | Feishu allowed user IDs                    |
+| `QQ_BOT_APPID`               | QQ bot app ID                              |
+| `QQ_BOT_SECRET`              | QQ bot app secret                          |
+| `QQ_BOT_SANDBOX`             | QQ sandbox mode (`1` / `true`)             |
+| `QQ_ALLOWED_USER_IDS`        | QQ allowed user IDs                        |
+| `DINGTALK_CLIENT_ID`         | DingTalk client ID / AppKey                |
+| `DINGTALK_CLIENT_SECRET`     | DingTalk client secret / AppSecret         |
+| `DINGTALK_CARD_TEMPLATE_ID`  | DingTalk AI card template ID               |
+| `DINGTALK_ALLOWED_USER_IDS`  | DingTalk allowed user IDs                  |
+| `WEWORK_CORP_ID`             | WeCom bot ID                               |
+| `WEWORK_SECRET`              | WeCom secret                               |
+| `WEWORK_WS_URL`              | WeCom WebSocket URL                        |
+| `WEWORK_ALLOWED_USER_IDS`    | WeCom allowed user IDs                     |
+| `WORKBUDDY_ACCESS_TOKEN`     | WorkBuddy OAuth access token               |
+| `WORKBUDDY_REFRESH_TOKEN`    | WorkBuddy OAuth refresh token              |
+| `WORKBUDDY_USER_ID`          | WorkBuddy user ID                          |
+| `WORKBUDDY_BASE_URL`         | WorkBuddy API base URL                     |
+| `WORKBUDDY_ALLOWED_USER_IDS` | WorkBuddy allowed user IDs                 |
 
-## IM Commands
+### Platform Setup
 
-| Command       | Description                                              |
-| ------------- | -------------------------------------------------------- |
-| `/help`       | Show help                                                |
-| `/new`        | Start a new session                                      |
-| `/status`     | Show AI tool, version, session directory, and session ID |
-| `/cd <path>`  | Change the session working directory                     |
-| `/pwd`        | Show the current session working directory               |
-| `/allow` `/y` | Approve a permission request                             |
-| `/deny` `/n`  | Reject a permission request                              |
+| Platform  | Setup source                                                    |
+| --------- | --------------------------------------------------------------- |
+| Telegram  | [@BotFather](https://t.me/BotFather)                           |
+| Feishu    | [Feishu Open Platform](https://open.feishu.cn/)                |
+| QQ        | [QQ Open Platform](https://bot.q.qq.com/)                      |
+| DingTalk  | DingTalk Open Platform — enable bot Stream Mode                |
+| WeCom     | [WeCom admin console](https://work.weixin.qq.com/)             |
+| WeChat    | Run `open-im init` and select "WorkBuddy" for OAuth + binding  |
+
+**DingTalk notes:**
+- Uses Stream Mode (receive) + OpenAPI (send)
+- With `cardTemplateId`: AI assistant streaming cards; falls back to plain text on failure
+- Custom bots and regular groups only support single text replies
+- Startup/shutdown notifications are not sent to DingTalk
 
 ## Troubleshooting
 
-**Telegram does not respond**: check network access. If needed, add `"proxy": "http://127.0.0.1:7890"` to the Telegram platform config or set `TELEGRAM_PROXY`.
-
-**QQ cannot connect**: make sure the bot has been created and enabled in QQ Open Platform, then verify `QQ_BOT_APPID`, `QQ_BOT_SECRET`, or `platforms.qq`.
-
-**QQ sends duplicate replies**: update to the latest version. This issue was fixed recently.
-
-**Feishu card errors**: if card callbacks are not configured, you can use `/mode ask` or `/mode yolo` directly.
-
-**WeCom notifications are not received**: the bot must receive at least one message first before it can send proactive notifications.
-
-**DingTalk cannot reply**: make sure bot Stream Mode is enabled for the app, then verify `DINGTALK_CLIENT_ID`, `DINGTALK_CLIENT_SECRET`, or `platforms.dingtalk`.
-
-**DingTalk has no streaming updates**: when `prepare` fails, the app falls back to plain text replies. In custom bot or regular group scenarios, neither the AI assistant API nor the interactive card API is available, so only single plain text replies are supported.
-
-**Codex shows `stream disconnected` or `error sending request`**: `chatgpt.com` is not reachable. Configure `tools.codex.proxy` or set `CODEX_PROXY`.
-
-**CodeBuddy prompts for login**: run `codebuddy login` first. `open-im` does not read CodeBuddy login state from `~/.open-im/config.json`.
-
-**WorkBuddy cannot connect**: run `open-im init` to re-authenticate. Tokens may expire — the client will attempt auto-reconnect, but if the refresh token is invalid, a fresh login is required.
-
-**WorkBuddy WeChat KF not receiving messages**: ensure the WeChat KF binding was completed during `open-im init`. You can re-run init to generate a new binding link.
+| Issue | Solution |
+| ----- | -------- |
+| Telegram not responding | Check network, add `proxy` or set `TELEGRAM_PROXY` |
+| QQ cannot connect | Verify bot is created and `QQ_BOT_APPID` / `QQ_BOT_SECRET` are correct |
+| QQ duplicate replies | Update to latest version |
+| Feishu card errors | Use `/mode ask` or `/mode yolo` without card callbacks |
+| WeCom no notifications | Send at least one message to the bot first |
+| DingTalk cannot reply | Verify Stream Mode is enabled and credentials are correct |
+| DingTalk no streaming | Custom bots only support plain text; configure `cardTemplateId` for AI assistant streaming |
+| Codex `stream disconnected` | Configure `tools.codex.proxy` or `CODEX_PROXY` for `chatgpt.com` access |
+| CodeBuddy asks for login | Run `codebuddy login` first |
+| WorkBuddy cannot connect | Run `open-im init` to re-authenticate; tokens may expire |
+| WorkBuddy WeChat not receiving | Re-run `open-im init` to generate new WeChat KF binding link |
 
 ## License
 
