@@ -834,13 +834,6 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
             </svg>
             <span id="navAiText">AI Tooling</span>
           </button>
-          <button class="nav-item" id="navServiceBtn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/>
-              <polyline points="12,6 12,12 16,14"/>
-            </svg>
-            <span id="navServiceText">Service</span>
-          </button>
         </nav>
       </aside>
 
@@ -1312,28 +1305,6 @@ export const PAGE_HTML_PREFIX = String.raw`<!doctype html>
                   <div style="margin-top: 10px;">
                     <button type="button" id="saveClaudeSettingsBtn" class="btn btn-secondary btn-sm"><span id="saveClaudeSettingsBtnText">Save</span></button>
                   </div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <!-- Service Section -->
-          <section class="section" id="serviceSection">
-            <div class="section-header">
-              <h2 class="section-title" id="serviceTitle">Service Control</h2>
-              <p class="section-description" id="serviceHint">Manage the bridge service</p>
-            </div>
-
-            <div class="card">
-              <div class="card-body">
-                <div style="display: flex; gap: 12px; flex-wrap: wrap;" style="justify-content: center; gap: 16px;">
-                  <button id="validateButton" class="btn btn-warning btn-lg">Validate</button>
-                  <button id="saveButton" class="btn btn-secondary btn-lg">Save Config</button>
-                  <button id="startButton" class="btn btn-primary btn-lg">Start Bridge</button>
-                  <button id="stopButton" class="btn btn-danger btn-lg">Stop Bridge</button>
-                </div>
-                <div class="text-center mt-6">
-                  <div id="message" class="message hidden" aria-live="polite"></div>
                 </div>
               </div>
             </div>
