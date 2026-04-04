@@ -395,6 +395,8 @@ export function setupTelegramHandlers(
         handleAIRequest,
         sendTextReply,
         replyToMessageId: messageId,
+        workDir: sessionManager.getWorkDir(userId),
+        convId: sessionManager.getConvId(userId),
       });
     } catch (err) {
       log.error('Unhandled error in Telegram text handler:', err);

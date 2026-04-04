@@ -381,6 +381,8 @@ export function setupWeWorkHandlers(
           ctx,
           handleAIRequest,
           sendTextReply: (chatId, text) => sendTextReply(chatId, text, reqId),
+          workDir: sessionManager.getWorkDir(fromUser),
+          convId: sessionManager.getConvId(fromUser),
         });
         return;
       }
