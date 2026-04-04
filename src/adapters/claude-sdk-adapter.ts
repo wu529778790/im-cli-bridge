@@ -11,10 +11,40 @@
 
 import { unstable_v2_createSession, unstable_v2_resumeSession } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKMessage, SDKSession } from '@anthropic-ai/claude-agent-sdk';
+import { existsSync, readFileSync } from 'fs';
+import { homedir } from 'os';
+import { join } from 'path';
 import { createLogger } from '../logger.js';
 import type { ToolAdapter, RunCallbacks, RunOptions, RunHandle } from './tool-adapter.interface.js';
 
 const log = createLogger('ClaudeSDK');
+
+// ── 从 ~/.claude/settings.json 读取用户插件配置 ──
+
+interface UserPluginSettings {
+  enabledPlugins?: Record<string, boolean>;
+  extraKnownMarketplaces?: Record<string, unknown>;
+}
+
+function loadUserPluginSettings(): UserPluginSettings | null {
+  try {
+    const settingsPath = join(homedir(), '.claude', 'settings.json');
+    if (!existsSync(settingsPath)) return null;
+    const content = readFileSync(settingsPath, 'utf-8');
+    const settings = JSON.parse(content);
+    const result: UserPluginSettings = {};
+    if (settings.enabledPlugins) result.enabledPlugins = settings.enabledPlugins;
+    if (settings.extraKnownMarketplaces) result.extraKnownMarketplaces = settings.extraKnownMarketplaces;
+    if (Object.keys(result).length === 0) return null;
+    log.info(`Loaded user plugin settings: plugins=[${Object.keys(result.enabledPlugins ?? {}).join(', ')}]`);
+    return result;
+  } catch (err) {
+    log.warn('Failed to read ~/.claude/settings.json for plugin config:', err);
+    return null;
+  }
+}
+
+const userPluginSettings = loadUserPluginSettings();
 
 // 存储所有活跃的 SDKSession 对象，key 为 sessionId
 // 使用 Map 而不是 Set，因为我们需要通过 sessionId 获取 session
@@ -166,7 +196,7 @@ async function getOrCreateSession(
       activeSessions.set(tempId, session);
       sessionLastUsed.set(tempId, Date.now());
       log.info(`Created new session (tempId: ${tempId})`);
-      return { session, sessionId: tempId };
+      return { session, sessionId: tempId, wasReused: false };
     } finally {
       if (workDir && workDir !== originalCwd) {
         process.chdir(originalCwd);
@@ -287,7 +317,19 @@ export class ClaudeSDKAdapter implements ToolAdapter {
 
             // 获取实际的 sessionId（从 init 消息中）
             if (isSystemInit(msg)) {
-              const newSessionId = (msg as { session_id?: string }).session_id;
+              const initMsg = msg as {
+                session_id?: string;
+                skills?: string[];
+                plugins?: Array<{ name: string; path: string }>;
+                tools?: string[];
+              };
+              // 记录 session 加载的插件和技能
+              const pluginNames = initMsg.plugins?.map(p => p.name).join(', ') ?? 'none';
+              const skillCount = initMsg.skills?.length ?? 0;
+              const toolCount = initMsg.tools?.length ?? 0;
+              log.info(`[V2] Init: plugins=[${pluginNames}], skills=${skillCount}, tools=${toolCount}`);
+
+              const newSessionId = initMsg.session_id;
               if (newSessionId && newSessionId !== actualSessionId) {
                 // 更新 sessionId 映射
                 // 清理 pending 临时 ID（actualSessionId 尚未赋值时用 pendingTempId）
