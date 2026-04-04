@@ -106,10 +106,6 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
       // Button state
       const setBusy = (busy) => {
         [
-          "validateButton",
-          "saveButton",
-          "startButton",
-          "stopButton",
           "headerValidateButton",
           "headerSaveButton",
           "headerStartButton",
@@ -158,14 +154,11 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           { id: "navPlatformsText", key: "platformsTitle" },
           { id: "navConfigFilesText", key: "navConfigFiles" },
           { id: "navAiText", key: "aiTitle" },
-          { id: "navServiceText", key: "serviceTitle" },
           { id: "footerGithubText", value: "GitHub" },
           { id: "platformsTitle", key: "platformsTitle" },
           { id: "platformsHint", key: "platformsHint" },
           { id: "aiTitle", key: "aiTitle" },
           { id: "aiHint", key: "aiHint" },
-          { id: "serviceTitle", key: "serviceTitle" },
-          { id: "serviceHint", key: "serviceHint" },
           { id: "overviewTitle", key: "overviewTitle" },
           { id: "overviewBody", key: "overviewBody" },
           { id: "statConfiguredLabel", key: "statConfiguredLabel" },
@@ -238,10 +231,6 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           { id: "ai-logLevel-label", key: "logLevel" },
         ],
         buttons: [
-          { id: "validateButton", key: "validate" },
-          { id: "saveButton", key: "save" },
-          { id: "startButton", key: "start" },
-          { id: "stopButton", key: "stop" },
           { id: "headerValidateButton", key: "validate" },
           { id: "headerSaveButton", key: "save" },
           { id: "headerStartButton", key: "start" },
@@ -463,7 +452,7 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
 
       // Navigation
       function setActiveNav(targetId) {
-        ["navOverviewBtn","navPlatformsBtn","navConfigFilesBtn","navAiBtn","navServiceBtn"].forEach((id) => {
+        ["navOverviewBtn","navPlatformsBtn","navConfigFilesBtn","navAiBtn"].forEach((id) => {
           const btn = el(id);
           if (btn) btn.classList.toggle("active", id === targetId);
         });
@@ -734,7 +723,6 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
         el("navPlatformsBtn").onclick = () => scrollToSection("configSection", "navPlatformsBtn");
         el("navConfigFilesBtn").onclick = () => scrollToSection("configFilesSection", "navConfigFilesBtn");
         el("navAiBtn").onclick = () => scrollToSection("aiSection", "navAiBtn");
-        el("navServiceBtn").onclick = () => scrollToSection("serviceSection", "navServiceBtn");
 
         // Language toggle
         el("langButton").onclick = () => {
@@ -760,13 +748,9 @@ export const PAGE_SCRIPT = String.raw`      const platformDefinitions = [
           await saveClaudeSettings();
           await startService();
         };
-        el("validateButton").onclick = validate;
         el("headerValidateButton").onclick = validate;
-        el("saveButton").onclick = onSaveClick;
         el("headerSaveButton").onclick = onSaveClick;
-        el("startButton").onclick = onStartClick;
         el("headerStartButton").onclick = onStartClick;
-        el("stopButton").onclick = stopService;
         el("headerStopButton").onclick = stopService;
 
         // Platform test buttons
