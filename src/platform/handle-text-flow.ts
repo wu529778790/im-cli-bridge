@@ -20,9 +20,12 @@ import { setChatUser } from '../shared/chat-user-map.js';
 import type { Platform } from '../config.js';
 import type { PlatformEventContext } from './create-event-context.js';
 import type { EnqueueResult } from '../queue/request-queue.js';
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type HandleAIRequestFn = (params: any) => Promise<void>;
+import type { ClaudeRequestHandler } from '../commands/handler.js';
+import type { HandleAIRequestParams } from './handle-ai-request.js';
 import { createLogger } from '../logger.js';
+
+/** AI request handler function type (object params, as returned by createPlatformAIRequestHandler). */
+export type HandleAIRequestFn = (params: HandleAIRequestParams) => Promise<void>;
 
 const log = createLogger('TextFlow');
 
@@ -46,6 +49,7 @@ export interface HandleTextFlowParams {
   text: string;
   /** The platform event context (accessControl, commandHandler, requestQueue, etc.). */
   ctx: PlatformEventContext;
+  /** The platform-specific AI request handler (from createPlatformAIRequestHandler). */
   /** The platform-specific AI request handler (from createPlatformAIRequestHandler). */
   handleAIRequest: HandleAIRequestFn;
   /** Function to send a text reply back to the user. */
@@ -127,15 +131,15 @@ export async function handleTextFlow(params: HandleTextFlowParams): Promise<bool
 
   // 4. Command dispatch
   try {
-    // Create a wrapper that matches ClaudeRequestHandler signature
-    const handleAIRequestWrapper: ClaudeRequestHandler = (
-      userId,
-      chatId,
-      prompt,
-      workDir,
-      convId,
-      _threadCtx,
-      replyToMessageId
+    // Wrapper: dispatch expects positional args, handleAIRequest expects an object
+    const dispatchHandler = (
+      userId: string,
+      chatId: string,
+      prompt: string,
+      workDir: string,
+      convId?: string,
+      _threadCtx?: unknown,
+      replyToMessageId?: string,
     ) => {
       return handleAIRequest({
         userId,
@@ -152,7 +156,7 @@ export async function handleTextFlow(params: HandleTextFlowParams): Promise<bool
       chatId,
       userId,
       platform,
-      handleAIRequestWrapper,
+      dispatchHandler,
     );
     if (handled) {
       return true;
