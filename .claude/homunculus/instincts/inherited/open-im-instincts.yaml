@@ -1,0 +1,695 @@
+# Instincts generated from https://github.com/wu529778790/open-im
+# Generated: 2026-04-04T04:26:09.635Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: open-im-commit-conventional
+trigger: "when writing a commit message"
+confidence: 0.85
+domain: git
+source: repo-analysis
+source_repo: https://github.com/wu529778790/open-im
+---
+
+# Open Im Commit Conventional
+
+## Action
+
+Use conventional commit format with prefixes: refactor, fix, feat, docs, test
+
+## Evidence
+
+- 55 commits analyzed
+- Detected conventional commit pattern
+- Examples: fix(workbuddy): streaming replies + error storm fixes, feat(queue): add clear method to remove queued tasks for a user session
+
+---
+id: open-im-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/wu529778790/open-im
+---
+
+# Open Im Commit Length
+
+## Action
+
+Write moderate-length commit messages (~66 characters)
+
+## Evidence
+
+- Average commit message length: 66 chars
+- Based on 55 commits
+
+---
+id: open-im-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/wu529778790/open-im
+---
+
+# Open Im Naming Files
+
+## Action
+
+Use kebab-case naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: kebab-case
+
+---
+id: open-im-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/wu529778790/open-im
+---
+
+# Open Im Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: open-im-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/wu529778790/open-im
+---
+
+# Open Im Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: open-im-test-colocate
+trigger: "when writing tests"
+confidence: 0.85
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/wu529778790/open-im
+---
+
+# Open Im Test Colocate
+
+## Action
+
+Place test file next to the source file (e.g., Button.test.tsx next to Button.tsx)
+
+## Evidence
+
+- Colocated test pattern detected
+- Tests live alongside source files
+
+---
+id: open-im-test-framework
+trigger: "when writing tests"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/wu529778790/open-im
+---
+
+# Open Im Test Framework
+
+## Action
+
+Use vitest as the test framework
+
+## Evidence
+
+- Test framework detected: vitest
+- File pattern: *.test.ts
+
+---
+id: open-im-test-naming
+trigger: "when creating a test file"
+confidence: 0.85
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/wu529778790/open-im
+---
+
+# Open Im Test Naming
+
+## Action
+
+Name test files using the pattern: *.test.ts
+
+## Evidence
+
+- File pattern: *.test.ts
+- Consistent across test files
+
+---
+id: open-im-test-mocking
+trigger: "when mocking dependencies in tests"
+confidence: 0.75
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/wu529778790/open-im
+---
+
+# Open Im Test Mocking
+
+## Action
+
+Use vi.mock for mocking
+
+## Evidence
+
+- Mocking pattern detected: vi.mock
+- Consistent across test files
+
+---
+id: open-im-workflow-feature-development
+trigger: "when implementing a new feature"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/wu529778790/open-im
+---
+
+# Open Im Workflow Feature Development
+
+## Action
+
+Follow the feature-development workflow:
+1. Add feature implementation
+2. Add tests for feature
+3. Update documentation
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~13x per month
+- Files: src/queue/*, src/workbuddy/*, src/shared/*
+
+---
+id: open-im-workflow-refactoring
+trigger: "when refactoring code"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/wu529778790/open-im
+---
+
+# Open Im Workflow Refactoring
+
+## Action
+
+Follow the refactoring workflow:
+1. Ensure tests pass before refactor
+2. Refactor code structure
+3. Verify tests still pass
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~10x per month
+- Files: src/**/*
+
+---
+id: open-im-workflow-platform-event-handler-refactor-to-shared-abstractions
+trigger: "when doing platform event handler refactor to shared abstractions"
+confidence: 0.65
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/wu529778790/open-im
+---
+
+# Open Im Workflow Platform Event Handler Refactor To Shared Abstractions
+
+## Action
+
+Follow the platform-event-handler-refactor-to-shared-abstractions workflow:
+1. Create or update shared abstraction modules (e.g., createPlatformEventContext, createPlatformAIRequestHandler, handleTextFlow) in src/platform/
+2. Refactor platform event-handler.ts files to replace custom logic with calls to shared abstractions
+3. Update or add tests for shared abstractions and platform event handlers
+4. Adjust platform-specific logic to fit new abstraction interfaces
+5. Update documentation or plans if necessary
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~3x per month
+- Files: src/platform/create-event-context.ts, src/platform/handle-ai-request.ts, src/platform/handle-text-flow.ts
+
+---
+id: open-im-workflow-add-or-enhance-task-queue-or-session-management
+trigger: "when doing add or enhance task queue or session management"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/wu529778790/open-im
+---
+
+# Open Im Workflow Add Or Enhance Task Queue Or Session Management
+
+## Action
+
+Follow the add-or-enhance-task-queue-or-session-management workflow:
+1. Implement new feature or fix in src/queue/request-queue.ts or src/session/session-manager.ts
+2. Update or add corresponding test files (e.g., request-queue.test.ts, session-manager.test.ts)
+3. Update related event-handler.ts files to use new/updated queue/session logic
+4. Update documentation or plans if needed
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: src/queue/request-queue.ts, src/queue/request-queue.test.ts, src/session/session-manager.ts
+
+---
+id: open-im-workflow-add-or-update-comprehensive-design-or-implementation-plans
+trigger: "when doing add or update comprehensive design or implementation plans"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/wu529778790/open-im
+---
+
+# Open Im Workflow Add Or Update Comprehensive Design Or Implementation Plans
+
+## Action
+
+Follow the add-or-update-comprehensive-design-or-implementation-plans workflow:
+1. Create or update markdown files in docs/superpowers/specs/ or docs/superpowers/plans/
+2. Add, update, or remove checkboxes to reflect progress
+3. Remove outdated or superseded specs/plans as needed
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: docs/superpowers/specs/*.md, docs/superpowers/plans/*.md
+
+---
+id: open-im-workflow-decompose-monolithic-module-into-focused-submodules
+trigger: "when doing decompose monolithic module into focused submodules"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/wu529778790/open-im
+---
+
+# Open Im Workflow Decompose Monolithic Module Into Focused Submodules
+
+## Action
+
+Follow the decompose-monolithic-module-into-focused-submodules workflow:
+1. Extract related logic into new submodule files (e.g., types.ts, file-io.ts, credentials.ts)
+2. Reduce the main module file by moving code into submodules and keeping only necessary exports
+3. Update import paths in the codebase as needed
+4. Test to ensure no regressions
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: src/config.ts, src/config/types.ts, src/config/file-io.ts
+
+---
+id: open-im-workflow-add-or-enhance-test-coverage-for-core-modules
+trigger: "when doing add or enhance test coverage for core modules"
+confidence: 0.65
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/wu529778790/open-im
+---
+
+# Open Im Workflow Add Or Enhance Test Coverage For Core Modules
+
+## Action
+
+Follow the add-or-enhance-test-coverage-for-core-modules workflow:
+1. Write or update test files for the relevant module
+2. Adjust module code if needed to improve testability
+3. Update test configuration or coverage thresholds
+4. Run tests and ensure coverage goals are met
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~3x per month
+- Files: src/queue/request-queue.test.ts, src/session/session-manager.test.ts, src/adapters/claude-sdk-adapter.test.ts
+
+---
+id: open-im-instinct-file-naming
+trigger: "When creating or renaming a file in the codebase"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: wu529778790/open-im
+---
+
+# Open Im Instinct File Naming
+
+## Action
+
+Use kebab-case for all file names
+
+## Evidence
+
+- Pattern in namingConventions.files
+- All files in src/ use kebab-case
+
+---
+id: open-im-instinct-function-naming
+trigger: "When defining a new function"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: wu529778790/open-im
+---
+
+# Open Im Instinct Function Naming
+
+## Action
+
+Use camelCase for function names
+
+## Evidence
+
+- Pattern in namingConventions.functions
+
+---
+id: open-im-instinct-class-naming
+trigger: "When defining a new class"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: wu529778790/open-im
+---
+
+# Open Im Instinct Class Naming
+
+## Action
+
+Use PascalCase for class names
+
+## Evidence
+
+- Pattern in namingConventions.classes
+
+---
+id: open-im-instinct-constant-naming
+trigger: "When defining a constant"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: wu529778790/open-im
+---
+
+# Open Im Instinct Constant Naming
+
+## Action
+
+Use SCREAMING_SNAKE_CASE for constant names
+
+## Evidence
+
+- Pattern in namingConventions.constants
+
+---
+id: open-im-instinct-import-style
+trigger: "When importing modules within the codebase"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: wu529778790/open-im
+---
+
+# Open Im Instinct Import Style
+
+## Action
+
+Use relative import paths
+
+## Evidence
+
+- Pattern in importStyle: relative
+- Seen in src/ imports
+
+---
+id: open-im-instinct-export-style
+trigger: "When exporting from a module"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: wu529778790/open-im
+---
+
+# Open Im Instinct Export Style
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- Pattern in exportStyle: named
+
+---
+id: open-im-instinct-test-file-pattern
+trigger: "When creating a test file"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: wu529778790/open-im
+---
+
+# Open Im Instinct Test File Pattern
+
+## Action
+
+Name the file with the pattern *.test.ts and colocate with the module
+
+## Evidence
+
+- Pattern in testing.filePattern
+- testLocation: colocated
+- Examples: src/queue/request-queue.test.ts
+
+---
+id: open-im-instinct-test-framework
+trigger: "When writing or updating tests"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: wu529778790/open-im
+---
+
+# Open Im Instinct Test Framework
+
+## Action
+
+Use Vitest as the testing framework
+
+## Evidence
+
+- Pattern in testing.framework
+- vitest.config.ts present
+
+---
+id: open-im-instinct-mocking
+trigger: "When mocking dependencies in tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: wu529778790/open-im
+---
+
+# Open Im Instinct Mocking
+
+## Action
+
+Use vi.mock for mocking
+
+## Evidence
+
+- Pattern in testing.mockingStyle
+
+---
+id: open-im-instinct-test-coverage
+trigger: "When updating or adding tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: wu529778790/open-im
+---
+
+# Open Im Instinct Test Coverage
+
+## Action
+
+Ensure coverage configuration is enabled and coverage thresholds are met
+
+## Evidence
+
+- Pattern in testing.coverageConfig
+- vitest.config.ts
+
+---
+id: open-im-instinct-git-commit-format
+trigger: "When making a commit"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: wu529778790/open-im
+---
+
+# Open Im Instinct Git Commit Format
+
+## Action
+
+Use conventional commit format with prefixes: feat, fix, refactor, docs, test, chore
+
+## Evidence
+
+- Pattern in commits.prefixes
+- Examples: fix(workbuddy): streaming replies + error storm fixes
+
+---
+id: open-im-instinct-git-commit-length
+trigger: "When writing a commit message"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: wu529778790/open-im
+---
+
+# Open Im Instinct Git Commit Length
+
+## Action
+
+Keep commit message concise (around 66 characters on average)
+
+## Evidence
+
+- Pattern in commits.averageLength
+
+---
+id: open-im-instinct-workflow-platform-refactor
+trigger: "When someone wants to unify and simplify event handling logic across multiple chat platforms"
+confidence: 0.95
+domain: workflow
+source: repo-analysis
+source_repo: wu529778790/open-im
+---
+
+# Open Im Instinct Workflow Platform Refactor
+
+## Action
+
+Refactor platform event-handler.ts files to use shared abstractions in src/platform, update/add tests, and update documentation if needed
+
+## Evidence
+
+- Workflow: platform-event-handler-refactor-to-shared-abstractions
+- Commits: refactor Feishu, WeWork, WorkBuddy event-handlers to use shared platform abstractions
+
+---
+id: open-im-instinct-workflow-improve-task-queue
+trigger: "When someone wants to improve how queued tasks or sessions are managed, aborted, or persisted"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: wu529778790/open-im
+---
+
+# Open Im Instinct Workflow Improve Task Queue
+
+## Action
+
+Implement feature/fix in src/queue/request-queue.ts or src/session/session-manager.ts, update/add tests, update event-handlers, and update docs if needed
+
+## Evidence
+
+- Workflow: add-or-enhance-task-queue-or-session-management
+- Commits: feat(queue): add clear method to remove queued tasks for a user session
+
+---
+id: open-im-instinct-workflow-design-spec
+trigger: "When someone wants to document or update major project plans or technical designs"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: wu529778790/open-im
+---
+
+# Open Im Instinct Workflow Design Spec
+
+## Action
+
+Create or update markdown files in docs/superpowers/specs/ or docs/superpowers/plans/, update checkboxes, remove outdated specs/plans
+
+## Evidence
+
+- Workflow: add-or-update-comprehensive-design-or-implementation-plans
+- Commit: docs: add comprehensive optimization design spec
+
+---
+id: open-im-instinct-workflow-decompose-module
+trigger: "When someone wants to improve code structure by breaking up a large file into logical submodules"
+confidence: 0.85
+domain: workflow
+source: repo-analysis
+source_repo: wu529778790/open-im
+---
+
+# Open Im Instinct Workflow Decompose Module
+
+## Action
+
+Extract logic into new submodules, reduce main module, update import paths, and test for regressions
+
+## Evidence
+
+- Workflow: decompose-monolithic-module-into-focused-submodules
+- Files: src/config.ts, src/config/types.ts, src/config/file-io.ts, src/config/credentials.ts
+
+---
+id: open-im-instinct-workflow-add-tests
+trigger: "When someone wants to increase test coverage or add tests for new features in core modules"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: wu529778790/open-im
+---
+
+# Open Im Instinct Workflow Add Tests
+
+## Action
+
+Write or update test files for the relevant module, adjust code for testability, update test config, and ensure coverage goals are met
+
+## Evidence
+
+- Workflow: add-or-enhance-test-coverage-for-core-modules
+- Files: src/queue/request-queue.test.ts, src/session/session-manager.test.ts
+
