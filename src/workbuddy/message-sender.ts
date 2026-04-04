@@ -48,7 +48,7 @@ export async function sendErrorReply(
     return;
   }
 
-  log.info(`Sending WorkBuddy error to chatId=${chatId}, msgId=${msgId}`);
+  log.warn(`Sending WorkBuddy error to chatId=${chatId}, msgId=${msgId}`);
 
   await client.sendPromptResponse({
     session_id: chatId,

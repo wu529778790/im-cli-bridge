@@ -60,7 +60,7 @@ export async function initFeishu(
   eventDispatcher.register({
     'im.message.receive_v1': async (data: unknown) => {
       log.info('[EVENT] Received Feishu message event');
-      log.info('[EVENT] Event data:', JSON.stringify(data).slice(0, 500));
+      log.debug('[EVENT] Event data:', JSON.stringify(data).slice(0, 500));
       try {
         await eventHandler(data);
         log.info('[EVENT] Event handler called successfully');
@@ -71,7 +71,7 @@ export async function initFeishu(
     // 卡片按钮点击回调（权限允许/拒绝等）
     'card.action.trigger': async (data: unknown) => {
       log.info('[EVENT] Received Feishu card action event');
-      log.info('[EVENT] Card action data:', JSON.stringify(data).slice(0, 800));
+      log.debug('[EVENT] Card action data:', JSON.stringify(data).slice(0, 800));
       try {
         const result = await eventHandler(data);
         return result;
@@ -85,7 +85,7 @@ export async function initFeishu(
   // Register catch-all handler using wildcard
   eventDispatcher.register({
     '*': (data: unknown) => {
-      log.info('Received Feishu event (catch-all):', JSON.stringify(data).slice(0, 500));
+      log.debug('Received Feishu event (catch-all):', JSON.stringify(data).slice(0, 500));
       // Don't call eventHandler for catch-all, let specific handlers handle it
     },
   });

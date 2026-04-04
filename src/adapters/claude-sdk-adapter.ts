@@ -89,8 +89,9 @@ cleanupInterval.unref(); // 不阻止进程退出
  * `cwd` parameter, so we must chdir before calling them. This mutex ensures
  * concurrent requests don't race on the working directory.
  *
- * **Limitation:** If the SDK ever supports a `cwd` option, this mutex should
- * be removed entirely.
+ * **TODO:** Remove this mutex entirely once @anthropic-ai/claude-agent-sdk
+ * supports a `cwd` option in createSession/resumeSession. Track upstream:
+ * https://github.com/anthropics/claude-agent-sdk/issues
  */
 let chdirMutex: Promise<void> = Promise.resolve();
 function withChdirMutex<T>(fn: () => T): Promise<T> {
@@ -482,7 +483,7 @@ export class ClaudeSDKAdapter implements ToolAdapter {
         const errIdToClean = actualSessionId ?? pendingTempId;
         if (errIdToClean?.startsWith('pending-')) {
           activeSessions.delete(errIdToClean);
-          log.info(`Cleaned up pending session after error: ${errIdToClean}`);
+          log.warn(`Cleaned up pending session after error: ${errIdToClean}`);
         }
 
         // If error suggests a corrupted session, remove it from cache to prevent reuse

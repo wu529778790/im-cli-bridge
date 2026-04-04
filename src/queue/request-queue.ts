@@ -2,6 +2,13 @@ import { createLogger } from '../logger.js';
 
 const log = createLogger('Queue');
 
+export class QueueTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`Task timed out after ${timeoutMs / 1000}s`);
+    this.name = 'QueueTimeoutError';
+  }
+}
+
 interface QueuedTask {
   prompt: string;
   execute: (prompt: string, signal: AbortSignal) => Promise<void>;
@@ -35,7 +42,7 @@ export class RequestQueue {
       return 'queued';
     }
     q.running = true;
-    this.run(key, prompt, execute);
+    this.run(key, prompt, execute).catch(() => {});
     return 'running';
   }
 
@@ -57,23 +64,28 @@ export class RequestQueue {
       const timeoutPromise = new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           controller.abort();
-          reject(new Error(`Task timed out after ${TASK_TIMEOUT_MS / 1000}s`));
+          reject(new QueueTimeoutError(TASK_TIMEOUT_MS));
         }, TASK_TIMEOUT_MS);
       });
       await Promise.race([execute(prompt, controller.signal), timeoutPromise]);
     } catch (err) {
-      log.error(`Error executing task for ${key}:`, err);
+      if (err instanceof QueueTimeoutError) {
+        log.error(`Timeout executing task for ${key}: ${err.message}`);
+      } else {
+        log.error(`Error executing task for ${key}:`, err);
+      }
+      throw err;
     } finally {
       if (timer) clearTimeout(timer);
-    }
-    const q = this.queues.get(key);
-    if (!q) return;
-    const next = q.tasks.shift();
-    if (next) {
-      setImmediate(() => this.run(key, next.prompt, next.execute));
-    } else {
-      q.running = false;
-      this.queues.delete(key);
+      const q = this.queues.get(key);
+      if (!q) return;
+      const next = q.tasks.shift();
+      if (next) {
+        setImmediate(() => this.run(key, next.prompt, next.execute).catch(() => {}));
+      } else {
+        q.running = false;
+        this.queues.delete(key);
+      }
     }
   }
 }

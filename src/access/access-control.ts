@@ -7,7 +7,7 @@ export class AccessControl {
 
   constructor(allowedUserIds: string[]) {
     this.allowedUserIds = new Set(allowedUserIds);
-    log.info(`AccessControl initialized with ${allowedUserIds.length} allowed users:`, allowedUserIds);
+    log.debug(`AccessControl initialized with ${allowedUserIds.length} allowed users:`, allowedUserIds);
   }
 
   isAllowed(userId: string): boolean {
@@ -16,7 +16,7 @@ export class AccessControl {
       return true;
     }
     const allowed = this.allowedUserIds.has(userId);
-    log.info(`Checking user ${userId}: ${allowed ? 'ALLOWED' : 'DENIED'}`);
+    log.debug(`Checking user ${userId}: ${allowed ? 'ALLOWED' : 'DENIED'}`);
     return allowed;
   }
 }

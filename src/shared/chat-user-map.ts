@@ -22,10 +22,3 @@ export function setChatUser(chatId: string, userId: string, platform?: string): 
   if (platform) chatToPlatform.set(chatId, platform);
 }
 
-export function getUserIdByChatId(chatId: string): string | undefined {
-  return chatToUser.get(chatId);
-}
-
-export function getPlatformByChatId(chatId: string): string | undefined {
-  return chatToPlatform.get(chatId);
-}

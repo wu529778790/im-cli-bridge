@@ -345,7 +345,7 @@ export function setupWeWorkHandlers(
   }
 
   async function handleEvent(data: WeWorkCallbackMessage): Promise<void> {
-    log.info('[handleEvent] Called with data:', JSON.stringify(data).slice(0, 800));
+    log.debug('[handleEvent] Called with data:', JSON.stringify(data).slice(0, 800));
 
     const reqId = data.headers?.req_id ?? '';
     senderCtx.reqId = reqId;

@@ -211,7 +211,7 @@ export function setupFeishuHandlers(
   }
 
   async function handleEvent(data: unknown): Promise<void | Record<string, unknown>> {
-    log.info('[handleEvent] Called with data:', JSON.stringify(data).slice(0, 800));
+    log.debug('[handleEvent] Called with data:', JSON.stringify(data).slice(0, 800));
 
     try {
       const raw = data as Record<string, unknown>;

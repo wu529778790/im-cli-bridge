@@ -273,9 +273,9 @@ export function runAITask(
           if (aiCommand !== 'claude' && !isUsageLimitError(error)) {
             if (ctx.convId) sessionManager.clearSessionForConv(ctx.userId, ctx.convId, aiCommand);
             else sessionManager.clearActiveToolSession(ctx.userId, aiCommand);
-            log.info(`Session reset for user ${ctx.userId} due to ${aiCommand} task error`);
+            log.warn(`Session reset for user ${ctx.userId} due to ${aiCommand} task error`);
           } else if (aiCommand === 'codex' && isUsageLimitError(error)) {
-            log.info(`Keeping codex session for user ${ctx.userId} after usage limit error`);
+            log.warn(`Keeping codex session for user ${ctx.userId} after usage limit error`);
           }
           const friendlyError = hadSessionInvalid
             ? '当前 Claude 会话已失效，已自动执行 /new 重置会话，请重新发送刚才的问题。'

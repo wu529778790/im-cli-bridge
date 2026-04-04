@@ -149,15 +149,6 @@ export interface MessageState {
   streamId?: string;
 }
 
-// WebSocket 响应消息格式（用于接收我们发送的消息的响应）
-export interface WeWorkResponse {
-  headers: {
-    req_id: string;
-  };
-  errcode: number;
-  errmsg: string;
-}
-
 // HTTP 响应请求格式（通过 response_url 发送）
 export interface WeWorkHttpResponseBody {
   msgtype: 'text' | 'markdown' | 'stream';
