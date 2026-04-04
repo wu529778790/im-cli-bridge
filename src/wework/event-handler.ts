@@ -2,10 +2,8 @@
  * WeWork Event Handler - Handle WeWork message events
  */
 
-import { resolvePlatformAiCommand, type Config } from '../config.js';
-import { AccessControl } from '../access/access-control.js';
+import type { Config } from '../config.js';
 import type { SessionManager } from '../session/session-manager.js';
-import { RequestQueue } from '../queue/request-queue.js';
 import {
   sendThinkingMessage,
   updateMessage,
@@ -15,17 +13,19 @@ import {
   sendDirectorySelection,
   startTypingLoop,
 } from './message-sender.js';
-import { CommandHandler } from '../commands/handler.js';
-import { getAdapter } from '../adapters/registry.js';
-import { runAITask, type TaskRunState } from '../shared/ai-task.js';
 import { WEWORK_THROTTLE_MS } from '../constants.js';
 import { setActiveChatId } from '../shared/active-chats.js';
 import { setChatUser } from '../shared/chat-user-map.js';
 import { createLogger } from '../logger.js';
-import type { ThreadContext } from '../shared/types.js';
 import type { WeWorkCallbackMessage } from './types.js';
 import { buildUnsupportedInboundMessage } from '../channels/capabilities.js';
 import { buildMediaMetadataPrompt } from '../shared/media-prompt.js';
+import { buildSavedMediaPrompt } from '../shared/media-analysis-prompt.js';
+import { buildMediaContext } from '../shared/media-context.js';
+import { buildErrorNote, buildProgressNote } from '../shared/message-note.js';
+import { createPlatformEventContext } from '../platform/create-event-context.js';
+import { createPlatformAIRequestHandler, type PlatformSender, type PlatformTaskCallbacks } from '../platform/handle-ai-request.js';
+import { handleTextFlow } from '../platform/handle-text-flow.js';
 import {
   decryptAes256CbcMedia,
   downloadMediaFromUrl,
@@ -34,9 +34,6 @@ import {
   saveBase64Media,
   saveBufferMedia,
 } from '../shared/media-storage.js';
-import { buildSavedMediaPrompt } from '../shared/media-analysis-prompt.js';
-import { buildMediaContext } from '../shared/media-context.js';
-import { buildErrorNote, buildProgressNote } from '../shared/message-note.js';
 
 const log = createLogger('WeWorkHandler');
 const WEWORK_MEDIA_TIMEOUT_MS = 60_000;
@@ -58,6 +55,7 @@ interface WeWorkMediaPayload {
 
 export interface WeWorkEventHandlerHandle {
   stop: () => void;
+  runningTasks: Map<string, import('../shared/ai-task.js').TaskRunState>;
   getRunningTaskCount: () => number;
   handleEvent: (data: WeWorkCallbackMessage) => Promise<void>;
 }
@@ -229,124 +227,103 @@ export function setupWeWorkHandlers(
   config: Config,
   sessionManager: SessionManager,
 ): WeWorkEventHandlerHandle {
-  const accessControl = new AccessControl(config.weworkAllowedUserIds);
-  const requestQueue = new RequestQueue();
-  const runningTasks = new Map<string, TaskRunState>();
-
   // Mutable ref that captures the req_id of the message currently being handled.
   // WeWork requires req_id to reply; CommandHandler doesn't carry it, so we inject
-  // it via a closure.  WeWork delivers messages sequentially over WebSocket, so
+  // it via a closure. WeWork delivers messages sequentially over WebSocket, so
   // there is no race condition between concurrent messages from the same bot.
   const senderCtx = { reqId: '' };
-  const commandHandler = new CommandHandler({
+
+  // Create shared platform event context with a sender that captures reqId
+  const ctx = createPlatformEventContext({
+    platform: 'wework',
+    allowedUserIds: config.weworkAllowedUserIds,
     config,
     sessionManager,
-    requestQueue,
     sender: {
       sendTextReply: (chatId: string, text: string) =>
         sendTextReply(chatId, text, senderCtx.reqId),
       sendDirectorySelection: (chatId: string, currentDir: string, userId: string) =>
         sendDirectorySelection(chatId, currentDir, userId, senderCtx.reqId),
     },
-    getRunningTasksSize: () => runningTasks.size,
   });
 
-  async function handleAIRequest(
-    userId: string,
-    chatId: string,
-    prompt: string,
-    workDir: string,
-    convId?: string,
-    _threadCtx?: { rootMessageId: string; threadId: string },
-    replyToMessageId?: string,
-    reqId?: string,
-  ) {
-    log.info(`[AI_REQUEST] userId=${userId}, chatId=${chatId}, promptLength=${prompt.length}`);
+  // Map to track safety timers by taskKey
+  const safetyTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-    const aiCommand = resolvePlatformAiCommand(config, 'wework');
-      const toolAdapter = getAdapter(aiCommand);
-      if (!toolAdapter) {
-        log.error(`[handleAIRequest] No adapter found for: ${aiCommand}`);
-        await sendTextReply(chatId, `AI tool is not configured: ${aiCommand}`, reqId);
-        return;
-      }
+  // WeWork-specific sender callbacks
+  const platformSender: PlatformSender = {
+    sendThinkingMessage: async (chatId, replyToMessageId, toolId) => {
+      return await sendThinkingMessage(chatId, replyToMessageId, toolId, senderCtx.reqId);
+    },
+    sendTextReply: async (chatId, text) => {
+      await sendTextReply(chatId, text, senderCtx.reqId);
+    },
+    startTyping: (chatId) => startTypingLoop(chatId),
+    sendImage: async (chatId, imagePath) => {
+      await sendImageReply(chatId, imagePath);
+    },
+  };
 
-      const sessionId = convId
-        ? sessionManager.getSessionIdForConv(userId, convId, aiCommand)
-        : undefined;
-      log.info(`[handleAIRequest] Running ${aiCommand} for user ${userId}, sessionId=${sessionId ?? 'new'}`);
-
-      const toolId = aiCommand;
-      let msgId: string;
+  // WeWork-specific streaming callbacks factory
+  const weworkTaskCallbacksFactory = (ctx: {
+    chatId: string;
+    msgId: string;
+    taskKey: string;
+    userId: string;
+    toolId: string;
+    replyToMessageId: string | undefined;
+  }): PlatformTaskCallbacks => ({
+    streamUpdate: async (content, toolNote) => {
+      const note = buildProgressNote(toolNote);
       try {
-        msgId = await sendThinkingMessage(chatId, replyToMessageId, toolId, reqId);
+        await updateMessage(ctx.chatId, ctx.msgId, content, 'streaming', note, ctx.toolId, senderCtx.reqId);
       } catch (err) {
-        log.error('Failed to send thinking message:', err);
-        try {
-          await sendTextReply(chatId, '启动 AI 处理失败，请重试。', reqId);
-        } catch (err) {
-          log.warn('Failed to send startup error reply:', err);
-        }
-        return;
+        log.debug('Stream update failed:', err);
       }
-      const stopTyping = startTypingLoop(chatId);
-      const taskKey = `${userId}:${msgId}`;
+    },
+    sendComplete: async (content, note) => {
+      await sendFinalMessages(ctx.chatId, ctx.msgId, content, note ?? '', ctx.toolId, senderCtx.reqId);
+    },
+    sendError: async (error) => {
+      await updateMessage(ctx.chatId, ctx.msgId, `Error: ${error}`, 'error', buildErrorNote(), ctx.toolId, senderCtx.reqId);
+    },
+  });
 
-      // Safety timeout: abort hung tasks before stream expires, unblocking the queue
-      let safetyTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
-        safetyTimer = null;
-        const state = runningTasks.get(taskKey);
-        if (state) {
-          log.warn(`[SAFETY_TIMEOUT] Task ${taskKey} exceeded ${WEWORK_TASK_SAFETY_TIMEOUT_MS}ms, aborting`);
-          state.handle.abort();
-          runningTasks.delete(taskKey);
-          stopTyping();
-          sendTextReply(chatId, `AI 处理超时（${Math.round(WEWORK_TASK_SAFETY_TIMEOUT_MS / 1000)}s），已自动取消。请重试。`, reqId).catch(() => {});
-        }
-      }, WEWORK_TASK_SAFETY_TIMEOUT_MS);
+  // WeWork-specific init for safety timeout
+  const extraInit = ({ chatId, taskKey }: { chatId: string; msgId: string; taskKey: string }) => {
+    // Safety timeout: abort hung tasks before stream expires, unblocking the queue
+    const safetyTimer = setTimeout(() => {
+      const state = ctx.runningTasks.get(taskKey);
+      if (state) {
+        log.warn(`[SAFETY_TIMEOUT] Task ${taskKey} exceeded ${WEWORK_TASK_SAFETY_TIMEOUT_MS}ms, aborting`);
+        state.handle.abort();
+        ctx.runningTasks.delete(taskKey);
+        sendTextReply(chatId, `AI 处理超时（${Math.round(WEWORK_TASK_SAFETY_TIMEOUT_MS / 1000)}s），已自动取消。请重试。`, senderCtx.reqId).catch(() => {});
+      }
+    }, WEWORK_TASK_SAFETY_TIMEOUT_MS);
 
-      const clearSafetyTimer = () => {
-        if (safetyTimer) {
-          clearTimeout(safetyTimer);
-          safetyTimer = null;
-        }
-      };
+    safetyTimers.set(taskKey, safetyTimer);
 
-      await runAITask(
-        { config, sessionManager },
-        { userId, chatId, workDir, sessionId, convId, platform: 'wework', taskKey },
-        prompt,
-        toolAdapter,
-        {
-          throttleMs: WEWORK_THROTTLE_MS,
-          streamUpdate: async (content, toolNote) => {
-            const note = buildProgressNote(toolNote);
-            try {
-              await updateMessage(chatId, msgId, content, 'streaming', note, toolId, reqId);
-            } catch (err) {
-              log.debug('Stream update failed:', err);
-            }
-          },
-          sendComplete: async (content, note) => {
-            await sendFinalMessages(chatId, msgId, content, note ?? '', toolId, reqId);
-          },
-          sendError: async (error) => {
-            await updateMessage(chatId, msgId, `Error: ${error}`, 'error', buildErrorNote(), toolId, reqId);
-          },
-          extraCleanup: () => {
-            clearSafetyTimer();
-            stopTyping();
-            runningTasks.delete(taskKey);
-          },
-          onTaskReady: (state) => {
-            runningTasks.set(taskKey, state);
-          },
-          sendImage: async (path) => {
-            await sendImageReply(chatId, path);
-          },
-        },
-      );
-  }
+    return () => {
+      const timer = safetyTimers.get(taskKey);
+      if (timer) {
+        clearTimeout(timer);
+        safetyTimers.delete(taskKey);
+      }
+    };
+  };
+
+  // Create platform-specific AI request handler
+  const handleAIRequest = createPlatformAIRequestHandler({
+    platform: 'wework',
+    config,
+    sessionManager,
+    sender: platformSender,
+    throttleMs: WEWORK_THROTTLE_MS,
+    runningTasks: ctx.runningTasks,
+    extraInit,
+    taskCallbacksFactory: weworkTaskCallbacksFactory,
+  });
 
   async function enqueuePrompt(
     userId: string,
@@ -356,8 +333,8 @@ export function setupWeWorkHandlers(
   ): Promise<void> {
     const workDir = sessionManager.getWorkDir(userId);
     const convId = sessionManager.getConvId(userId);
-    const enqueueResult = requestQueue.enqueue(userId, convId, prompt, async (nextPrompt) => {
-      await handleAIRequest(userId, chatId, nextPrompt, workDir, convId, undefined, undefined, reqId);
+    const enqueueResult = ctx.requestQueue.enqueue(userId, convId, prompt, async (nextPrompt, signal) => {
+      await handleAIRequest({ userId, chatId, prompt: nextPrompt, workDir, convId, replyToMessageId: undefined, signal });
     });
 
     if (enqueueResult === 'rejected') {
@@ -381,7 +358,8 @@ export function setupWeWorkHandlers(
 
       log.info(`WeWork event: msgType=${msgType}, from=${fromUser}, chatId=${chatId}`);
 
-      if (!accessControl.isAllowed(fromUser)) {
+      // Check access control
+      if (!ctx.accessControl.isAllowed(fromUser)) {
         log.warn(`Access denied for sender: ${fromUser}`);
         await sendTextReply(chatId, `Access denied. Your WeWork user ID: ${fromUser}`, reqId);
         return;
@@ -394,23 +372,18 @@ export function setupWeWorkHandlers(
         const text = extractTextContent(data);
         if (!text) return;
 
-        try {
-          const handleAIRequestWithReqId = (
-            u: string,
-            c: string,
-            p: string,
-            w: string,
-            conv?: string,
-            tc?: ThreadContext,
-            replyTo?: string,
-          ) => handleAIRequest(u, c, p, w, conv, tc, replyTo, reqId);
-          const handled = await commandHandler.dispatch(text, chatId, fromUser, 'wework', handleAIRequestWithReqId);
-          if (handled) return;
-        } catch (err) {
-          log.error('Error in commandHandler.dispatch:', err);
-        }
-
-        await enqueuePrompt(fromUser, chatId, text, reqId);
+        // Use shared text flow
+        await handleTextFlow({
+          platform: 'wework',
+          userId: fromUser,
+          chatId,
+          text,
+          ctx,
+          handleAIRequest,
+          sendTextReply: (chatId, text) => sendTextReply(chatId, text, reqId),
+          workDir: sessionManager.getWorkDir(fromUser),
+          convId: sessionManager.getConvId(fromUser),
+        });
         return;
       }
 
@@ -446,8 +419,15 @@ export function setupWeWorkHandlers(
   }
 
   return {
-    stop: () => {},
-    getRunningTaskCount: () => runningTasks.size,
+    stop: () => {
+      // Clean up all safety timers
+      for (const timer of safetyTimers.values()) {
+        clearTimeout(timer);
+      }
+      safetyTimers.clear();
+    },
+    runningTasks: ctx.runningTasks,
+    getRunningTaskCount: () => ctx.runningTasks.size,
     handleEvent,
   };
 }

@@ -11,10 +11,41 @@
 
 import { unstable_v2_createSession, unstable_v2_resumeSession } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKMessage, SDKSession } from '@anthropic-ai/claude-agent-sdk';
+import { existsSync, readFileSync } from 'fs';
+import { homedir } from 'os';
+import { join } from 'path';
 import { createLogger } from '../logger.js';
 import type { ToolAdapter, RunCallbacks, RunOptions, RunHandle } from './tool-adapter.interface.js';
 
 const log = createLogger('ClaudeSDK');
+
+// ── 从 ~/.claude/settings.json 读取用户插件配置 ──
+
+interface UserPluginSettings {
+  enabledPlugins?: Record<string, boolean>;
+  extraKnownMarketplaces?: Record<string, unknown>;
+}
+
+function loadUserPluginSettings(): UserPluginSettings | null {
+  try {
+    const settingsPath = join(homedir(), '.claude', 'settings.json');
+    if (!existsSync(settingsPath)) return null;
+    const content = readFileSync(settingsPath, 'utf-8');
+    const settings = JSON.parse(content);
+    const result: UserPluginSettings = {};
+    if (settings.enabledPlugins) result.enabledPlugins = settings.enabledPlugins;
+    if (settings.extraKnownMarketplaces) result.extraKnownMarketplaces = settings.extraKnownMarketplaces;
+    if (Object.keys(result).length === 0) return null;
+    log.info(`Loaded user plugin settings: plugins=[${Object.keys(result.enabledPlugins ?? {}).join(', ')}]`);
+    return result;
+  } catch (err) {
+    log.warn('Failed to read ~/.claude/settings.json for plugin config:', err);
+    return null;
+  }
+}
+
+// Pre-load user plugin settings to cache Claude Code user preferences
+loadUserPluginSettings();
 
 // 存储所有活跃的 SDKSession 对象，key 为 sessionId
 // 使用 Map 而不是 Set，因为我们需要通过 sessionId 获取 session
@@ -29,6 +60,9 @@ const sessionLastUsed = new Map<string, number>();
 const runningSessions = new Set<string>();
 const SESSION_IDLE_TTL_MS = 30 * 60 * 1000; // 30 分钟未使用则清理
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;  // 每 5 分钟检查一次
+const MAX_ACTIVE_SESSIONS = 100;
+
+let sessionSeq = 0;
 
 const cleanupInterval = setInterval(() => {
   const now = Date.now();
@@ -47,29 +81,17 @@ const cleanupInterval = setInterval(() => {
 }, CLEANUP_INTERVAL_MS);
 cleanupInterval.unref(); // 不阻止进程退出
 
-// Lazy cleanup: check idle sessions periodically during getOrCreateSession calls
-let lazyCleanupCounter = 0;
-const LAZY_CLEANUP_INTERVAL = 10;
-let sessionSeq = 0;
-function lazyCleanupIdleSessions(): void {
-  lazyCleanupCounter++;
-  if (lazyCleanupCounter % LAZY_CLEANUP_INTERVAL !== 0) return;
-  const now = Date.now();
-  for (const [id, lastUsed] of sessionLastUsed) {
-    if (runningSessions.has(id)) continue; // 跳过正在运行任务的 session
-    if (now - lastUsed > SESSION_IDLE_TTL_MS) {
-      const s = activeSessions.get(id);
-      if (s) {
-        try { s.close(); } catch { /* ignore */ }
-        activeSessions.delete(id);
-      }
-      sessionLastUsed.delete(id);
-      log.info(`Lazy cleanup: idle session ${id} (unused ${Math.round((now - lastUsed) / 60000)}min)`);
-    }
-  }
-}
-
-// Mutex to serialize process.chdir() calls across concurrent users
+/**
+ * Serializes process.chdir() calls across concurrent users.
+ *
+ * process.chdir() is a process-wide global side effect — only one chdir can
+ * be active at a time. The SDK's createSession/resumeSession do not accept a
+ * `cwd` parameter, so we must chdir before calling them. This mutex ensures
+ * concurrent requests don't race on the working directory.
+ *
+ * **Limitation:** If the SDK ever supports a `cwd` option, this mutex should
+ * be removed entirely.
+ */
 let chdirMutex: Promise<void> = Promise.resolve();
 function withChdirMutex<T>(fn: () => T): Promise<T> {
   const previous = chdirMutex;
@@ -119,9 +141,11 @@ async function getOrCreateSession(
   model: string | undefined,
   permissionMode: 'default' | 'bypassPermissions' | 'acceptEdits' | 'plan'
 ): Promise<{ session: SDKSession; sessionId: string }> {
-  lazyCleanupIdleSessions();
-
   const resolvedModel = model?.trim() || 'claude-opus-4-5';
+
+  if (activeSessions.size >= MAX_ACTIVE_SESSIONS) {
+    throw new Error(`Session pool is full (${MAX_ACTIVE_SESSIONS}). Cannot create new session.`);
+  }
   const sessionOptions = {
     model: resolvedModel,
     permissionMode,
@@ -173,7 +197,7 @@ async function getOrCreateSession(
       activeSessions.set(tempId, session);
       sessionLastUsed.set(tempId, Date.now());
       log.info(`Created new session (tempId: ${tempId})`);
-      return { session, sessionId: tempId };
+      return { session, sessionId: tempId, wasReused: false };
     } finally {
       if (workDir && workDir !== originalCwd) {
         process.chdir(originalCwd);
@@ -294,7 +318,19 @@ export class ClaudeSDKAdapter implements ToolAdapter {
 
             // 获取实际的 sessionId（从 init 消息中）
             if (isSystemInit(msg)) {
-              const newSessionId = (msg as { session_id?: string }).session_id;
+              const initMsg = msg as {
+                session_id?: string;
+                skills?: string[];
+                plugins?: Array<{ name: string; path: string }>;
+                tools?: string[];
+              };
+              // 记录 session 加载的插件和技能
+              const pluginNames = initMsg.plugins?.map(p => p.name).join(', ') ?? 'none';
+              const skillCount = initMsg.skills?.length ?? 0;
+              const toolCount = initMsg.tools?.length ?? 0;
+              log.info(`[V2] Init: plugins=[${pluginNames}], skills=${skillCount}, tools=${toolCount}`);
+
+              const newSessionId = initMsg.session_id;
               if (newSessionId && newSessionId !== actualSessionId) {
                 // 更新 sessionId 映射
                 // 清理 pending 临时 ID（actualSessionId 尚未赋值时用 pendingTempId）

@@ -31,6 +31,8 @@ export interface TaskContext {
   threadId?: string;
   platform: string;
   taskKey: string;
+  /** AbortSignal from the request queue; fires on task timeout to abort the running SDK session */
+  signal?: AbortSignal;
 }
 
 export interface TaskAdapter {
@@ -212,6 +214,7 @@ export function runAITask(
           throttledUpdate(taskState.latestContent, true);
         },
         onComplete: async (result) => {
+          log.info(`[AITask] onComplete fired: settled=${settled}, success=${result.success}, platform=${ctx.platform}, taskKey=${ctx.taskKey}`);
           if (settled) return;
           settled = true;
           if (pendingUpdate) {
@@ -289,8 +292,8 @@ export function runAITask(
         {
           model: sessionManager.getModel(ctx.userId, ctx.threadId) ?? config.claudeModel,
           chatId: ctx.chatId,
-          // 默认跳过权限确认，保持全自动执行
-          skipPermissions: true,
+          // 默认跳过权限确认，保持全自动执行（可通过 config 或环境变量关闭）
+          skipPermissions: config.skipPermissions ?? true,
           ...(aiCommand === 'codex' && config.codexProxy ? { proxy: config.codexProxy } : {}),
         }
       );
@@ -325,5 +328,14 @@ export function runAITask(
       return;
     }
     platformAdapter.onTaskReady(taskState);
+
+    // Wire queue abort signal to the running task's abort handle
+    if (ctx.signal) {
+      if (ctx.signal.aborted) {
+        taskState.handle.abort();
+      } else {
+        ctx.signal.addEventListener('abort', () => taskState.handle.abort(), { once: true });
+      }
+    }
   });
 }

@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { writeFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
-import { getConfiguredAiCommands, loadConfig, needsSetup, resolvePlatformAiCommand } from "./config.js";
+import { getConfiguredAiCommands, loadConfig, needsSetup, resolvePlatformAiCommand, type Platform } from "./config.js";
 import { runInteractiveSetup, runClaudeApiSetup } from "./setup.js";
 import { runWebConfigFlow } from "./config-web.js";
 
@@ -44,59 +44,99 @@ const { version: APP_VERSION } = require("../package.json") as {
 
 const log = createLogger("Main");
 
-async function sendLifecycleNotification(platform: string, message: string) {
-  // DingTalk 不支持主动发消息（OpenAPI 需 robotCode 等，易报 robot 不存在），跳过启动/关闭通知
-  if (platform === "dingtalk") return;
+// --- Data-driven platform module descriptors ---
+// Each entry encapsulates init, stop, and optional notification logic for one platform.
 
-  const telegramChatId = getActiveChatId("telegram");
-  const feishuChatId = getActiveChatId("feishu");
-  const qqChatId = getActiveChatId("qq");
-  const weworkChatId = getActiveChatId("wework");
-  const workbuddyChatId = getActiveChatId("workbuddy");
+interface PlatformHandle {
+  stop: () => void;
+  runningTasks?: Map<string, import('./shared/ai-task.js').TaskRunState>;
+}
 
-  const sendPromises: Promise<void>[] = [];
+interface PlatformModule {
+  init: (config: ReturnType<typeof loadConfig>, sessionManager: SessionManager) => Promise<PlatformHandle>;
+  stop: () => void | Promise<void>;
+  sendNotification?: (chatId: string, message: string) => Promise<void>;
+  formatError?: (err: unknown) => string;
+}
 
-  if (platform === "telegram" && telegramChatId) {
-    sendPromises.push(
-      sendTelegramTextReply(telegramChatId, message).catch((err) => {
-        log.debug("Failed to send Telegram notification:", err);
+const PLATFORM_MODULES: Record<Platform, PlatformModule> = {
+  telegram: {
+    init: (config, sessionManager) =>
+      new Promise<PlatformHandle>((resolve, reject) => {
+        initTelegram(config, (bot) => {
+          resolve(setupTelegramHandlers(bot, config, sessionManager));
+        }).catch(reject);
       }),
-    );
+    stop: () => stopTelegram(),
+    sendNotification: (chatId, msg) => sendTelegramTextReply(chatId, msg),
+  },
+  feishu: {
+    init: async (config, sessionManager) => {
+      const handle = setupFeishuHandlers(config, sessionManager);
+      await initFeishu(config, handle.handleEvent);
+      return handle;
+    },
+    stop: () => stopFeishu(),
+    sendNotification: (chatId, msg) => sendFeishuTextReply(chatId, msg),
+  },
+  qq: {
+    init: async (config, sessionManager) => {
+      const handle = setupQQHandlers(config, sessionManager);
+      await initQQ(config, handle.handleEvent);
+      return handle;
+    },
+    stop: () => stopQQ(),
+    sendNotification: (chatId, msg) => sendQQTextReply(chatId, msg),
+  },
+  wework: {
+    init: async (config, sessionManager) => {
+      const handle = setupWeWorkHandlers(config, sessionManager);
+      await initWeWork(config, handle.handleEvent);
+      return handle;
+    },
+    stop: () => stopWeWork(),
+    sendNotification: (chatId, msg) => sendWeWorkTextReply(chatId, msg),
+  },
+  dingtalk: {
+    init: async (config, sessionManager) => {
+      const handle = setupDingTalkHandlers(config, sessionManager);
+      await initDingTalk(config, handle.handleEvent);
+      return handle;
+    },
+    stop: () => stopDingTalk(),
+    formatError: (err) => formatDingTalkInitError(err),
+    // No sendNotification — DingTalk doesn't support proactive messaging
+  },
+  workbuddy: {
+    init: async (config, sessionManager) => {
+      const handle = setupWorkBuddyHandlers(config, sessionManager);
+      await initWorkBuddy(config, handle.handleEvent);
+      return handle;
+    },
+    stop: () => stopWorkBuddy(),
+    sendNotification: (chatId, msg) => sendWorkBuddyTextReply(null, chatId, msg, randomUUID()),
+  },
+};
+
+async function sendLifecycleNotification(platform: Platform, message: string) {
+  const mod = PLATFORM_MODULES[platform];
+  if (!mod?.sendNotification) {
+    log.debug(`[${platform}] No sendNotification, skipping lifecycle notification`);
+    return;
   }
 
-  if (platform === "feishu" && feishuChatId) {
-    sendPromises.push(
-      sendFeishuTextReply(feishuChatId, message).catch((err) => {
-        log.debug("Failed to send Feishu notification:", err);
-      }),
-    );
+  const chatId = getActiveChatId(platform);
+  if (!chatId) {
+    log.info(`[${platform}] No active chatId, skipping lifecycle notification`);
+    return;
   }
 
-  if (platform === "qq" && qqChatId) {
-    sendPromises.push(
-      sendQQTextReply(qqChatId, message).catch((err) => {
-        log.debug("Failed to send QQ notification:", err);
-      }),
-    );
-  }
-
-  if (platform === "wework" && weworkChatId) {
-    sendPromises.push(
-      sendWeWorkTextReply(weworkChatId, message).catch((err) => {
-        log.debug("Failed to send WeWork notification:", err);
-      }),
-    );
-  }
-
-  if (platform === "workbuddy" && workbuddyChatId) {
-    sendPromises.push(
-      sendWorkBuddyTextReply(null, workbuddyChatId, message, randomUUID()).catch((err) => {
-        log.debug("Failed to send WorkBuddy notification:", err);
-      }),
-    );
-  }
-
-  await Promise.all(sendPromises);
+  log.info(`[${platform}] Sending lifecycle notification to chatId=${chatId}`);
+  await mod.sendNotification(chatId, message).then(() => {
+    log.info(`[${platform}] Lifecycle notification sent successfully`);
+  }).catch((err) => {
+    log.warn(`Failed to send ${platform} notification:`, err);
+  });
 }
 
 function buildStartupMessage(
@@ -212,74 +252,23 @@ export async function main() {
   // 启动时仅清除 CLI 工具自己的 sessionId，保留 Claude 的持久上下文。
   sessionManager.clearAllCliSessionIds();
 
-  let telegramHandle: ReturnType<typeof setupTelegramHandlers> | null = null;
-  let feishuHandle: ReturnType<typeof setupFeishuHandlers> | null = null;
-  let qqHandle: ReturnType<typeof setupQQHandlers> | null = null;
-  let weworkHandle: ReturnType<typeof setupWeWorkHandlers> | null = null;
-  let dingtalkHandle: ReturnType<typeof setupDingTalkHandlers> | null = null;
-  let workbuddyHandle: ReturnType<typeof setupWorkBuddyHandlers> | null = null;
+  // Track active platform handles and successfully initialized platforms
+  const activeHandles = new Map<Platform, PlatformHandle>();
+  const successfulPlatforms: Platform[] = [];
 
-  // Track successfully initialized platforms
-  const successfulPlatforms: string[] = [];
-
-  if (config.enabledPlatforms.includes("telegram")) {
-    try {
-      await initTelegram(config, (bot) => {
-        telegramHandle = setupTelegramHandlers(bot, config, sessionManager);
-      });
-      successfulPlatforms.push("telegram");
-    } catch (err) {
-      log.error("Failed to initialize Telegram:", err);
+  for (const platform of config.enabledPlatforms) {
+    const mod = PLATFORM_MODULES[platform];
+    if (!mod) {
+      log.warn(`Unknown platform: ${platform}`);
+      continue;
     }
-  }
-
-  if (config.enabledPlatforms.includes("feishu")) {
     try {
-      feishuHandle = setupFeishuHandlers(config, sessionManager);
-      await initFeishu(config, feishuHandle.handleEvent);
-      successfulPlatforms.push("feishu");
+      const handle = await mod.init(config, sessionManager);
+      activeHandles.set(platform, handle);
+      successfulPlatforms.push(platform);
     } catch (err) {
-      log.error("Failed to initialize Feishu:", err);
-    }
-  }
-
-  if (config.enabledPlatforms.includes("qq")) {
-    try {
-      qqHandle = setupQQHandlers(config, sessionManager);
-      await initQQ(config, qqHandle.handleEvent);
-      successfulPlatforms.push("qq");
-    } catch (err) {
-      log.error("Failed to initialize QQ:", err);
-    }
-  }
-
-  if (config.enabledPlatforms.includes("wework")) {
-    try {
-      weworkHandle = setupWeWorkHandlers(config, sessionManager);
-      await initWeWork(config, weworkHandle.handleEvent);
-      successfulPlatforms.push("wework");
-    } catch (err) {
-      log.error("Failed to initialize WeWork:", err);
-    }
-  }
-
-  if (config.enabledPlatforms.includes("dingtalk")) {
-    try {
-      dingtalkHandle = setupDingTalkHandlers(config, sessionManager);
-      await initDingTalk(config, dingtalkHandle.handleEvent);
-      successfulPlatforms.push("dingtalk");
-    } catch (err) {
-      log.error("Failed to initialize DingTalk:", formatDingTalkInitError(err));
-    }
-  }
-
-  if (config.enabledPlatforms.includes("workbuddy")) {
-    try {
-      workbuddyHandle = setupWorkBuddyHandlers(config, sessionManager);
-      await initWorkBuddy(config, workbuddyHandle.handleEvent);
-      successfulPlatforms.push("workbuddy");
-    } catch (err) {
-      log.error("Failed to initialize WorkBuddy:", err);
+      const errorMsg = mod.formatError ? mod.formatError(err) : String(err);
+      log.error(`Failed to initialize ${platform}:`, errorMsg);
     }
   }
 
@@ -296,7 +285,7 @@ export async function main() {
     const startupMsg = buildStartupMessage(
       platform,
       APP_VERSION,
-      resolvePlatformAiCommand(config, platform as "telegram" | "feishu" | "qq" | "wework" | "dingtalk" | "workbuddy"),
+      resolvePlatformAiCommand(config, platform),
       startupCwd,
       sessionManager,
     );
@@ -306,8 +295,11 @@ export async function main() {
   }
 
   const startedAt = Date.now();
+  let shuttingDown = false;
 
   const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     log.info("Shutting down...");
     const uptimeSec = Math.floor((Date.now() - startedAt) / 1000);
     const m = Math.floor(uptimeSec / 60);
@@ -327,18 +319,21 @@ export async function main() {
     } catch {
       /* ignore */
     }
-    telegramHandle?.stop();
-    stopTelegram();
-    feishuHandle?.stop();
-    stopFeishu();
-    qqHandle?.stop();
-    await stopQQ();
-    weworkHandle?.stop();
-    stopWeWork();
-    dingtalkHandle?.stop();
-    stopDingTalk();
-    workbuddyHandle?.stop();
-    stopWorkBuddy();
+
+    // Stop each platform: abort running tasks, then handle.stop() then module.stop()
+    for (const platform of successfulPlatforms) {
+      const handle = activeHandles.get(platform);
+      if (handle?.runningTasks) {
+        for (const [key, state] of handle.runningTasks) {
+          log.info(`Aborting running task ${key} on ${platform} during shutdown`);
+          state.handle.abort();
+        }
+        handle.runningTasks.clear();
+      }
+      handle?.stop();
+      await PLATFORM_MODULES[platform].stop();
+    }
+
     sessionManager.destroy();
     cleanupAdapters();
     flushActiveChats();

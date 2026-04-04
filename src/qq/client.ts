@@ -44,6 +44,7 @@ let connecting = false; // 防止并发 connectWebSocket
 let currentConfig: Config | null = null;
 let currentHandler: ((event: QQMessageEvent) => Promise<void>) | null = null;
 let tokenState: TokenState | null = null;
+let lastServerResponseTime = 0;
 
 function clearTimers(): void {
   if (heartbeatTimer) {
@@ -145,6 +146,7 @@ async function getGatewayUrl(config: Config): Promise<string> {
 
 function normalizeInboundEvent(payload: GatewayPayload): QQMessageEvent | null {
   const type = payload.t;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data = (payload.d ?? {}) as Record<string, any>;
   const attachments = Array.isArray(data.attachments)
     ? data.attachments.map((attachment): QQAttachment => ({
@@ -194,9 +196,20 @@ function normalizeInboundEvent(payload: GatewayPayload): QQMessageEvent | null {
 }
 
 function startHeartbeat(intervalMs: number): void {
+  lastServerResponseTime = Date.now();
   if (heartbeatTimer) clearInterval(heartbeatTimer);
   heartbeatTimer = setInterval(() => {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    const elapsed = Date.now() - lastServerResponseTime;
+    if (lastServerResponseTime > 0 && elapsed > intervalMs * 3) {
+      log.warn(`QQ dead connection: no response for ${Math.round(elapsed / 1000)}s, reconnecting`);
+      clearTimers();
+      ws?.terminate();
+      connectWebSocket(currentConfig!, currentHandler!);
+      return;
+    }
+
     try {
       ws.send(JSON.stringify({ op: 1, d: seq }));
     } catch (err) {
@@ -242,6 +255,7 @@ async function connectWebSocket(config: Config, handler: (event: QQMessageEvent)
       });
 
       socket.on("message", async (raw) => {
+        lastServerResponseTime = Date.now();
         try {
           const payload = JSON.parse(raw.toString()) as GatewayPayload;
           if (typeof payload.s === "number") seq = payload.s;
@@ -390,4 +404,5 @@ export async function stopQQ(): Promise<void> {
   tokenState = null;
   sessionId = null;
   seq = null;
+  lastServerResponseTime = 0;
 }

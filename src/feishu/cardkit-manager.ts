@@ -5,9 +5,38 @@
 
 import { getClient } from './client.js';
 import { createLogger } from '../logger.js';
-import { withRetry, NonRetryableError } from '../shared/retry.js';
 
 const log = createLogger('CardKit');
+
+/** Throw to signal withRetry should not retry */
+class NonRetryableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NonRetryableError';
+  }
+}
+
+interface RetryOpts {
+  maxRetries?: number;
+  baseDelayMs?: number;
+  maxDelayMs?: number;
+}
+
+async function withRetry<T>(fn: () => Promise<T>, opts?: RetryOpts): Promise<T> {
+  const maxRetries = opts?.maxRetries ?? 3;
+  const baseDelay = opts?.baseDelayMs ?? 500;
+  const maxDelay = opts?.maxDelayMs ?? 5000;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (err instanceof NonRetryableError || attempt >= maxRetries) throw err;
+      const delay = Math.min(baseDelay * 2 ** attempt + Math.random() * 200, maxDelay);
+      log.warn(`Retry ${attempt + 1}/${maxRetries} after ${Math.round(delay)}ms: ${(err as Error)?.message ?? err}`);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+}
 
 /** 飞书 SDK Client 的 CardKit / IM 扩展（SDK 类型未导出时使用） */
 interface FeishuClientWithCardKit {

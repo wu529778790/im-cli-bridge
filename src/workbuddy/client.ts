@@ -217,8 +217,14 @@ async function connect(): Promise<void> {
         scheduleReconnect();
       },
       onError: (error) => {
-        log.error('WorkBuddy Centrifuge error:', error);
+        log.error(`WorkBuddy Centrifuge error: ${error instanceof Error ? error.message : JSON.stringify(error)}`);
         updateState('error');
+      },
+      onPersistentFailure: () => {
+        log.warn('WorkBuddy Centrifuge persistent failure detected — doing full re-registration');
+        if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
+        updateState('disconnected');
+        scheduleReconnect();
       },
       onMessage: async (chatId, msgId, content) => {
         if (messageHandler) {

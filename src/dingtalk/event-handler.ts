@@ -1,8 +1,6 @@
 import type { DWClientDownStream, RobotMessage } from 'dingtalk-stream';
-import { resolvePlatformAiCommand, type Config } from '../config.js';
-import { AccessControl } from '../access/access-control.js';
+import { type Config } from '../config.js';
 import type { SessionManager } from '../session/session-manager.js';
-import { RequestQueue } from '../queue/request-queue.js';
 import {
   configureDingTalkMessageSender,
   sendThinkingMessage,
@@ -15,13 +13,11 @@ import {
   sendDirectorySelection,
 } from './message-sender.js';
 import { ackMessage, downloadRobotMessageFile, registerSessionWebhook } from './client.js';
-import { CommandHandler } from '../commands/handler.js';
-import { getAdapter } from '../adapters/registry.js';
-import { runAITask, type TaskRunState } from '../shared/ai-task.js';
+import { createPlatformEventContext } from '../platform/create-event-context.js';
+import { createPlatformAIRequestHandler, type PlatformSender, type PlatformTaskCallbacks } from '../platform/handle-ai-request.js';
 import { setActiveChatId, setDingTalkActiveTarget } from '../shared/active-chats.js';
 import { setChatUser } from '../shared/chat-user-map.js';
 import { createLogger } from '../logger.js';
-import type { ThreadContext } from '../shared/types.js';
 import type { DingTalkStreamingTarget } from './client.js';
 import { buildUnsupportedInboundMessage } from '../channels/capabilities.js';
 import { buildMediaMetadataPrompt } from '../shared/media-prompt.js';
@@ -41,6 +37,7 @@ type DingTalkRobotPayload = RobotMessage & Record<string, unknown>;
 
 export interface DingTalkEventHandlerHandle {
   stop: () => void;
+  runningTasks: Map<string, import('../shared/ai-task.js').TaskRunState>;
   getRunningTaskCount: () => number;
   handleEvent: (data: DWClientDownStream) => Promise<void>;
 }
@@ -199,16 +196,61 @@ export function setupDingTalkHandlers(
     log.info('DingTalk AI card streaming disabled: no cardTemplateId configured');
   }
 
-  const accessControl = new AccessControl(config.dingtalkAllowedUserIds);
-  const requestQueue = new RequestQueue();
-  const runningTasks = new Map<string, TaskRunState>();
+  // Mutable ref that captures the dingtalkTarget of the message currently being handled.
+  // DingTalk delivers messages sequentially via stream, so there is no race condition.
+  const senderCtx = { dingtalkTarget: undefined as DingTalkStreamingTarget | undefined };
 
-  const commandHandler = new CommandHandler({
+  const ctx = createPlatformEventContext({
+    platform: 'dingtalk',
+    allowedUserIds: config.dingtalkAllowedUserIds,
     config,
     sessionManager,
-    requestQueue,
     sender: { sendTextReply, sendDirectorySelection },
-    getRunningTasksSize: () => runningTasks.size,
+  });
+  const { accessControl, requestQueue, runningTasks, commandHandler } = ctx;
+
+  // DingTalk-specific sender callbacks for the factory
+  const dingtalkSender: PlatformSender = {
+    sendThinkingMessage: async (chatId, replyToMessageId, toolId) => {
+      return await sendThinkingMessage(chatId, replyToMessageId, toolId, senderCtx.dingtalkTarget);
+    },
+    sendTextReply: async (chatId, text) => {
+      await sendTextReply(chatId, text);
+    },
+    startTyping: (chatId) => startTypingLoop(chatId),
+    sendImage: async (chatId, imagePath) => {
+      await sendImageReply(chatId, imagePath);
+    },
+  };
+
+  // DingTalk-specific task callbacks factory
+  const dingtalkTaskCallbacksFactory = (factoryCtx: {
+    chatId: string;
+    msgId: string;
+    taskKey: string;
+    userId: string;
+    toolId: string;
+    replyToMessageId: string | undefined;
+  }): PlatformTaskCallbacks => ({
+    streamUpdate: async (content, toolNote) => {
+      await updateMessage(factoryCtx.chatId, factoryCtx.msgId, content, 'streaming', toolNote, factoryCtx.toolId);
+    },
+    sendComplete: async (content, note) => {
+      await sendFinalMessages(factoryCtx.chatId, factoryCtx.msgId, content, note ?? '', factoryCtx.toolId);
+    },
+    sendError: async (error) => {
+      await sendErrorMessage(factoryCtx.chatId, factoryCtx.msgId, error, factoryCtx.toolId);
+    },
+  });
+
+  const handleAIRequest = createPlatformAIRequestHandler({
+    platform: 'dingtalk',
+    config,
+    sessionManager,
+    sender: dingtalkSender,
+    throttleMs: DINGTALK_THROTTLE_MS,
+    runningTasks,
+    taskCallbacksFactory: dingtalkTaskCallbacksFactory,
   });
 
   async function enqueuePrompt(
@@ -219,79 +261,10 @@ export function setupDingTalkHandlers(
   ): Promise<'running' | 'queued' | 'rejected'> {
     const workDir = sessionManager.getWorkDir(userId);
     const convId = sessionManager.getConvId(userId);
-    return requestQueue.enqueue(userId, convId, prompt, async (nextPrompt) => {
-      await handleAIRequest(userId, chatId, nextPrompt, workDir, convId, undefined, undefined, dingtalkTarget);
+    return requestQueue.enqueue(userId, convId, prompt, async (nextPrompt, signal) => {
+      senderCtx.dingtalkTarget = dingtalkTarget;
+      await handleAIRequest({ userId, chatId, prompt: nextPrompt, workDir, convId, signal });
     });
-  }
-
-  async function handleAIRequest(
-    userId: string,
-    chatId: string,
-    prompt: string,
-    workDir: string,
-    convId?: string,
-    _threadCtx?: ThreadContext,
-    replyToMessageId?: string,
-    dingtalkTarget?: DingTalkStreamingTarget,
-  ) {
-    log.info(`[AI_REQUEST] userId=${userId}, chatId=${chatId}, promptLength=${prompt.length}`);
-
-    const aiCommand = resolvePlatformAiCommand(config, 'dingtalk');
-    const toolAdapter = getAdapter(aiCommand);
-    if (!toolAdapter) {
-      await sendTextReply(chatId, `AI tool is not configured: ${aiCommand}`);
-      return;
-    }
-
-    const sessionId = convId
-      ? sessionManager.getSessionIdForConv(userId, convId, aiCommand)
-      : undefined;
-    log.info(`[AI_REQUEST] Running ${aiCommand} for user ${userId}, sessionId=${sessionId ?? 'new'}`);
-
-    const toolId = aiCommand;
-    let msgId: string;
-    try {
-      msgId = await sendThinkingMessage(chatId, replyToMessageId, toolId, dingtalkTarget);
-    } catch (err) {
-      log.error('Failed to send thinking message:', err);
-      try {
-        await sendTextReply(chatId, '启动 AI 处理失败，请重试。');
-      } catch (err) {
-        log.warn('Failed to send startup error reply:', err);
-      }
-      return;
-    }
-    const stopTyping = startTypingLoop(chatId);
-    const taskKey = `${userId}:${msgId}`;
-
-    await runAITask(
-      { config, sessionManager },
-      { userId, chatId, workDir, sessionId, convId, platform: 'dingtalk', taskKey },
-      prompt,
-      toolAdapter,
-      {
-        throttleMs: DINGTALK_THROTTLE_MS,
-        streamUpdate: async (content, toolNote) => {
-          await updateMessage(chatId, msgId, content, 'streaming', toolNote, toolId);
-        },
-        sendComplete: async (content, note) => {
-          await sendFinalMessages(chatId, msgId, content, note ?? '', toolId);
-        },
-        sendError: async (error) => {
-          await sendErrorMessage(chatId, msgId, error, toolId);
-        },
-        extraCleanup: () => {
-          stopTyping();
-          runningTasks.delete(taskKey);
-        },
-        onTaskReady: (state) => {
-          runningTasks.set(taskKey, state);
-        },
-        sendImage: async (path) => {
-          await sendImageReply(chatId, path);
-        },
-      },
-    );
   }
 
   async function handleEvent(data: DWClientDownStream): Promise<void> {
@@ -359,7 +332,9 @@ export function setupDingTalkHandlers(
     }
 
     try {
-      const handled = await commandHandler.dispatch(text, chatId, userId, 'dingtalk', handleAIRequest);
+      const handled = await commandHandler.dispatch(text, chatId, userId, 'dingtalk', (userId, chatId, prompt, workDir, convId) => {
+        return handleAIRequest({ userId, chatId, prompt, workDir, convId });
+      });
       if (handled) {
         ackMessage(callbackId, { handled: true });
         return;
@@ -381,6 +356,7 @@ export function setupDingTalkHandlers(
 
   return {
     stop: () => {},
+    runningTasks,
     getRunningTaskCount: () => runningTasks.size,
     handleEvent,
   };

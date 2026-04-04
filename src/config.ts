@@ -4,415 +4,54 @@ try {
   /* dotenv optional */
 }
 
-import { readFileSync, writeFileSync, accessSync, constants, existsSync, mkdirSync, statSync } from 'node:fs';
+import { accessSync, constants } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { join, dirname, isAbsolute, basename } from 'node:path';
-import { homedir } from 'node:os';
+import { join, isAbsolute } from 'node:path';
 import { createLogger, type LogLevel } from './logger.js';
 import { APP_HOME } from './constants.js';
 
 const log = createLogger('config');
 
-export type Platform = 'dingtalk' | 'feishu' | 'qq' | 'telegram' | 'wework' | 'workbuddy';
+// Re-export all types from config/types.ts
+export type {
+  Platform,
+  AiCommand,
+  Config,
+  FilePlatformTelegram,
+  FilePlatformFeishu,
+  FilePlatformQQ,
+  FilePlatformWechat,
+  FilePlatformWework,
+  FilePlatformDingtalk,
+  FilePlatformWorkBuddy,
+  FileToolClaude,
+  FileToolCodex,
+  FileToolCodeBuddy,
+  FileConfig,
+} from './config/types.js';
 
-export type AiCommand = 'claude' | 'codex' | 'codebuddy';
-const AI_COMMANDS: readonly AiCommand[] = ['claude', 'codex', 'codebuddy'];
+import type { Platform, AiCommand, Config, FilePlatformWechat } from './config/types.js';
 
-export interface Config {
-  enabledPlatforms: Platform[];
+// Re-export file I/O and credential helpers from sub-modules
+export {
+  CONFIG_PATH,
+  loadFileConfig,
+  saveFileConfig,
+  getClaudeConfigHome,
+  loadClaudeSettingsEnv,
+  saveClaudeSettingsEnv,
+  normalizeAiCommand,
+  hasCodexAuth,
+  parseCommaSeparated,
+} from './config/file-io.js';
 
-  // 运行时使用的凭证（来源可以是 env 或 config.json）
-  telegramBotToken?: string;
-  feishuAppId?: string;
-  feishuAppSecret?: string;
-  weworkCorpId?: string;  // 企业微信 Bot ID
-  weworkSecret?: string;   // 企业微信 Secret
-  weworkWsUrl?: string;    // 企业微信 WebSocket URL（可选，默认使用官方服务）
-  dingtalkClientId?: string;
-  dingtalkClientSecret?: string;
-  dingtalkCardTemplateId?: string;
-  qqAppId?: string;
-  qqSecret?: string;
-
-  // 全局白名单（旧版兼容）
-  allowedUserIds: string[];
-  // 分平台白名单（新配置推荐）
-  telegramAllowedUserIds: string[];
-  feishuAllowedUserIds: string[];
-  qqAllowedUserIds: string[];
-  weworkAllowedUserIds: string[];
-  dingtalkAllowedUserIds: string[];
-  workbuddyAllowedUserIds: string[];
-
-  aiCommand: AiCommand;
-  codexCliPath: string;
-  codebuddyCliPath: string;
-  /** Claude 访问 API 的代理（如 http://127.0.0.1:7890） */
-  claudeProxy?: string;
-  /** Codex 访问 chatgpt.com 的代理（如 http://127.0.0.1:7890） */
-  codexProxy?: string;
-  claudeWorkDir: string;
-  claudeModel?: string;
-  logDir: string;
-  logLevel: LogLevel;
-
-  platforms: {
-    telegram?: {
-      enabled: boolean;
-      aiCommand?: AiCommand;
-      proxy?: string; // HTTP/HTTPS/SOCKS 代理地址，例如: http://127.0.0.1:7890 或 socks5://127.0.0.1:1080
-      allowedUserIds: string[];
-    };
-    feishu?: {
-      enabled: boolean;
-      aiCommand?: AiCommand;
-      allowedUserIds: string[];
-    };
-    qq?: {
-      enabled: boolean;
-      aiCommand?: AiCommand;
-      allowedUserIds: string[];
-    };
-    wework?: {
-      enabled: boolean;
-      aiCommand?: AiCommand;
-      allowedUserIds: string[];
-    };
-    dingtalk?: {
-      enabled: boolean;
-      aiCommand?: AiCommand;
-      allowedUserIds: string[];
-      cardTemplateId?: string;
-    };
-    workbuddy?: {
-      enabled: boolean;
-      aiCommand?: AiCommand;
-      allowedUserIds: string[];
-      accessToken?: string;
-      refreshToken?: string;
-      userId?: string;
-      baseUrl?: string;
-      guid?: string;
-      workspacePath?: string;
-    };
-  };
-}
-
-export interface FilePlatformTelegram {
-  enabled?: boolean;
-  botToken?: string;
-  aiCommand?: AiCommand;
-  allowedUserIds?: string[];
-  proxy?: string;
-}
-
-export interface FilePlatformFeishu {
-  enabled?: boolean;
-  appId?: string;
-  appSecret?: string;
-  aiCommand?: AiCommand;
-  allowedUserIds?: string[];
-}
-
-interface FilePlatformQQ {
-  enabled?: boolean;
-  appId?: string;
-  secret?: string;
-  aiCommand?: AiCommand;
-  allowedUserIds?: string[];
-}
-
-interface FilePlatformWechat {
-  enabled?: boolean;
-  aiCommand?: AiCommand;
-  userId?: string;
-  allowedUserIds?: string[];
-  workbuddyAccessToken?: string;
-  workbuddyRefreshToken?: string;
-  workbuddyBaseUrl?: string;
-  workbuddyHostId?: string;
-}
-
-export interface FilePlatformWework {
-  enabled?: boolean;
-  corpId?: string;  // Bot ID
-  secret?: string;
-  aiCommand?: AiCommand;
-  wsUrl?: string;
-  allowedUserIds?: string[];
-}
-
-export interface FilePlatformDingtalk {
-  enabled?: boolean;
-  clientId?: string;
-  clientSecret?: string;
-  aiCommand?: AiCommand;
-  allowedUserIds?: string[];
-  cardTemplateId?: string;
-}
-
-interface FilePlatformWorkBuddy {
-  enabled?: boolean;
-  aiCommand?: AiCommand;
-  allowedUserIds?: string[];
-  // WorkBuddy OAuth credentials
-  accessToken?: string;
-  refreshToken?: string;
-  userId?: string;
-  baseUrl?: string;
-  guid?: string;
-  workspacePath?: string;
-}
-
-export interface FileToolClaude {
-  cliPath?: string;
-  workDir?: string;
-  skipPermissions?: boolean;
-  /** HTTP/HTTPS 代理，用于访问 Claude API（如 http://127.0.0.1:7890） */
-  proxy?: string;
-  /** Claude API 配置（优先级：环境变量 > tools.claude.env > ~/.claude/settings.json） */
-  env?: Record<string, string>;
-}
-
-export interface FileToolCodex {
-  cliPath?: string;
-  workDir?: string;
-  /** HTTP/HTTPS 代理，用于访问 chatgpt.com（如 http://127.0.0.1:7890） */
-  proxy?: string;
-}
-
-export interface FileToolCodeBuddy {
-  cliPath?: string;
-}
-
-export interface FileConfig {
-  telegramBotToken?: string;
-  feishuAppId?: string;
-  feishuAppSecret?: string;
-  allowedUserIds?: string[];
-
-  platforms?: {
-    telegram?: FilePlatformTelegram;
-    feishu?: FilePlatformFeishu;
-    qq?: FilePlatformQQ;
-    wechat?: FilePlatformWechat;
-    wework?: FilePlatformWework;
-    dingtalk?: FilePlatformDingtalk;
-    workbuddy?: FilePlatformWorkBuddy;
-  };
-
-  env?: Record<string, string>;
-  aiCommand?: string;
-  tools?: {
-    claude?: FileToolClaude;
-    codex?: FileToolCodex;
-    codebuddy?: FileToolCodeBuddy;
-  };
-  logDir?: string;
-  logLevel?: LogLevel;
-}
-
-export const CONFIG_PATH = join(APP_HOME, 'config.json');
-const CODEX_AUTH_PATHS = [
-  join(homedir(), '.codex', 'auth.json'),
-  join(homedir(), '.config', 'codex', 'auth.json'),
-  join(homedir(), 'AppData', 'Roaming', 'codex', 'auth.json'),
-];
-
-const OLD_ROOT_KEYS = [
-  'claudeWorkDir',
-  'claudeTimeoutMs',
-  'claudeModel',
-] as const;
-
-// Config cache with mtime tracking
-let cachedConfig: { config: FileConfig; mtime: number } | null = null;
-let cachedClaudeEnv: { env: Record<string, string>; mtime: number } | null = null;
-
-function hasOldConfigFormat(raw: Record<string, unknown>): boolean {
-  const hasOld = OLD_ROOT_KEYS.some((k) => raw[k] !== undefined && raw[k] !== null);
-  const hasNew = raw.tools && typeof raw.tools === 'object' && (raw.tools as Record<string, unknown>).claude;
-  return !!hasOld && !hasNew;
-}
-
-function normalizeAiCommand(value: unknown, fallback: AiCommand): AiCommand {
-  return typeof value === 'string' && AI_COMMANDS.includes(value as AiCommand)
-    ? (value as AiCommand)
-    : fallback;
-}
-
-function hasCodexAuth(): boolean {
-  if (process.env.OPENAI_API_KEY) return true;
-  return CODEX_AUTH_PATHS.some((p) => {
-    try {
-      return existsSync(p) && readFileSync(p, 'utf-8').trim().length > 0;
-    } catch {
-      return false;
-    }
-  });
-}
-
-function migrateToNewConfigFormat(raw: Record<string, unknown>): Record<string, unknown> {
-  const tools = (raw.tools as Record<string, unknown>) || {};
-  const tc = (tools.claude as Record<string, unknown>) || {};
-  const tcod = (tools.codex as Record<string, unknown>) || {};
-  const tcb = (tools.codebuddy as Record<string, unknown>) || {};
-
-  const migrated: Record<string, unknown> = { ...raw };
-  migrated.tools = {
-    claude: {
-      ...tc,
-      workDir: tc.workDir ?? raw.claudeWorkDir ?? process.cwd(),
-      proxy: tc.proxy,
-      // model 现在通过 env 配置，不再在这里处理
-    },
-    codex: {
-      ...tcod,
-      cliPath: tcod.cliPath ?? 'codex',
-      workDir: tcod.workDir ?? raw.claudeWorkDir ?? process.cwd(),
-      proxy: tcod.proxy,
-    },
-    codebuddy: {
-      ...tcb,
-      cliPath: tcb.cliPath ?? 'codebuddy',
-    },
-  };
-
-  for (const k of OLD_ROOT_KEYS) {
-    delete migrated[k];
-  }
-  return migrated;
-}
-
-export function loadFileConfig(): FileConfig {
-  try {
-    // Check if file exists and get mtime for cache validation
-    if (!existsSync(CONFIG_PATH)) return {};
-    const stats = statSync(CONFIG_PATH);
-    const currentMtime = stats.mtimeMs;
-
-    // Return cached config if file hasn't changed
-    if (cachedConfig && cachedConfig.mtime === currentMtime) {
-      return cachedConfig.config;
-    }
-
-    // File changed or no cache, read and parse
-    const raw = JSON.parse(readFileSync(CONFIG_PATH, 'utf-8')) as Record<string, unknown>;
-    if (!raw || typeof raw !== 'object') return {};
-
-    if (hasOldConfigFormat(raw)) {
-      const migrated = migrateToNewConfigFormat(raw);
-      const dir = dirname(CONFIG_PATH);
-      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-      writeFileSync(CONFIG_PATH, JSON.stringify(migrated, null, 2), 'utf-8');
-      // Update cache with migrated config
-      cachedConfig = { config: migrated as FileConfig, mtime: currentMtime };
-      return migrated as FileConfig;
-    }
-
-    // Update cache
-    cachedConfig = { config: raw as FileConfig, mtime: currentMtime };
-    return raw as FileConfig;
-  } catch {
-    return {};
-  }
-}
-
-export function saveFileConfig(raw: FileConfig): void {
-  const dir = dirname(CONFIG_PATH);
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  writeFileSync(CONFIG_PATH, JSON.stringify(raw, null, 2), 'utf-8');
-  // Invalidate cache after save (next read will get fresh mtime)
-  cachedConfig = null;
-}
-
-/** 获取用户主目录（兼容不同运行环境，如 launchd、systemd 等） */
-export function getClaudeConfigHome(): string {
-  return process.env.HOME || process.env.USERPROFILE || homedir();
-}
-
-/** 从 Claude Code 配置文件加载 env，支持多路径（与 Claude Code 共用） */
-export function loadClaudeSettingsEnv(): Record<string, string> {
-  const home = getClaudeConfigHome();
-  const paths = [
-    join(home, '.claude', 'settings.json'),
-    join(home, '.claude.json'),
-  ];
-  for (const p of paths) {
-    try {
-      // Check cache first
-      if (existsSync(p)) {
-        const stats = statSync(p);
-        const currentMtime = stats.mtimeMs;
-        if (cachedClaudeEnv && cachedClaudeEnv.mtime === currentMtime && cachedClaudeEnv.env) {
-          return cachedClaudeEnv.env;
-        }
-
-        const raw = JSON.parse(readFileSync(p, 'utf-8'));
-        const env = raw?.env;
-        if (env && typeof env === 'object') {
-          const result: Record<string, string> = {};
-          for (const [k, v] of Object.entries(env)) {
-            if (v != null && typeof k === 'string') {
-              result[k] = String(v);
-            }
-          }
-          // Update cache
-          cachedClaudeEnv = { env: result, mtime: currentMtime };
-          return result;
-        }
-      }
-    } catch {
-      /* 文件不存在或格式错误，尝试下一路径 */
-    }
-  }
-  return {};
-}
-
-/** 保存环境变量到 Claude Code 配置文件（~/.claude/settings.json） */
-export function saveClaudeSettingsEnv(env: Record<string, string>): void {
-  const home = getClaudeConfigHome();
-  const claudeSettingsPath = join(home, '.claude', 'settings.json');
-  const claudeDir = join(home, '.claude');
-
-  try {
-    // 确保 .claude 目录存在
-    if (!existsSync(claudeDir)) {
-      mkdirSync(claudeDir, { recursive: true });
-    }
-
-    // 读取现有配置
-    let existing: Record<string, unknown> = {};
-    if (existsSync(claudeSettingsPath)) {
-      try {
-        existing = JSON.parse(readFileSync(claudeSettingsPath, 'utf-8'));
-      } catch {
-        // 文件格式错误，从空对象开始
-      }
-    }
-
-    // 更新 env 字段
-    existing.env = { ...(existing.env as Record<string, unknown> | undefined), ...env };
-
-    // 写入文件
-    writeFileSync(claudeSettingsPath, JSON.stringify(existing, null, 2), 'utf-8');
-    // Invalidate cache after save
-    cachedClaudeEnv = null;
-  } catch (error) {
-    log.error('Failed to save Claude settings:', error);
-    throw new Error(`Failed to save Claude settings: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
-
-/** 检查是否已配置 Claude API 凭证 */
-function hasClaudeCredentials(): boolean {
-  return !!(
-    process.env.ANTHROPIC_API_KEY ||
-    process.env.ANTHROPIC_AUTH_TOKEN ||
-    process.env.CLAUDE_CODE_OAUTH_TOKEN ||
-    process.env.ANTHROPIC_BASE_URL // 使用自定义 API（如第三方模型）时可能不需要标准凭证
-  );
-}
+import {
+  loadFileConfig,
+  normalizeAiCommand,
+  hasCodexAuth,
+  parseCommaSeparated,
+  loadClaudeSettingsEnv,
+} from './config/file-io.js';
 
 /** 检测是否需要交互式配置（无 token 且无环境变量） */
 export function needsSetup(): boolean {
@@ -448,10 +87,6 @@ export function needsSetup(): boolean {
   const hasLegacyWechat = !!(legacyWc?.workbuddyAccessToken && legacyWc?.workbuddyRefreshToken);
 
   return !hasTelegram && !hasFeishu && !hasQQ && !hasWework && !hasDingtalk && !hasWorkBuddy && !hasLegacyWechat;
-}
-
-function parseCommaSeparated(value: string): string[] {
-  return value.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
 export function loadConfig(): Config {
@@ -668,6 +303,9 @@ export function loadConfig(): Config {
     }
   }
   const claudeWorkDir = process.env.CLAUDE_WORK_DIR ?? tc.workDir ?? process.cwd();
+  const skipPermissions: boolean = process.env.OPEN_IM_SKIP_PERMISSIONS === 'false'
+    ? false
+    : (tc.skipPermissions ?? true);
 
   // 6. 校验 Claude API 凭证（SDK 模式需要）
   // 支持：官方 API Key、Auth Token、或自定义 API（第三方模型等，BASE_URL + token）
@@ -897,6 +535,7 @@ export function loadConfig(): Config {
     codexProxy,
     claudeWorkDir,
     claudeModel: process.env.ANTHROPIC_MODEL,
+    skipPermissions,
     logDir,
     logLevel,
     platforms,

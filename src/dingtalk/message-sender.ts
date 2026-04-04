@@ -64,8 +64,7 @@ const streamStates = new Map<string, StreamState>();
 // Periodic cleanup of orphaned stream states (max 30 minutes)
 const STREAM_MAX_AGE_MS = 30 * 60 * 1000;
 setInterval(() => {
-  const now = Date.now();
-  for (const [id, state] of streamStates) {
+  for (const [id] of streamStates) {
     // streamStates in DingTalk don't have createdAt, clean up by size
     if (streamStates.size > 50) {
       streamStates.delete(id);

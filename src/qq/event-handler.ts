@@ -1,10 +1,7 @@
-import { resolvePlatformAiCommand, type Config } from "../config.js";
-import { AccessControl } from "../access/access-control.js";
+import { type Config } from "../config.js";
 import type { SessionManager } from "../session/session-manager.js";
-import { RequestQueue } from "../queue/request-queue.js";
 import {
   sendThinkingMessage,
-  updateMessage,
   sendFinalMessages,
   sendErrorMessage,
   sendTextReply,
@@ -12,18 +9,17 @@ import {
   sendDirectorySelection,
   startTypingLoop,
 } from "./message-sender.js";
-import { CommandHandler } from "../commands/handler.js";
-import { getAdapter } from "../adapters/registry.js";
-import { runAITask, type TaskRunState } from "../shared/ai-task.js";
-import { setActiveChatId } from "../shared/active-chats.js";
-import { setChatUser } from "../shared/chat-user-map.js";
 import { createLogger } from "../logger.js";
-import type { ThreadContext } from "../shared/types.js";
 import type { QQAttachment, QQMessageEvent } from "./types.js";
 import { buildMediaMetadataPrompt } from "../shared/media-prompt.js";
 import { buildSavedMediaBatchPrompt, buildSavedMediaPrompt } from "../shared/media-analysis-prompt.js";
 import { buildMediaContext } from "../shared/media-context.js";
 import { downloadMediaFromUrl } from "../shared/media-storage.js";
+import { setActiveChatId } from "../shared/active-chats.js";
+import { setChatUser } from "../shared/chat-user-map.js";
+import { createPlatformEventContext } from "../platform/create-event-context.js";
+import { createPlatformAIRequestHandler } from "../platform/handle-ai-request.js";
+import { handleTextFlow } from "../platform/handle-text-flow.js";
 
 const log = createLogger("QQHandler");
 const QQ_THROTTLE_MS = 1200;
@@ -59,6 +55,7 @@ async function buildAttachmentPrompt(event: QQMessageEvent): Promise<string | nu
   const attachmentSummary = await Promise.all(event.attachments.map(async (attachment) => {
     const kind = classifyAttachment(attachment);
     let localPath: string | undefined;
+
     if (attachment.url) {
       try {
         localPath = await downloadMediaFromUrl(attachment.url, {
@@ -123,7 +120,7 @@ async function buildAttachmentPrompt(event: QQMessageEvent): Promise<string | nu
     source: "QQ",
     kind: "attachment",
     text: event.content,
-    metadata: attachmentSummary,
+        metadata: attachmentSummary,
     guidance:
       "If direct attachment fetch is not available, explain the limitation and ask the user for a text summary or a resend via Telegram/Feishu/WeWork.",
   });
@@ -131,6 +128,7 @@ async function buildAttachmentPrompt(event: QQMessageEvent): Promise<string | nu
 
 export interface QQEventHandlerHandle {
   stop: () => void;
+  runningTasks: Map<string, import('../shared/ai-task.js').TaskRunState>;
   getRunningTaskCount: () => number;
   handleEvent: (event: QQMessageEvent) => Promise<void>;
 }
@@ -139,98 +137,69 @@ export function setupQQHandlers(
   config: Config,
   sessionManager: SessionManager,
 ): QQEventHandlerHandle {
-  const accessControl = new AccessControl(config.qqAllowedUserIds);
-  const requestQueue = new RequestQueue();
-  const runningTasks = new Map<string, TaskRunState>();
+  // Use shared platform event context factory
+  const platformContext = createPlatformEventContext({
+    platform: "qq",
+    allowedUserIds: config.qqAllowedUserIds,
+    config,
+    sessionManager,
+    sender: { sendTextReply, sendDirectorySelection },
+  });
+
+  const { accessControl, requestQueue, runningTasks } = platformContext;
+
   const recentEventIds = new Map<string, number>();
   const recentEventFingerprints = new Map<string, number>();
 
-  const commandHandler = new CommandHandler({
+  // QQ-specific: Store taskKey -> { { chatId, msgId } } mapping
+  // This allows callbacks to access to context they need
+  const qqTaskContextMap = new Map<string, { chatId: string; msgId: string }>();
+
+  // Create shared handleAIRequest using factory
+  const factoryHandleAIRequest = createPlatformAIRequestHandler({
+    platform: "qq",
     config,
     sessionManager,
-    requestQueue,
-    sender: { sendTextReply, sendDirectorySelection },
-    getRunningTasksSize: () => runningTasks.size,
+    sender: {
+      sendThinkingMessage: async (chatId, replyToMessageId) => {
+        return sendThinkingMessage(chatId, replyToMessageId, undefined);
+      },
+      sendTextReply: async (chatId, text) => {
+        await sendTextReply(chatId, text);
+      },
+      startTyping: () => {
+        return startTypingLoop();
+      },
+      sendImage: async (chatId, imagePath) => {
+        await sendImageReply(chatId, imagePath);
+      },
+    },
+    throttleMs: QQ_THROTTLE_MS,
+    minContentDeltaChars: QQ_MIN_STREAM_DELTA_CHARS,
+    runningTasks,
+    extraInit: (ctx) => {
+      // Store context for this task
+      qqTaskContextMap.set(ctx.taskKey, { chatId: ctx.chatId, msgId: ctx.msgId });
+      return () => {
+        qqTaskContextMap.delete(ctx.taskKey);
+      };
+    },
+    taskCallbacksFactory: ({ chatId, msgId, toolId }) => ({
+      streamUpdate: async () => {
+        // QQ doesn't support streaming updates
+      },
+      sendComplete: async (content, note) => {
+        await sendFinalMessages(chatId, msgId, content, note ?? '', toolId);
+      },
+      sendError: async (error) => {
+        await sendErrorMessage(chatId, msgId, error, toolId);
+      },
+    }),
   });
 
-  async function enqueuePrompt(
-    userId: string,
-    chatId: string,
-    prompt: string,
-    replyToMessageId?: string,
-  ): Promise<"running" | "queued" | "rejected"> {
-    const workDir = sessionManager.getWorkDir(userId);
-    const convId = sessionManager.getConvId(userId);
-    return requestQueue.enqueue(userId, convId, prompt, async (nextPrompt) => {
-      await handleAIRequest(userId, chatId, nextPrompt, workDir, convId, undefined, replyToMessageId);
-    });
-  }
-
-  async function handleAIRequest(
-    userId: string,
-    chatId: string,
-    prompt: string,
-    workDir: string,
-    convId?: string,
-    _threadCtx?: ThreadContext,
-    replyToMessageId?: string,
-  ) {
-    const aiCommand = resolvePlatformAiCommand(config, "qq");
-    const toolAdapter = getAdapter(aiCommand);
-    if (!toolAdapter) {
-      await sendTextReply(chatId, `AI tool is not configured: ${aiCommand}`);
-      return;
-    }
-
-    const sessionId = convId
-      ? sessionManager.getSessionIdForConv(userId, convId, aiCommand)
-      : undefined;
-    const toolId = aiCommand;
-    let msgId: string;
-    try {
-      msgId = await sendThinkingMessage(chatId, replyToMessageId, toolId);
-    } catch (err) {
-      log.error("Failed to send thinking message:", err);
-      try {
-        await sendTextReply(chatId, "启动 AI 处理失败，请重试。");
-      } catch (err) {
-        log.warn('Failed to send startup error reply:', err);
-      }
-      return;
-    }
-    const stopTyping = startTypingLoop();
-    const taskKey = `${userId}:${msgId}`;
-
-    await runAITask(
-      { config, sessionManager },
-      { userId, chatId, workDir, sessionId, convId, platform: "qq", taskKey },
-      prompt,
-      toolAdapter,
-      {
-        throttleMs: QQ_THROTTLE_MS,
-        minContentDeltaChars: QQ_MIN_STREAM_DELTA_CHARS,
-        streamUpdate: async (content, toolNote) => {
-          await updateMessage(chatId, msgId, content, "streaming", toolNote, toolId);
-        },
-        sendComplete: async (content, note) => {
-          await sendFinalMessages(chatId, msgId, content, note ?? "", toolId);
-        },
-        sendError: async (error) => {
-          await sendErrorMessage(chatId, msgId, error, toolId);
-        },
-        extraCleanup: () => {
-          stopTyping();
-          runningTasks.delete(taskKey);
-        },
-        onTaskReady: (state) => {
-          runningTasks.set(taskKey, state);
-        },
-        sendImage: async (path) => {
-          await sendImageReply(chatId, path);
-        },
-      },
-    );
-  }
+  // NOTE: handleTextFlow calls handleAIRequest with an OBJECT argument,
+  // so we pass factoryHandleAIRequest directly (it takes HandleAIRequestParams).
+  // The attachment path also uses factoryHandleAIRequest with object syntax.
 
   function cleanupRecentEvents(now: number): void {
     for (const [eventId, timestamp] of recentEventIds) {
@@ -266,62 +235,110 @@ export function setupQQHandlers(
   }
 
   async function handleEvent(event: QQMessageEvent): Promise<void> {
-    const now = Date.now();
-    cleanupRecentEvents(now);
+    const chatId = toChatId(event);
+    try {
+      const now = Date.now();
+      cleanupRecentEvents(now);
 
-    if (event.id) {
-      if (recentEventIds.has(event.id)) {
-        log.info(`Skipping duplicate QQ event: ${event.id}`);
+      // QQ-specific: Event deduplication by ID
+      if (event.id) {
+        if (recentEventIds.has(event.id)) {
+          log.info(`Skipping duplicate QQ event: ${event.id}`);
+          return;
+        }
+        recentEventIds.set(event.id, now);
+      }
+
+      const userId = event.userOpenid;
+      const eventFingerprint = buildEventFingerprint(event, chatId);
+      const text = event.content?.trim() ?? "";
+      const attachmentPrompt = await buildAttachmentPrompt(event);
+
+      // QQ-specific: Event deduplication by fingerprint
+      if (recentEventFingerprints.has(eventFingerprint)) {
+        log.info(`Skipping duplicate QQ event fingerprint: ${eventFingerprint}`);
         return;
       }
-      recentEventIds.set(event.id, now);
+      recentEventFingerprints.set(eventFingerprint, now);
+
+      // Use shared handleTextFlow for text message processing
+      if (text) {
+        const processed = await handleTextFlow({
+          platform: "qq",
+          userId,
+          chatId,
+          text,
+          ctx: platformContext,
+          handleAIRequest: factoryHandleAIRequest,
+          sendTextReply,
+          workDir: sessionManager.getWorkDir(userId),
+          convId: sessionManager.getConvId(userId),
+          replyToMessageId: event.id,
+          accessDeniedMessage: (userId) => `Access denied. Your QQ user ID: ${userId}`,
+          queueFullMessage: "Request queue is full. Please try again later.",
+          queuedMessage: "Your request is queued.",
+        });
+
+        if (processed) {
+          log.info(`QQ message handled: user=${userId}, chat=${chatId}, text=true`);
+          return;
+        }
+      }
+
+      // Handle attachments-only messages
+      if (attachmentPrompt) {
+        const workDir = sessionManager.getWorkDir(userId);
+        const convId = sessionManager.getConvId(userId);
+
+        // Check access control
+        if (!accessControl.isAllowed(userId)) {
+          await sendTextReply(chatId, `Access denied. Your QQ user ID: ${userId}`);
+          return;
+        }
+
+        // Set active chat
+        setActiveChatId("qq", chatId);
+        setChatUser(chatId, userId, "qq");
+
+        // Enqueue attachment prompt
+        const enqueueResult = requestQueue.enqueue(
+          userId,
+          convId ?? '',
+          attachmentPrompt,
+          async (prompt, signal) => {
+            await factoryHandleAIRequest({
+              userId,
+              chatId,
+              prompt,
+              workDir,
+              convId,
+              replyToMessageId: event.id,
+              signal,
+            });
+          },
+        );
+
+        if (enqueueResult === "rejected") {
+          await sendTextReply(chatId, "Request queue is full. Please try again later.");
+        } else if (enqueueResult === "queued") {
+          await sendTextReply(chatId, "Your request is queued.");
+        }
+
+        log.info(`QQ message handled: user=${userId}, chat=${chatId}, attachments=${event.attachments?.length ?? 0}`);
+      }
+    } catch (err) {
+      log.error('Unhandled error in QQ event handler:', err);
+      try {
+        if (chatId) {
+          await sendTextReply(chatId, 'Internal error occurred. Please try again.');
+        }
+      } catch { /* ignore */ }
     }
-
-    const userId = event.userOpenid;
-    const chatId = toChatId(event);
-    const eventFingerprint = buildEventFingerprint(event, chatId);
-    const text = event.content?.trim() ?? "";
-    const attachmentPrompt = await buildAttachmentPrompt(event);
-
-    if (recentEventFingerprints.has(eventFingerprint)) {
-      log.info(`Skipping duplicate QQ event fingerprint: ${eventFingerprint}`);
-      return;
-    }
-    recentEventFingerprints.set(eventFingerprint, now);
-
-    if (!accessControl.isAllowed(userId)) {
-      await sendTextReply(chatId, `Access denied. Your QQ user ID: ${userId}`);
-      return;
-    }
-
-    setActiveChatId("qq", chatId);
-    setChatUser(chatId, userId, "qq");
-
-    if (text) {
-      const handled = await commandHandler.dispatch(text, chatId, userId, "qq", handleAIRequest);
-      if (handled) return;
-    } else if (!attachmentPrompt) {
-      return;
-    }
-
-    const enqueueResult = await enqueuePrompt(
-      userId,
-      chatId,
-      attachmentPrompt ?? text,
-      event.id,
-    );
-
-    if (enqueueResult === "rejected") {
-      await sendTextReply(chatId, "Request queue is full. Please try again later.");
-    } else if (enqueueResult === "queued") {
-      await sendTextReply(chatId, "Your request is queued.");
-    }
-
-    log.info(`QQ message handled: user=${userId}, chat=${chatId}, status=${enqueueResult}, attachments=${event.attachments?.length ?? 0}`);
   }
 
   return {
     stop: () => {},
+    runningTasks,
     getRunningTaskCount: () => runningTasks.size,
     handleEvent,
   };
