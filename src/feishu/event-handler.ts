@@ -513,6 +513,8 @@ export function setupFeishuHandlers(
             handleAIRequest,
             sendTextReply,
             replyToMessageId: messageId,
+            workDir: sessionManager.getWorkDir(senderId),
+            convId: sessionManager.getConvId(senderId),
           });
         } else if (msgType === 'image') {
           const imageKey = content.image_key as string;
