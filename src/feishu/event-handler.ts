@@ -241,7 +241,7 @@ export function setupFeishuHandlers(
         log.warn('Thinking→text transition update failed:', e?.message ?? e)
       );
     },
-    taskCallbacksFactory: ({ msgId: cardId, toolId }) => ({
+    taskCallbacksFactory: ({ chatId, msgId: cardId, toolId }) => ({
       streamUpdate: async (content, toolNote) => {
         if (consecutiveStreamErrors >= MAX_STREAM_ERRORS) return;
         const note = buildProgressNote(toolNote);
@@ -257,8 +257,7 @@ export function setupFeishuHandlers(
         });
       },
       sendComplete: async (content, note, thinkingText) => {
-        const aiTool = resolvePlatformAiCommand(config, 'feishu');
-        await sendFinalCards('', cardId, cardId, content, note ?? '', thinkingText, aiTool);
+        await sendFinalCards(chatId, '', cardId, content, note ?? '', thinkingText, toolId);
       },
       sendError: async (error) => {
         await sendErrorCard(cardId, error);
