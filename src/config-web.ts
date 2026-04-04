@@ -586,8 +586,8 @@ async function probeWorkBuddy(config: Record<string, unknown>): Promise<string> 
 
   const baseUrl = clean(String(config.baseUrl ?? "")) || "https://copilot.tencent.com";
 
-  // Validate credentials by attempting to register workspace
-  const response = await fetch(`${baseUrl}/api/copilot/workspace/register`, {
+  // Validate credentials by attempting to register workspace (same endpoint as runtime)
+  const response = await fetch(`${baseUrl}/v2/agentos/localagent/registerWorkspace`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -598,6 +598,7 @@ async function probeWorkBuddy(config: Record<string, unknown>): Promise<string> 
       hostId: "open-im-test",
       workspaceId: "open-im-test-workspace",
       workspaceName: "OpenIM Test Workspace",
+      localAgentType: "ide",
     }),
     signal: AbortSignal.timeout(TEST_TIMEOUT_MS),
   });
