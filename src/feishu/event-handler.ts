@@ -25,7 +25,7 @@ import { buildSavedMediaPrompt } from '../shared/media-analysis-prompt.js';
 import { buildMediaContext } from '../shared/media-context.js';
 import { buildProgressNote } from '../shared/message-note.js';
 import { createPlatformEventContext, type PlatformEventContext } from '../platform/create-event-context.js';
-import { createPlatformAIRequestHandler, type PlatformSender, type PlatformTaskCallbacks } from '../platform/handle-ai-request.js';
+import { createPlatformAIRequestHandler, type PlatformSender } from '../platform/handle-ai-request.js';
 import { handleTextFlow } from '../platform/handle-text-flow.js';
 
 const log = createLogger('FeishuHandler');
@@ -224,32 +224,6 @@ export function setupFeishuHandlers(
     },
   };
 
-  // Feishu-specific task callbacks for CardKit streaming
-  const feishuTaskCallbacks: PlatformTaskCallbacks = {
-    streamUpdate: async (content, toolNote) => {
-      if (consecutiveStreamErrors >= MAX_STREAM_ERRORS) return; // Stop trying
-      const note = buildProgressNote(toolNote);
-      // Note: cardId is passed via taskKey format: userId:cardId
-      const cardId = content; // Placeholder, will be overridden via context
-      streamContentUpdate(cardId, content, note).then(() => {
-        consecutiveStreamErrors = 0;
-      }).catch((e) => {
-        consecutiveStreamErrors++;
-        if (consecutiveStreamErrors >= MAX_STREAM_ERRORS) {
-          log.warn(`Stream update failed ${consecutiveStreamErrors} times consecutively, giving up: ${e?.message ?? e}`);
-        } else {
-          log.debug('Stream update failed (will retry on next update):', e?.message ?? e);
-        }
-      });
-    },
-    sendComplete: async (content, note) => {
-      // Will be customized via context
-    },
-    sendError: async (error) => {
-      // Will be customized via context
-    },
-  };
-
   // Create platform-specific AI request handler
   const handleAIRequest = createPlatformAIRequestHandler({
     platform: 'feishu',
@@ -267,6 +241,29 @@ export function setupFeishuHandlers(
         log.warn('Thinking→text transition update failed:', e?.message ?? e)
       );
     },
+    taskCallbacksFactory: ({ msgId: cardId, toolId }) => ({
+      streamUpdate: async (content, toolNote) => {
+        if (consecutiveStreamErrors >= MAX_STREAM_ERRORS) return;
+        const note = buildProgressNote(toolNote);
+        streamContentUpdate(cardId, content, note).then(() => {
+          consecutiveStreamErrors = 0;
+        }).catch((e) => {
+          consecutiveStreamErrors++;
+          if (consecutiveStreamErrors >= MAX_STREAM_ERRORS) {
+            log.warn(`Stream update failed ${consecutiveStreamErrors} times consecutively, giving up: ${e?.message ?? e}`);
+          } else {
+            log.debug('Stream update failed (will retry on next update):', e?.message ?? e);
+          }
+        });
+      },
+      sendComplete: async (content, note, thinkingText) => {
+        const aiTool = resolvePlatformAiCommand(config, 'feishu');
+        await sendFinalCards('', cardId, cardId, content, note ?? '', thinkingText, aiTool);
+      },
+      sendError: async (error) => {
+        await sendErrorCard(cardId, error);
+      },
+    }),
   });
 
   /**
