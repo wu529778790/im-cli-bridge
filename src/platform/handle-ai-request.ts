@@ -202,7 +202,7 @@ export function createPlatformAIRequestHandler(
     };
 
     // Merge in platform callbacks (if provided)
-    let mergedCallbacks: TaskAdapter = { ...defaultCallbacks };
+    const mergedCallbacks: TaskAdapter = { ...defaultCallbacks };
 
     // Use taskCallbacksFactory if provided (has full context access)
     if (taskCallbacksFactory) {
