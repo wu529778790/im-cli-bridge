@@ -21,115 +21,9 @@ import { buildProgressNote } from '../shared/message-note.js';
 import { createPlatformEventContext } from '../platform/create-event-context.js';
 import { createPlatformAIRequestHandler, type PlatformSender } from '../platform/handle-ai-request.js';
 import { handleTextFlow } from '../platform/handle-text-flow.js';
+import { isPermissionError, handlePermissionError } from './permission.js';
 
 const log = createLogger('FeishuHandler');
-
-// ── 飞书权限错误检测与提示 ──
-
-interface FeishuApiError {
-  code?: number;
-  msg?: string;
-  message?: string;
-  response?: { data?: { code?: number; msg?: string } };
-}
-
-/**
-/**
- *
- 从异常中提取飞书 API 错误码
- */
-function extractFeishuErrorCode(err: unknown): number | undefined {
-  const e = err as FeishuApiError;
-  if (e?.response?.data?.code) return e.response.data.code;
-  if (e?.code) return e.code;
-  return undefined;
-}
-
-/**
- * 根据错误码判断是否为权限不足
- */
-function isPermissionError(err: unknown): boolean {
-  const code = extractFeishuErrorCode(err);
-  if (!code) {
-    // 非标准错误：检查 message 中是否包含权限关键词
-    const msg = (err as Error)?.message ?? String(err);
-    return /permission|权限|scope|not authorized|no access|forbidden/i.test(msg);
-  }
-  // 飞书常见权限错误码
-  return [
-    99991400,  // 权限不足
-    99991401,  // 没有API权限
-    99991663,  // 应用未获取 scope
-    99991672,  // 应用未开通相关能力
-    99991670,  // 应用未上架/未授权
-    99991668,  // 应用可见性限制
-  ].includes(code);
-}
-
-/**
- * 构建飞书权限配置指引消息
- */
-function buildPermissionGuideMessage(err: unknown): string {
-  const code = extractFeishuErrorCode(err);
-  const codeHint = code ? ` (错误码: ${code})` : '';
-
-  return [
-    '⚠️ **飞书应用权限不足，无法发送消息**' + codeHint,
-    '',
-    '请按以下步骤开通所需权限：',
-    '',
-    '**1. 进入飞书开放平台**',
-    '👉 https://open.feishu.cn/app',
-    '',
-    '**2. 找到你的应用，进入「权限管理」**',
-    '',
-    '**3. 开通以下权限（搜索权限名称添加）：**',
-    '• `im:message` — 获取与发送单聊、群组消息',
-    '• `im:message:send_as_bot` — 以应用身份发消息',
-    '• `im:resource` — 获取与上传图片或文件资源',
-    '• `im:chat` — 获取群组信息',
-    '',
-    '**4. 如需使用卡片打字机效果，还需开通：**',
-    '• `cardkit:card` — CardKit 卡片管理',
-    '',
-    '**5. 发布版本**',
-    '权限修改后需点击「创建版本」→「发布」，管理员审批后生效。',
-    '',
-    '📖 详细文档：https://open.feishu.cn/document/ukTMukTMukTM/ucTM5YjL3ETO04yNxkDN',
-  ].join('\n');
-}
-
-/**
- * 发送权限错误提示，依次尝试：卡片 → 纯文本 → open_id
- */
-async function sendPermissionFallback(chatId: string, guide: string): Promise<void> {
-  // 1. 先尝试 sendTextReply（发卡片消息）
-  try {
-    await sendTextReply(chatId, guide);
-    return;
-  } catch (err) {
-    log.warn('Card-based reply failed, falling back to plain text:', err);
-  }
-
-  // 2. 降级为纯文本消息
-  try {
-    const client = (await import('./client.js')).getClient();
-    const plainGuide = guide.replace(/\*\*/g, '').replace(/`/g, '');
-    await client.im.message.create({
-      data: {
-        receive_id: chatId,
-        msg_type: 'text',
-        content: JSON.stringify({ text: plainGuide }),
-      },
-      params: { receive_id_type: 'chat_id' },
-    });
-    return;
-  } catch (err) {
-    log.warn('Plain text reply also failed:', err);
-  }
-
-  log.error('All fallback methods failed to send permission guide');
-}
 
 type FeishuResourceType = 'image' | 'file' | 'media';
 
@@ -197,12 +91,9 @@ export function setupFeishuHandlers(
             continue;
           }
           log.error(`Failed to send thinking card after ${attempt} attempts:`, err);
-          // Detect permission errors
+          // 检测权限错误并输出友好提示
           if (isPermissionError(err)) {
-            const guide = buildPermissionGuideMessage(err);
-            await sendPermissionFallback(chatId, guide).catch((e) => {
-              log.warn('Permission fallback send failed:', e);
-            });
+            handlePermissionError(err, chatId);
           }
           throw err;
         }
