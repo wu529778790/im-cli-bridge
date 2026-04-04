@@ -436,7 +436,7 @@ export async function sendErrorMessage(chatId: string, error: string, reqId?: st
 
   try {
     sendText(getReqId(reqId), message);
-    log.info(`Error message sent to user ${chatId}`);
+    log.warn(`Error message sent to user ${chatId}`);
   } catch (err) {
     log.error('Failed to send error message:', err);
   }

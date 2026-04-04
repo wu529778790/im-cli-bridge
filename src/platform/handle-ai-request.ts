@@ -205,8 +205,9 @@ export function createPlatformAIRequestHandler(
     const mergedCallbacks: TaskAdapter = { ...defaultCallbacks };
 
     // Use taskCallbacksFactory if provided (has full context access)
+    let factoryCallbacks: PlatformTaskCallbacks | undefined;
     if (taskCallbacksFactory) {
-      const factoryCallbacks = taskCallbacksFactory({
+      factoryCallbacks = taskCallbacksFactory({
         chatId,
         msgId,
         taskKey,
@@ -250,7 +251,7 @@ export function createPlatformAIRequestHandler(
     }
 
     // Wrap extraCleanup to also call the platform's extraCleanup
-    const platformExtraCleanup = taskCallbacks?.extraCleanup ?? taskCallbacksFactory?.({ chatId, msgId, taskKey, userId, toolId, replyToMessageId }).extraCleanup;
+    const platformExtraCleanup = taskCallbacks?.extraCleanup ?? factoryCallbacks?.extraCleanup;
     const originalExtraCleanup = mergedCallbacks.extraCleanup!;
     mergedCallbacks.extraCleanup = () => {
       originalExtraCleanup();

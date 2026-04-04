@@ -50,7 +50,7 @@ interface FeishuApiError {
 /**
  * 从异常中提取飞书 API 错误码
  */
-export function extractFeishuErrorCode(err: unknown): number | undefined {
+function extractFeishuErrorCode(err: unknown): number | undefined {
   const e = err as FeishuApiError;
   if (e?.response?.data?.code) return e.response.data.code;
   if (e?.code) return e.code;
@@ -81,7 +81,7 @@ export function buildPermissionUrl(appId: string): string {
 /**
  * 构建飞书开放平台应用列表页链接
  */
-export function buildAppListUrl(): string {
+function buildAppListUrl(): string {
   return 'https://open.feishu.cn/app';
 }
 
@@ -90,7 +90,7 @@ export function buildAppListUrl(): string {
 /**
  * 构建飞书卡片用的权限指引消息（lark_md 格式）
  */
-export function buildPermissionGuideMessage(err: unknown, appId?: string): string {
+function buildPermissionGuideMessage(err: unknown, appId?: string): string {
   const code = extractFeishuErrorCode(err);
   const codeHint = code ? ` (错误码: ${code})` : '';
 

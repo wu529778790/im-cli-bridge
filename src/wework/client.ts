@@ -141,7 +141,7 @@ export async function initWeWork(
   isStopping = false;
   shouldReconnect = false;
 
-  log.info(`Initializing WeWork client (botId: ${config.botId})`);
+  log.info('Initializing WeWork client');
   // 首次连接支持重试：单独启用企微时偶发 TLS 连接失败，加飞书后因初始化顺序有“预热”效果则稳定
   const maxAttempts = 3;
   const retryDelayMs = 1500;

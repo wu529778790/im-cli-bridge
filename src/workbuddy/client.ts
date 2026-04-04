@@ -180,7 +180,7 @@ async function connect(): Promise<void> {
               channelId: pc.userId ?? '',  // plugin uses userId, not full channel name
               userId: pc.userId ?? '',
             })
-              .then((res) => log.info(`WeChat KF channel registered (online): ${JSON.stringify(res)}`))
+              .then((res) => log.debug(`WeChat KF channel registered (online): ${JSON.stringify(res)}`))
               .catch((err: unknown) => log.warn(`registerChannel failed: ${String(err)}`));
           };
 
@@ -202,7 +202,7 @@ async function connect(): Promise<void> {
               channelId: pc.userId ?? '',
               userId: pc.userId ?? '',
             })
-              .then((res) => log.info(`WeChat KF channel registered (fallback): ${JSON.stringify(res)}`))
+              .then((res) => log.debug(`WeChat KF channel registered (fallback): ${JSON.stringify(res)}`))
               .catch((e: unknown) => log.warn(`registerChannel failed: ${String(e)}`));
           };
           doRegister();

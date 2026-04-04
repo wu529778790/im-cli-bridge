@@ -1,8 +1,9 @@
-import { execFileSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { APP_HOME } from "./constants.js";
+import { isRunning } from "./service-control.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PID_FILE = join(APP_HOME, "open-im.pid");
@@ -26,22 +27,6 @@ function getManagerEntry(): { command: string; args: string[] } {
     command: process.execPath,
     args: [join(__dirname, "manager.js")],
   };
-}
-
-function isRunning(pid: number): boolean {
-  try {
-    if (process.platform === "win32") {
-      const result = execFileSync("tasklist", ["/FI", `PID eq ${pid}`, "/NH"], {
-        stdio: "pipe",
-        windowsHide: true,
-      }).toString();
-      return result.includes(String(pid));
-    }
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 export function getManagerPid(): number | null {

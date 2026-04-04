@@ -1,6 +1,3 @@
-import { accessSync, constants } from 'node:fs';
-import { execFileSync } from 'node:child_process';
-import { join, isAbsolute } from 'node:path';
 import type { FileConfig, FilePlatformWechat } from './types.js';
 
 /**
@@ -68,46 +65,4 @@ export function resolveWorkBuddyFileConfig(
   return undefined;
 }
 
-/**
- * Check if a CLI tool is available at the given path or on PATH.
- */
-export function checkCliAvailable(cliPath: string, toolName: string): void {
-  if (isAbsolute(cliPath) || cliPath.includes('/') || cliPath.includes('\\')) {
-    try {
-      accessSync(cliPath, constants.F_OK);
-    } catch {
-      throw new Error(`${toolName} CLI not found at: ${cliPath}`);
-    }
-  } else {
-    const checkCommand = process.platform === 'win32' ? 'where' : 'which';
-    try {
-      execFileSync(checkCommand, [cliPath], {
-        stdio: 'pipe',
-        windowsHide: process.platform === 'win32',
-      });
-    } catch {
-      throw new Error(`${toolName} CLI not found on PATH: ${cliPath}`);
-    }
-  }
-}
 
-/**
- * Resolve Windows-specific CLI path for npm global installs.
- */
-export function resolveWindowsCliPath(cliName: string, configuredPath: string): string {
-  if (process.platform !== 'win32' || configuredPath !== cliName) return configuredPath;
-
-  const npmPaths = [
-    join(process.env.APPDATA || '', 'npm', `${cliName}.cmd`),
-    join(process.env.LOCALAPPDATA || '', 'npm', `${cliName}.cmd`),
-  ];
-  for (const p of npmPaths) {
-    try {
-      accessSync(p, constants.F_OK);
-      return p;
-    } catch {
-      /* try next */
-    }
-  }
-  return configuredPath;
-}

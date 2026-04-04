@@ -196,6 +196,7 @@ export async function main() {
   let config: ReturnType<typeof loadConfig>;
   try {
     config = loadConfig();
+    initLogger(config.logDir, config.logLevel);
   } catch (err) {
     if (
       err instanceof Error &&
@@ -206,12 +207,12 @@ export async function main() {
       const saved = await runClaudeApiSetup();
       if (!saved) process.exit(1);
       config = loadConfig();
+      initLogger(config.logDir, config.logLevel);
     } else {
       throw err;
     }
   }
 
-  initLogger(config.logDir, config.logLevel);
   loadActiveChats();
 
   initAdapters(config);
