@@ -2,7 +2,6 @@ import { resolvePlatformAiCommand, type Config } from "../config.js";
 import type { SessionManager } from "../session/session-manager.js";
 import {
   sendThinkingMessage,
-  updateMessage,
   sendFinalMessages,
   sendErrorMessage,
   sendTextReply,
@@ -11,7 +10,6 @@ import {
   startTypingLoop,
 } from "./message-sender.js";
 import { createLogger } from "../logger.js";
-import type { ThreadContext } from "../shared/types.js";
 import type { QQAttachment, QQMessageEvent } from "./types.js";
 import { buildMediaMetadataPrompt } from "../shared/media-prompt.js";
 import { buildSavedMediaBatchPrompt, buildSavedMediaPrompt } from "../shared/media-analysis-prompt.js";
@@ -22,7 +20,6 @@ import { setChatUser } from "../shared/chat-user-map.js";
 import { createPlatformEventContext } from "../platform/create-event-context.js";
 import { createPlatformAIRequestHandler } from "../platform/handle-ai-request.js";
 import { handleTextFlow } from "../platform/handle-text-flow.js";
-import type { TaskRunState } from "../shared/ai-task.js";
 
 const log = createLogger("QQHandler");
 const QQ_THROTTLE_MS = 1200;
@@ -187,41 +184,22 @@ export function setupQQHandlers(
         qqTaskContextMap.delete(ctx.taskKey);
       };
     },
-    taskCallbacks: {
-      streamUpdate: async (content: string, toolNote?: string) => {
-        // QQ doesn't support streaming updates; this is a no-op
+    taskCallbacksFactory: ({ chatId, msgId, toolId }) => ({
+      streamUpdate: async () => {
+        // QQ doesn't support streaming updates
       },
-      sendComplete: async (content: string, note?: string) => {
-        // QQ sends final - handled via pendingReplies in message-sender.ts
+      sendComplete: async (content, note) => {
+        await sendFinalMessages(chatId, msgId, content, note ?? '', toolId);
       },
-      sendError: async (error: string) => {
-        // QQ sends error - handled via pendingReplies in message-sender.ts
+      sendError: async (error) => {
+        await sendErrorMessage(chatId, msgId, error, toolId);
       },
-    },
+    }),
   });
 
-  // Wrap factory handleAIRequest to match ClaudeRequestHandler signature
-  // (used by commandHandler.dispatch and handleTextFlow)
-  async function handleAIRequest(
-    userId: string,
-    chatId: string,
-    prompt: string,
-    workDir: string,
-    convId?: string,
-    _threadCtx?: ThreadContext,
-    replyToMessageId?: string,
-    signal?: AbortSignal,
-  ): Promise<void> {
-    await factoryHandleAIRequest({
-      userId,
-      chatId,
-      prompt,
-      workDir,
-      convId,
-      replyToMessageId,
-      signal,
-    });
-  }
+  // NOTE: handleTextFlow calls handleAIRequest with an OBJECT argument,
+  // so we pass factoryHandleAIRequest directly (it takes HandleAIRequestParams).
+  // The attachment path also uses factoryHandleAIRequest with object syntax.
 
   function cleanupRecentEvents(now: number): void {
     for (const [eventId, timestamp] of recentEventIds) {
@@ -291,7 +269,7 @@ export function setupQQHandlers(
           chatId,
           text,
           ctx: platformContext,
-          handleAIRequest,
+          handleAIRequest: factoryHandleAIRequest,
           sendTextReply,
           workDir: sessionManager.getWorkDir(userId),
           convId: sessionManager.getConvId(userId),
@@ -328,16 +306,15 @@ export function setupQQHandlers(
           convId ?? '',
           attachmentPrompt,
           async (prompt, signal) => {
-            await handleAIRequest(
+            await factoryHandleAIRequest({
               userId,
               chatId,
               prompt,
               workDir,
               convId,
-              undefined,
-              event.id,
+              replyToMessageId: event.id,
               signal,
-            );
+            });
           },
         );
 

@@ -214,6 +214,7 @@ export function runAITask(
           throttledUpdate(taskState.latestContent, true);
         },
         onComplete: async (result) => {
+          log.info(`[AITask] onComplete fired: settled=${settled}, success=${result.success}, platform=${ctx.platform}, taskKey=${ctx.taskKey}`);
           if (settled) return;
           settled = true;
           if (pendingUpdate) {
