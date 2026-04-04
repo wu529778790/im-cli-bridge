@@ -20,9 +20,8 @@ import { setChatUser } from '../shared/chat-user-map.js';
 import type { Platform } from '../config.js';
 import type { PlatformEventContext } from './create-event-context.js';
 import type { EnqueueResult } from '../queue/request-queue.js';
-import type { ClaudeRequestHandler } from '../commands/handler.js';
-
-type HandleAIRequestFn = ClaudeRequestHandler;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type HandleAIRequestFn = (params: any) => Promise<void>;
 import { createLogger } from '../logger.js';
 
 const log = createLogger('TextFlow');

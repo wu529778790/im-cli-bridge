@@ -146,7 +146,8 @@ async function getGatewayUrl(config: Config): Promise<string> {
 
 function normalizeInboundEvent(payload: GatewayPayload): QQMessageEvent | null {
   const type = payload.t;
-  const data = (payload.d ?? {}) as Record<string, unknown>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data = (payload.d ?? {}) as Record<string, any>;
   const attachments = Array.isArray(data.attachments)
     ? data.attachments.map((attachment): QQAttachment => ({
         url: typeof attachment?.url === "string" ? attachment.url : undefined,

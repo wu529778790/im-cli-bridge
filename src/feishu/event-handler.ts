@@ -13,7 +13,6 @@ import {
 import { buildCardV2 } from './card-builder.js';
 import { disableStreaming, updateCardFull, destroySession } from './cardkit-manager.js';
 import { CARDKIT_THROTTLE_MS } from '../constants.js';
-import { setActiveChatId } from '../shared/active-chats.js';
 import { createLogger } from '../logger.js';
 import { createMediaTargetPath } from '../shared/media-storage.js';
 import { buildSavedMediaPrompt } from '../shared/media-analysis-prompt.js';

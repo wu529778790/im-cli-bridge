@@ -11,12 +11,14 @@ import type { SessionManager } from '../session/session-manager.js';
 import type { TaskRunState } from '../shared/ai-task.js';
 
 // Setup mocks for AccessControl
-vi.mocked(AccessControl).mockImplementation(function(this: Record<string, unknown>, ids: string[]) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+vi.mocked(AccessControl).mockImplementation(function(this: any, ids: string[]) {
   this.isAllowed = (userId: string) => ids.length === 0 || ids.includes(userId);
 });
 
 // Setup mocks for CommandHandler
-vi.mocked(CommandHandler).mockImplementation(function(this: Record<string, unknown>, deps: unknown) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+vi.mocked(CommandHandler).mockImplementation(function(this: any, deps: unknown) {
   this.dispatch = vi.fn();
   this.deps = deps;
 });

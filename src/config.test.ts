@@ -32,7 +32,7 @@ vi.mock('node:child_process', () => ({
   execFileSync: execFileSyncMock,
 }));
 
-import { loadConfig } from './config.js';
+import { loadConfig, loadFileConfig } from './config.js';
 
 describe('config', () => {
   beforeEach(() => {

@@ -44,7 +44,8 @@ function loadUserPluginSettings(): UserPluginSettings | null {
   }
 }
 
-const _userPluginSettings = loadUserPluginSettings();
+// Pre-load user plugin settings to cache Claude Code user preferences
+loadUserPluginSettings();
 
 // 存储所有活跃的 SDKSession 对象，key 为 sessionId
 // 使用 Map 而不是 Set，因为我们需要通过 sessionId 获取 session
